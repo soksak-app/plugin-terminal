@@ -1,6 +1,6 @@
 {
   "name": "@soksak/plugin-terminal",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "type": "module",
   "description": "Terminal plugin: a full-screen terminal surface connected to a VT engine session.",
@@ -10,11 +10,11 @@
     "url": "git+file://~/Projects/soksak/plugins/terminal"
   },
   "engines": {
-    "soksak": "^0.0.1"
+    "soksak": "^0.0.2"
   },
   "soksak": {
     "sidecars": {
-      "@soksak/sidecar-vt-alacritty": "^0.0.1"
+      "@soksak/sidecar-vt-alacritty": "^0.0.2"
     }
   },
   "files": [
@@ -26,6 +26,6 @@
     "test": "node --test test/"
   },
   "devDependencies": {
-    "@soksak/plugin-api": "git+file://~/Projects/soksak/core#v0.0.1&path:/packages/plugin-api"
+    "@soksak/plugin-api": "git+file://~/Projects/soksak/core#v0.0.2&path:/packages/plugin-api"
   }
 }
