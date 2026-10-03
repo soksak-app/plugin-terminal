@@ -471,7 +471,7 @@
       },
       {
         "name": "terminal.scrollbar",
-        "description": "The scrollbar track shown while the viewport is above the newest output."
+        "description": "The scrollbar track shown while the terminal retains history; at the newest output its thumb is at the bottom of the track."
       },
       {
         "name": "terminal.scrollbar.thumb",
