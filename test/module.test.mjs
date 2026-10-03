@@ -13,12 +13,13 @@ const SHELL_SETTINGS = {
 };
 test("terminal module waits for composition presentation, publishes state, and disposes the controller", async () => {
   const listeners = new Map();
-  const view = { addEventListener(type, fn) { if (!listeners.has(type)) listeners.set(type, []); listeners.get(type).push(fn); },
+  const view = { style: {}, addEventListener(type, fn) { if (!listeners.has(type)) listeners.set(type, []); listeners.get(type).push(fn); },
     removeEventListener() {}, setPointerCapture() {},
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 640, height: 384 }) };
   const element = () => ({ style: {}, hidden: true, addEventListener() {}, removeEventListener() {},
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 10, height: 300 }) });
-  const parts = { "#view": view, "#scrollbar": element(), "#thumb": element() };
+  const parts = { "#view": view, "#scrollbar": element(), "#thumb": element(),
+    "#padding-top": element(), "#padding-right": element(), "#padding-bottom": element(), "#padding-left": element() };
   const root = {
     childNodes: [],
     set innerHTML(value) { this.childNodes = value ? [view] : []; },

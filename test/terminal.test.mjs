@@ -747,6 +747,39 @@ test("scrollbar settings set the track background, thumb color, width, and shape
   assert.match(fakeExpose.getStatus("terminal.session").readFn().error, /scrollbar.thumb/);
 });
 
+test("padding settings inset the region on each side and show the terminal background", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  const view = Object.assign(createFakeView(), { style: {} });
+  const strips = Object.fromEntries(["top", "right", "bottom", "left"].map((side) => [side, { style: {}, hidden: true }]));
+  const track = Object.assign(createFakeView(), { style: {}, hidden: true });
+  const thumb = Object.assign(createFakeView(), { style: {} });
+  let values = { ...SHELL_SETTINGS.read(), "padding.top": 4, "padding.right": 8, "padding.bottom": 12, "padding.left": 16 };
+  let notify = null;
+  await startTerminal({
+    view, padding: strips, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose, scrollbar: { track, thumb },
+    settings: { read: () => values, on: (listener) => { notify = listener; return () => {}; } },
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  const inset = () => [view.style.position, view.style.top, view.style.right, view.style.bottom, view.style.left];
+  assert.deepEqual(inset(), ["absolute", "4px", "8px", "12px", "16px"]);
+  assert.deepEqual([track.style.top, track.style.right, track.style.bottom], ["4px", "8px", "12px"]);
+  openSession(fakeSidecar);
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], background: "#102030",
+    cursor: { col: 0, row: 0, visible: true, focused: false, shape: "Block", blinking: false } });
+  assert.deepEqual(Object.values(strips).map((strip) => strip.style.background), Array(4).fill("#102030"),
+    "the padding shows the terminal background");
+  assert.deepEqual([strips.left.style.top, strips.left.style.bottom, strips.left.style.width], ["4px", "12px", "16px"]);
+
+  values = { ...values, "padding.top": 0, "padding.left": 2 };
+  notify(values);
+  assert.deepEqual(inset(), ["absolute", "0px", "8px", "12px", "2px"]);
+  assert.equal(track.style.top, "0px");
+  assert.deepEqual([strips.top.hidden, strips.left.hidden, strips.left.style.width], [true, false, "2px"]);
+});
+
 test("the region reports an unknown action as an input error", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();

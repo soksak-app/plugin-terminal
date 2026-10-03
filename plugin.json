@@ -17,7 +17,7 @@
           "input": "dom"
         }
       ],
-      "overlays": ["scrollbar"]
+      "overlays": ["scrollbar", "padding-top", "padding-right", "padding-bottom", "padding-left"]
     }
   },
   "preview": {
@@ -122,6 +122,38 @@
       "type": "enum",
       "default": "rounded",
       "values": ["rounded", "square"]
+    },
+    "padding.top": {
+      "label": "위쪽 여백(pt)",
+      "description": "터미널 격자와 표면 가장자리 사이의 간격. 여백은 터미널 바탕색이다.",
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 64
+    },
+    "padding.right": {
+      "label": "오른쪽 여백(pt)",
+      "description": "터미널 격자와 표면 가장자리 사이의 간격. 여백은 터미널 바탕색이다.",
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 64
+    },
+    "padding.bottom": {
+      "label": "아래쪽 여백(pt)",
+      "description": "터미널 격자와 표면 가장자리 사이의 간격. 여백은 터미널 바탕색이다.",
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 64
+    },
+    "padding.left": {
+      "label": "왼쪽 여백(pt)",
+      "description": "터미널 격자와 표면 가장자리 사이의 간격. 여백은 터미널 바탕색이다.",
+      "type": "integer",
+      "default": 0,
+      "minimum": 0,
+      "maximum": 64
     }
   },
   "sidecars": [

@@ -162,6 +162,8 @@ function normalizeCursorPolicy(value) {
  * @returns {Promise<void>}
  */
 export async function startTerminal({ id, view, attachImage, sidecar, expose, theme,
+  // padding 은 변마다 view 둘레를 칠하는 overlay 요소 {top, right, bottom, left} 다. 없으면 칠하지 않는다.
+  padding: paddingStrips = null,
   settings, clipboard, scrollbar = null, reportSurfaceError = () => {}, diagnostics = null,
   // 탭 알림(docs/spec/plugins.md#tab-reports)과 이 탭을 만든 카드의 작업 디렉터리.
   tab = { title() {}, directory() {}, notify() {} }, origin = { directory: null },
@@ -807,6 +809,37 @@ export async function startTerminal({ id, view, attachImage, sidecar, expose, th
     else reportInputError(new Error(`scrollbar.shape setting is invalid: ${String(next.shape)}`));
     paintScrollbar();
   };
+  // padding 설정(pt). 그림 영역과 셀 격자는 padding 안쪽을 차지하고, 스크롤바는 영역의 오른쪽 가장자리에 놓인다.
+  const PADDING_SIDES = ["top", "right", "bottom", "left"];
+  const padding = { top: 0, right: 0, bottom: 0, left: 0 };
+  const applyPaddingSettings = (values) => {
+    for (const side of PADDING_SIDES) {
+      const value = values[`padding.${side}`];
+      if (Number.isInteger(value) && value >= 0 && value <= 64) padding[side] = value;
+      else reportInputError(new Error(`padding.${side} setting is invalid: ${String(value)}`));
+    }
+    view.style.position = "absolute";
+    for (const side of PADDING_SIDES) view.style[side] = `${padding[side]}px`;
+    if (scrollbar) for (const side of ["top", "right", "bottom"]) scrollbar.track.style[side] = `${padding[side]}px`;
+    if (paddingStrips) {
+      // 위아래 띠는 폭 전체를, 왼쪽과 오른쪽 띠는 그 사이를 덮는다.
+      const strip = (side, box) => {
+        Object.assign(paddingStrips[side].style, box);
+        paddingStrips[side].hidden = padding[side] === 0;
+      };
+      strip("top", { top: "0px", left: "0px", right: "0px", height: `${padding.top}px` });
+      strip("bottom", { bottom: "0px", left: "0px", right: "0px", height: `${padding.bottom}px` });
+      strip("left", { top: `${padding.top}px`, bottom: `${padding.bottom}px`, left: "0px", width: `${padding.left}px` });
+      strip("right", { top: `${padding.top}px`, bottom: `${padding.bottom}px`, right: "0px", width: `${padding.right}px` });
+    }
+    paintPadding();
+  };
+  // padding 은 터미널의 현재 기본 배경색을 보인다.
+  const paintPadding = () => {
+    if (!paddingStrips) return;
+    // 기본값: 첫 화면의 배경을 받기 전에는 padding 을 아직 색칠하지 않는다.
+    for (const side of PADDING_SIDES) paddingStrips[side].style.background = terminalBackground ?? "";
+  };
   // 트랙은 네이티브 그림이 잘린 자리를 칠한다. terminal 은 터미널의 현재 기본 배경색이다.
   const paintScrollbar = () => {
     if (!scrollbar) return;
@@ -997,6 +1030,7 @@ export async function startTerminal({ id, view, attachImage, sidecar, expose, th
       if (typeof body.background === "string" && body.background !== terminalBackground) {
         terminalBackground = body.background;
         paintScrollbar();
+        paintPadding();
       }
       if (body.scrollback !== undefined) {
         const { offset, history } = body.scrollback;
@@ -1235,8 +1269,10 @@ export async function startTerminal({ id, view, attachImage, sidecar, expose, th
   let settingsSubscription = null;
   if (settings) {
     applyScrollbarSettings(settings.read());
+    applyPaddingSettings(settings.read());
     settingsSubscription = settings.on((values) => {
       applyScrollbarSettings(values);
+      applyPaddingSettings(values);
       applyTitle();
       const nextClipboardPolicy = values["clipboard.program"];
       if (!PROGRAM_CLIPBOARD_POLICIES.has(nextClipboardPolicy)) {
