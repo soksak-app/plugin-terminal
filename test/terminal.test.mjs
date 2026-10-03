@@ -2933,6 +2933,7 @@ function createFakeTab({ reject = false } = {}) {
       calls.push(["title", text]);
     },
     directory: (path) => calls.push(["directory", path]),
+    footer: (text) => calls.push(["footer", text]),
     notify: (text, policy) => {
       if (reject) throw new TypeError("a tab notice must be 1 to 1024 characters without control characters");
       calls.push(["notify", text, policy]);
@@ -3013,6 +3014,22 @@ test("OSC 7 records the local directory and a directory of another machine remov
   fakeSidecar.triggerEvent("test-session", { event: "directory", uri: "file://remote/tmp", path: null });
   assert.deepEqual(tab.calls.filter(([kind]) => kind === "directory"),
     [["directory", "/tmp/a b"], ["directory", null]]);
+});
+
+test("the footer shows the start directory and then each directory that the shell reports", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const tab = createFakeTab();
+  await startTerminal({
+    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: createFakeExpose(), tab, origin: { directory: "/tmp/origin" },
+    settings: titleSettings({}), window: { TextEncoder: FakeTextEncoder },
+  });
+  fakeSidecar.triggerEvent("test-session", { event: "directory", uri: "file:///tmp/a%20b", path: "/tmp/a b" });
+  // 다른 컴퓨터의 디렉터리는 경로가 없으므로 그 주소를 보인다.
+  fakeSidecar.triggerEvent("test-session", { event: "directory", uri: "file://remote/tmp", path: null });
+  assert.deepEqual(tab.calls.filter(([kind]) => kind === "footer"),
+    [["footer", "/tmp/origin"], ["footer", "/tmp/a b"], ["footer", "file://remote/tmp"]]);
 });
 
 test("a session opens in the origin directory of its tab", async () => {

@@ -166,7 +166,7 @@ export async function startTerminal({ id, view, attachImage, sidecar, expose, th
   padding: paddingStrips = null,
   settings, clipboard, scrollbar = null, reportSurfaceError = () => {}, diagnostics = null,
   // 탭 알림(docs/spec/plugins.md#tab-reports)과 이 탭을 만든 카드의 작업 디렉터리.
-  tab = { title() {}, directory() {}, notify() {} }, origin = { directory: null },
+  tab = { title() {}, footer() {}, directory() {}, notify() {} }, origin = { directory: null },
   // 표면 창의 프로젝트. 없으면 null 이다.
   project = null,
   // 링크 열기(docs/spec/plugins.md#opening-links).
@@ -920,6 +920,8 @@ export async function startTerminal({ id, view, attachImage, sidecar, expose, th
   // 프로젝트가 없는 창에서는 홈 디렉터리에서 시작한다(docs/spec/terminal-runtime.md).
   // 기본값: 분할 출처에 디렉터리가 없으면 프로젝트 루트, 프로젝트도 없으면 홈 디렉터리에서 연다.
   const directory = origin.directory ?? project?.root ?? null;
+  // 카드 발은 작업 디렉터리를 보인다. 홈 디렉터리에서 시작하면 셸이 알릴 때까지 경로를 모른다.
+  if (directory !== null) tab.footer(directory);
   const openSession = () => terminal.send(id, { operation: "open", image: "view", shell,
     ...(directory === null ? {} : { directory }) });
   const settingsPolicy = () => {
@@ -1141,9 +1143,10 @@ export async function startTerminal({ id, view, attachImage, sidecar, expose, th
       }
       session = { ...session, vendor: { ...session.vendor, directory: body.uri } };
       changed("session");
-      // 다른 컴퓨터의 디렉터리(path null)는 기록한 디렉터리를 지운다.
+      // 다른 컴퓨터의 디렉터리(path null)는 기록한 디렉터리를 지우고, 발에는 그 주소를 보인다.
       try {
         tab.directory(body.path);
+        tab.footer(body.path ?? body.uri);
       } catch (error) {
         reportInputError(error);
       }
