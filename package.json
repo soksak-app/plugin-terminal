@@ -3,6 +3,7 @@
   "version": "0.0.3",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.24.0",
   "description": "Terminal plugin: a full-screen terminal surface connected to a VT engine session.",
   "license": "MIT",
   "repository": {
