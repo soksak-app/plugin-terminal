@@ -156,9 +156,9 @@
       "maximum": 64
     }
   },
-  "sidecars": [
-    "@soksak/sidecar-vt-alacritty"
-  ],
+  "dependencies": {
+    "@soksak/sidecar-vt-alacritty": "^0.0.3"
+  },
   "background": {
     "sidecar": "@soksak/sidecar-vt-alacritty",
     "operation": "open",
