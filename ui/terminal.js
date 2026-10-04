@@ -1100,6 +1100,8 @@ export async function startTerminal({ id, view, attachImage, sidecar, expose, th
         modes, bytes: body.bytes, error: typeof body.error === "string" ? body.error : null,
       }};
       changed("session");
+      // 실패한 mouse 연산도 자기 inputId 의 결과로 답한다. 짝은 위에서 맞췄고, 실패는 입력 오류로 보인다.
+      if (typeof body.error === "string") reportInputError(new Error(body.error));
     } else if (body.event === "pty.pending") {
       // 진단 측정의 답이다. 요청이 없으면 계약 위반이고 오류는 요청을 거절한다.
       if (!pendingPtyRead) {

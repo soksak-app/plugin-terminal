@@ -3326,3 +3326,29 @@ test("a failed reconnection reports the reason and keeps input queued", async ()
   assert.equal(expose.getStatus("terminal.session").readFn().error, undefined,
     "the successful reconnection resolved the connection error");
 });
+
+test("a mouse result that carries an error is shown and keeps the later results paired", async () => {
+  FakeResizeObserver.reset();
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  const view = createFakeView();
+  await startTerminal({
+    view, attachImage: createFakeAttachImage().function, sidecar, expose,
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(sidecar);
+  view._trigger("pointermove", { pointerId: 1, clientX: 10, clientY: 12 });
+  await new Promise((resolve) => setImmediate(resolve));
+  view._trigger("pointermove", { pointerId: 1, clientX: 42, clientY: 12 });
+  await new Promise((resolve) => setImmediate(resolve));
+  const [first, second] = sidecar.getMessages().filter(({ body }) => body.operation === "mouse").map(({ body }) => body);
+  const result = (body, error) => ({ event: "mouse", inputId: body.inputId, phase: body.phase, x: error ? null : 1, y: error ? null : 0,
+    pressed: false, shift: false, alt: false, ctrl: false, reported: false, written: false,
+    modes: { click: false, drag: false, motion: false }, bytes: null, error });
+  sidecar.triggerEvent("test-session", result(first, "invalidParams: selection coordinates are outside the terminal region: 10,12"));
+  const error = () => expose.getStatus("terminal.session").readFn().error;
+  assert.equal(error(), "terminal input failed: invalidParams: selection coordinates are outside the terminal region: 10,12");
+  sidecar.triggerEvent("test-session", result(second, null));
+  assert.equal(error(), "terminal input failed: invalidParams: selection coordinates are outside the terminal region: 10,12");
+  assert.equal(expose.getStatus("terminal.session").readFn().mouse.inputId, second.inputId);
+});
