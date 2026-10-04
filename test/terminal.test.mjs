@@ -249,7 +249,7 @@ test("modified native character keys preserve their text before and after sessio
   const sidecar = createFakeSidecar();
   let region;
   await startTerminal({
-    view: createFakeView(), attachImage: (...args) => (region = attach.function(...args)),
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)),
     sidecar, expose: createFakeExpose(),
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -268,7 +268,7 @@ test("native image errors remain visible after later session state updates", asy
   const expose = createFakeExpose();
   let region;
   await startTerminal({
-    view: createFakeView(), attachImage: (...args) => (region = attach.function(...args)), sidecar, expose,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar, expose,
     window: { TextEncoder: FakeTextEncoder },
   });
   openSession(sidecar);
@@ -288,7 +288,7 @@ async function errorTerminal() {
   const expose = createFakeExpose();
   let region;
   await startTerminal({
-    view: createFakeView(), attachImage: (...args) => (region = attach.function(...args)), sidecar, expose,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar, expose,
     window: { TextEncoder: FakeTextEncoder },
   });
   openSession(sidecar);
@@ -363,7 +363,7 @@ test("terminal.screen publishes sidecar output without polling or input commands
   const sidecar = createFakeSidecar();
   const expose = createFakeExpose();
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function, sidecar, expose,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
     window: { TextEncoder: FakeTextEncoder },
   });
   const status = expose.getStatus("terminal.screen");
@@ -397,7 +397,7 @@ test("Boot: attachImage called once and sidecar receives open message", async ()
 
   await startTerminal({
     view: fakeView,
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 2,
@@ -435,7 +435,7 @@ test("Region insert event sends base64-encoded bytes to sidecar", async () => {
 
   const region = await startTerminal({
     view: fakeView,
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -464,7 +464,7 @@ test("Region insert event sends base64-encoded bytes to sidecar", async () => {
 
   await startTerminal({
     view: fakeView,
-    attachImage: patchedAttachImage,
+    detachRegions: async () => {}, attachImage: patchedAttachImage,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -503,7 +503,7 @@ test("terminal.input command sends same body as region insert", async () => {
 
   await startTerminal({
     view: fakeView,
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -541,7 +541,7 @@ test("terminal.paste reads explicit user text once and sends one paste operation
     },
   };
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, clipboard,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -561,7 +561,7 @@ test("a session opens the shell that the shell setting names", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: createFakeExpose(),
     settings: { read: () => ({ ...SHELL_SETTINGS.read(), shell: "login" }), on: () => () => {} },
     window: { TextEncoder: FakeTextEncoder },
@@ -574,7 +574,7 @@ test("a session without a shell setting is not opened", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
   await assert.rejects(startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: createFakeExpose(),
     settings: { read: () => ({ ...SHELL_SETTINGS.read(), shell: undefined }), on: () => () => {} },
     window: { TextEncoder: FakeTextEncoder },
@@ -590,7 +590,7 @@ test("the region's paste action runs terminal.paste once", async () => {
   const clipboardCalls = [];
   const clipboard = { read: async (type) => { clipboardCalls.push(type); return "echo pasted"; } };
   await startTerminal({
-    view: createFakeView(), attachImage: attach.function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: attach.function,
     sidecar: fakeSidecar, expose: fakeExpose, clipboard,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -612,7 +612,7 @@ test("the region's copy action runs terminal.copy and writes the sidecar's selec
   const writes = [];
   const clipboard = { read: async () => null, writeText: async (text) => { writes.push(text); } };
   await startTerminal({
-    view: createFakeView(), attachImage: attach.function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: attach.function,
     sidecar: fakeSidecar, expose: fakeExpose, clipboard,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -642,7 +642,7 @@ test("wheel input is sent as whole scroll lines at the pointer cell and the scre
   const fakeExpose = createFakeExpose();
   const view = createFakeView();
   await startTerminal({
-    view, attachImage: createFakeAttachImage().function,
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -676,7 +676,7 @@ test("the scrollbar shows the scrollback position and dragging its thumb moves t
   const track = Object.assign(createFakeView(), { style: {}, hidden: false });
   const thumb = Object.assign(createFakeView(), { style: {} });
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, scrollbar: { track, thumb },
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -725,7 +725,7 @@ test("scrollbar settings set the track background, thumb color, width, and shape
   };
   let notify = null;
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, scrollbar: { track, thumb },
     settings: { read: () => values, on: (listener) => { notify = listener; return () => {}; } },
     window: { TextEncoder: FakeTextEncoder },
@@ -758,7 +758,7 @@ test("padding settings inset the region on each side and show the terminal backg
   let values = { ...SHELL_SETTINGS.read(), "padding.top": 4, "padding.right": 8, "padding.bottom": 12, "padding.left": 16 };
   let notify = null;
   await startTerminal({
-    view, padding: strips, attachImage: createFakeAttachImage().function,
+    view, padding: strips, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, scrollbar: { track, thumb },
     settings: { read: () => values, on: (listener) => { notify = listener; return () => {}; } },
     window: { TextEncoder: FakeTextEncoder },
@@ -786,7 +786,7 @@ test("the region reports an unknown action as an input error", async () => {
   const fakeExpose = createFakeExpose();
   const attach = createFakeAttachImage();
   await startTerminal({
-    view: createFakeView(), attachImage: attach.function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: attach.function,
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -805,7 +805,7 @@ test("terminal.paste rejects an absent clipboard without sending input", async (
   const fakeExpose = createFakeExpose();
   const clipboard = { read: async () => null };
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, clipboard,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -830,7 +830,7 @@ test("terminal.paste quotes file URLs without adding an executable newline", asy
     },
   };
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, clipboard,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -862,7 +862,7 @@ test("terminal.paste persists a PNG and sends its owned shell path once", async 
     },
   };
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, clipboard,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -887,7 +887,7 @@ test("terminal.paste rejects malformed file URLs and unavailable PNG persistence
     const fakeSidecar = createFakeSidecar();
     const fakeExpose = createFakeExpose();
     await startTerminal({
-      view: createFakeView(), attachImage: createFakeAttachImage().function,
+      view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
       sidecar: fakeSidecar, expose: fakeExpose, clipboard,
       window: { TextEncoder: FakeTextEncoder },
     });
@@ -904,7 +904,7 @@ test("terminal file drop quotes local URLs and sends one non-executing paste", a
   const fakeExpose = createFakeExpose();
   const fakeView = createFakeView();
   await startTerminal({
-    view: fakeView, attachImage: createFakeAttachImage().function,
+    view: fakeView, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, clipboard: { read: async () => null },
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -924,7 +924,7 @@ test("terminal file drop rejects unsupported or malformed payloads without input
   const fakeExpose = createFakeExpose();
   const fakeView = createFakeView();
   await startTerminal({
-    view: fakeView, attachImage: createFakeAttachImage().function,
+    view: fakeView, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, clipboard: { read: async () => null },
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -943,7 +943,7 @@ test("program clipboard queries are explicitly denied and do not remain pending"
   const fakeSidecar = createFakeSidecar();
   const fakeExpose = createFakeExpose();
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, clipboard: { read: async () => "secret" },
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -967,7 +967,7 @@ test("allowed program clipboard handles only text through the host capability", 
     writeText: async (text) => { writes.push(text); },
   };
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, settings, clipboard,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -989,7 +989,7 @@ test("user selection copy writes non-empty text independently of program clipboa
   const writes = [];
   const clipboard = { writeText: async (text) => writes.push(text) };
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, clipboard,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -1007,7 +1007,7 @@ test("selection copy rejects non-user or empty payloads without writing", async 
   const writes = [];
   const clipboard = { writeText: async (text) => writes.push(text) };
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, clipboard,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -1027,7 +1027,7 @@ test("a selection release without text is accepted without a copy or an error", 
   const writes = [];
   const clipboard = { writeText: async (text) => writes.push(text) };
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, clipboard,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -1047,7 +1047,7 @@ test("sidecar acknowledgements of selection and paste operations are not unsuppo
   const fakeSidecar = createFakeSidecar();
   const fakeExpose = createFakeExpose();
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -1084,7 +1084,7 @@ test("Region key event for Enter sends correct message format", async () => {
 
   await startTerminal({
     view: fakeView,
-    attachImage: patchedAttachImage,
+    detachRegions: async () => {}, attachImage: patchedAttachImage,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -1132,7 +1132,7 @@ test("Region key event for ArrowUp sends Up key (no escape sequences)", async ()
 
   await startTerminal({
     view: fakeView,
-    attachImage: patchedAttachImage,
+    detachRegions: async () => {}, attachImage: patchedAttachImage,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -1179,7 +1179,7 @@ test("terminal focus remains a command owned by the card, not a second pointerdo
 
   await startTerminal({
     view: fakeView,
-    attachImage: patchedAttachImage,
+    detachRegions: async () => {}, attachImage: patchedAttachImage,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -1198,7 +1198,7 @@ test("terminal pointerdown prevents DOM focus and still bubbles to the card", as
   const expose = createFakeExpose();
   const view = createFakeView();
   await startTerminal({
-    view, attachImage: (...args) => {
+    view, detachRegions: async () => {}, attachImage: (...args) => {
       return attach.function(...args);
     },
     sidecar: createFakeSidecar(), expose, window: { TextEncoder: FakeTextEncoder },
@@ -1216,7 +1216,7 @@ test("terminal pointer drag sends one complete selection gesture to the sidecar"
   const fakeExpose = createFakeExpose();
   const view = createFakeView();
   await startTerminal({
-    view, attachImage: createFakeAttachImage().function,
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -1246,7 +1246,7 @@ test("a failed pointer capture does not leave terminal selection ownership stuck
   const fakeExpose = createFakeExpose();
   const view = createFakeView({ captureError: new Error("capture rejected") });
   await startTerminal({
-    view, attachImage: createFakeAttachImage().function,
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -1266,7 +1266,7 @@ test("terminal pointer gesture serializes selection commands when sidecar replie
   const fakeExpose = createFakeExpose();
   const view = createFakeView();
   await startTerminal({
-    view, attachImage: createFakeAttachImage().function,
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -1290,7 +1290,7 @@ test("a lost pointer capture resets terminal drag ownership for the next card fo
   const fakeExpose = createFakeExpose();
   const view = createFakeView();
   await startTerminal({
-    view, attachImage: createFakeAttachImage().function,
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -1317,7 +1317,7 @@ test("a lost capture that rejects release still permits the next idempotent drag
   const fakeExpose = createFakeExpose();
   const view = createFakeView({ releaseError: new Error("capture already lost") });
   await startTerminal({
-    view, attachImage: createFakeAttachImage().function,
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -1345,7 +1345,7 @@ test("a drag that leaves the view selects to the nearest edge point", async () =
   const fakeExpose = createFakeExpose();
   const view = createFakeView();
   await startTerminal({
-    view, attachImage: createFakeAttachImage().function,
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -1376,7 +1376,7 @@ test("a terminal click clears the selection with an empty selection at the press
   const fakeExpose = createFakeExpose();
   const view = createFakeView();
   await startTerminal({
-    view, attachImage: createFakeAttachImage().function,
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -1400,7 +1400,7 @@ test("terminal.focus command reports focus rejection through terminal.session", 
   const view = createFakeView();
   let region;
   await startTerminal({
-    view, attachImage: (...args) => {
+    view, detachRegions: async () => {}, attachImage: (...args) => {
       region = attach.function(...args);
       region.focus = async () => { throw new Error("focus rejected"); };
       return region;
@@ -1434,7 +1434,7 @@ test("terminal.screen.read sends request and returns lines on screen event", asy
 
   await startTerminal({
     view: fakeView,
-    attachImage: patchedAttachImage,
+    detachRegions: async () => {}, attachImage: patchedAttachImage,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -1476,7 +1476,7 @@ test("Sidecar state event updates terminal.session status", async () => {
 
   await startTerminal({
     view: fakeView,
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -1526,7 +1526,7 @@ test("Resize state event with cell dimensions updates session without error", as
 
   await startTerminal({
     view: fakeView,
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -1582,7 +1582,7 @@ test("terminal.close sends close message to sidecar", async () => {
 
   await startTerminal({
     view: fakeView,
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -1616,7 +1616,7 @@ test("terminal.image.inline.delete sends one explicit owned-image deletion", asy
   };
   await startTerminal({
     view: fakeView,
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar,
     expose: fakeExpose,
     scale: 1,
@@ -1648,7 +1648,7 @@ test("open is independent of DOM element size", async () => {
 
   await startTerminal({
     view: fakeView,
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -1688,7 +1688,7 @@ test("DOM resize never sends terminal raster messages", async () => {
 
   await startTerminal({
     view: fakeView,
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -1736,7 +1736,7 @@ test("input_before_open: terminal.input is buffered until open", async () => {
 
   await startTerminal({
     view: fakeView,
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -1774,7 +1774,7 @@ test("sidecar_error_reaches_session_status: sidecar error event updates session"
 
   await startTerminal({
     view: fakeView,
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     reportSurfaceError: (error) => surfaceErrors.push(error),
@@ -1811,7 +1811,7 @@ test("inline image display and deletion are observable through terminal.session"
   const fakeExpose = createFakeExpose();
   await startTerminal({
     view: createFakeView(),
-    attachImage: createFakeAttachImage().function,
+    detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -1845,7 +1845,7 @@ test("compose events are sent with ranges and published as preedit state", async
 
   await startTerminal({
     view: fakeView,
-    attachImage: patchedAttachImage,
+    detachRegions: async () => {}, attachImage: patchedAttachImage,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -1889,7 +1889,7 @@ test("native insert callbacks preserve compatibility jamo instead of discarding 
   let regionReference;
   await startTerminal({
     view: createFakeView(),
-    attachImage: (view, name, sidecar) => {
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
       regionReference = fakeAttachImage.function(view, name, sidecar);
       return regionReference;
     },
@@ -1919,7 +1919,7 @@ test("Korean IME insertText commit clears an active preedit and keeps later typi
   const expose = createFakeExpose();
   await startTerminal({
     view: createFakeView(),
-    attachImage: (view, name, sidecar) => {
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
       regionReference = fakeAttachImage.function(view, name, sidecar);
       return regionReference;
     },
@@ -1954,7 +1954,7 @@ test("clearing a native preedit cancels it without writing the uncommitted text 
   const expose = createFakeExpose();
   await startTerminal({
     view: createFakeView(),
-    attachImage: (view, name, sidecar) => {
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
       regionReference = fakeAttachImage.function(view, name, sidecar);
       return regionReference;
     },
@@ -1988,7 +1988,7 @@ test("screen events update terminal.cursor and move the input-method caret", asy
   const expose = createFakeExpose();
   await startTerminal({
     view: createFakeView(),
-    attachImage: (view, name, sidecar) => {
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
       regionReference = fakeAttachImage.function(view, name, sidecar);
       return regionReference;
     },
@@ -2031,7 +2031,7 @@ test("an input method's edited syllables reach the PTY once and in order before 
   const expose = createFakeExpose();
   await startTerminal({
     view: createFakeView(),
-    attachImage: (view, name, sidecar) => {
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
       regionReference = fakeAttachImage.function(view, name, sidecar);
       return regionReference;
     },
@@ -2071,7 +2071,7 @@ test("accepting native marked text writes it to the PTY exactly once", async () 
   const expose = createFakeExpose();
   await startTerminal({
     view: createFakeView(),
-    attachImage: (view, name, sidecar) => {
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
       regionReference = fakeAttachImage.function(view, name, sidecar);
       return regionReference;
     },
@@ -2105,7 +2105,7 @@ test("a terminal without a diagnostic module registers no diagnostic entries", a
   const expose = createFakeExpose();
   await startTerminal({
     view: createFakeView(),
-    attachImage: createFakeAttachImage().function,
+    detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: createFakeSidecar(),
     expose,
     scale: 1,
@@ -2123,7 +2123,7 @@ test("terminal.compose.update exposes ordered preedit changes without writing pa
   const expose = createFakeExpose();
   await startTerminal({
     view: createFakeView(),
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose,
     diagnostics: terminalDiagnostics,
@@ -2152,7 +2152,7 @@ test("terminal.compose.update rejects malformed ranges instead of replacing them
   const expose = createFakeExpose();
   await startTerminal({
     view: createFakeView(),
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose,
     diagnostics: terminalDiagnostics,
@@ -2176,7 +2176,7 @@ test("terminal.ime.trace records native callbacks and ordered terminal input, an
   let regionReference;
   await startTerminal({
     view: createFakeView(),
-    attachImage: (view, name, sidecar) => {
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
       regionReference = fakeAttachImage.function(view, name, sidecar);
       return regionReference;
     },
@@ -2226,7 +2226,7 @@ test("native focus and cursor state route to sidecar and caret", async () => {
   let regionReference;
   await startTerminal({
     view: fakeView,
-    attachImage: (view, name, sidecar) => {
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
       regionReference = fakeAttachImage.function(view, name, sidecar);
       return regionReference;
     },
@@ -2254,7 +2254,7 @@ test("cursor state exposes typed shape and blink policy while routing the caret"
   let regionReference;
   await startTerminal({
     view: createFakeView(),
-    attachImage: (view, name, sidecar) => (regionReference = fakeAttachImage.function(view, name, sidecar)),
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => (regionReference = fakeAttachImage.function(view, name, sidecar)),
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -2282,7 +2282,7 @@ test("the drawn cursor follows the screen event while the policy shape stays", a
   const fakeExpose = createFakeExpose();
   await startTerminal({
     view: createFakeView(),
-    attachImage: createFakeAttachImage().function,
+    detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -2307,7 +2307,7 @@ test("an OSC 22 pointer event sets the view cursor and the session pointer", asy
   const fakeExpose = createFakeExpose();
   const view = createFakeView();
   await startTerminal({
-    view, attachImage: createFakeAttachImage().function,
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -2325,7 +2325,7 @@ test("a sequence the engine rejected is recorded in the session without a surfac
   const fakeExpose = createFakeExpose();
   const errors = [];
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
     reportSurfaceError: (error) => errors.push(error),
@@ -2345,7 +2345,7 @@ test("cursor policy sends explicit shape, blink, interval, idle timeout, and unf
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
   const terminal = await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder },
   });
   const policy = await terminal.setCursorPolicy({
@@ -2378,7 +2378,7 @@ test("declared settings are sent at startup and on effective setting changes", a
     on: (listener) => { notify = listener; return () => { notify = null; }; },
   };
   const terminal = await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, settings,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -2424,7 +2424,7 @@ test("invalid cursor fields are observable errors and never fall back to the pre
   const fakeSidecar = createFakeSidecar();
   const fakeExpose = createFakeExpose();
   await startTerminal({
-    view: createFakeView(), attachImage: fakeAttachImage.function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -2461,7 +2461,7 @@ test("input send failures remain observable and later queued input still sends",
   let regionReference;
   await startTerminal({
     view: createFakeView(),
-    attachImage: (view, name, sidecar) => (regionReference = fakeAttachImage.function(view, name, sidecar)),
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => (regionReference = fakeAttachImage.function(view, name, sidecar)),
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -2488,7 +2488,7 @@ test("vendor_events_update_the_session_and_unrelated_events_remain_unsupported",
 
   await startTerminal({
     view: fakeView,
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -2533,7 +2533,7 @@ test("invalid_state_is_reported_not_replaced: invalid state triggers error, does
 
   await startTerminal({
     view: fakeView,
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -2586,7 +2586,7 @@ test("invalid_key_event_modifiers: non-boolean modifiers trigger error", async (
 
   await startTerminal({
     view: fakeView,
-    attachImage: patchedAttachImage,
+    detachRegions: async () => {}, attachImage: patchedAttachImage,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -2619,7 +2619,7 @@ test("a caller scale option cannot enter the terminal protocol", async () => {
 
   await startTerminal({
     view: fakeView,
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 0,
@@ -2661,7 +2661,7 @@ test("missing_surface_id_throws: startTerminal throws when surface id missing", 
   try {
     await realStartTerminal({
       view: fakeView,
-      attachImage: fakeAttachImage.function,
+      detachRegions: async () => {}, attachImage: fakeAttachImage.function,
       sidecar: fakeSidecar,
       expose: fakeExpose,
       scale: 1,
@@ -2697,7 +2697,7 @@ test("region input is buffered in order until sidecar state opens the session", 
 
   await startTerminal({
     view: fakeView,
-    attachImage: patchedAttachImage,
+    detachRegions: async () => {}, attachImage: patchedAttachImage,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 1,
@@ -2732,7 +2732,7 @@ test("startup input overflow is visible and does not report success", async () =
   let regionReference;
   await startTerminal({
     view: createFakeView(),
-    attachImage: (view, name, sidecar) => (regionReference = fakeAttachImage.function(view, name, sidecar)),
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => (regionReference = fakeAttachImage.function(view, name, sidecar)),
     sidecar: fakeSidecar, expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -2763,7 +2763,7 @@ test("a sidecar rejection is reported without DOM-driven retry", async () => {
 
   await startTerminal({
     view: fakeView,
-    attachImage: fakeAttachImage.function,
+    detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     scale: 2,
@@ -2815,7 +2815,7 @@ test("persistent reconnect restores the session identity before a new raster is 
   const fakeExpose = createFakeExpose();
   await startTerminal({
     view: createFakeView(),
-    attachImage: createFakeAttachImage().function,
+    detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
     window: { TextEncoder: FakeTextEncoder },
@@ -2848,7 +2848,7 @@ test("the font size is 13 points times the text size factor and follows its chan
   let notify;
   const textSize = { read: () => factor, on: (listener) => { notify = listener; return () => { notify = null; }; } };
   const terminal = await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, textSize,
     settings: { read: () => values, on: () => () => {} },
     window: { TextEncoder: FakeTextEncoder },
@@ -2892,7 +2892,7 @@ test("the font.family list is sent at startup and on change, and the applied fam
   };
   const settings = { read: () => values, on: (listener) => { notify = listener; return () => { notify = null; }; } };
   const terminal = await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, settings,
     reportSurfaceError: (error) => errors.push(error.message),
     window: { TextEncoder: FakeTextEncoder },
@@ -2956,7 +2956,7 @@ test("the tab shows the program title and a title reset or an empty title remove
   const fakeSidecar = createFakeSidecar();
   const tab = createFakeTab();
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: createFakeExpose(), tab, settings: titleSettings({}),
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -2974,7 +2974,7 @@ test("the name setting removes the program title and program shows the last titl
   const tab = createFakeTab();
   const settings = titleSettings({ title: "name" });
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: createFakeExpose(), tab, settings,
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -2992,7 +2992,7 @@ test("a title that the tab rejects is a session error", async () => {
   const fakeExpose = createFakeExpose();
   const errors = [];
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, tab: createFakeTab({ reject: true }), settings: titleSettings({}),
     reportSurfaceError: (error) => errors.push(error.message),
     window: { TextEncoder: FakeTextEncoder },
@@ -3006,7 +3006,7 @@ test("OSC 7 records the local directory and a directory of another machine remov
   const fakeSidecar = createFakeSidecar();
   const tab = createFakeTab();
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: createFakeExpose(), tab, settings: titleSettings({}),
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -3021,7 +3021,7 @@ test("the footer shows the start directory and then each directory that the shel
   const fakeSidecar = createFakeSidecar();
   const tab = createFakeTab();
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: createFakeExpose(), tab, origin: { directory: "/tmp/origin" },
     settings: titleSettings({}), window: { TextEncoder: FakeTextEncoder },
   });
@@ -3036,7 +3036,7 @@ test("a session opens in the origin directory of its tab", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: createFakeExpose(), tab: createFakeTab(), origin: { directory: "/tmp/origin" },
     settings: titleSettings({}), window: { TextEncoder: FakeTextEncoder },
   });
@@ -3049,7 +3049,7 @@ test("an OSC 9 notification becomes a tab notice and a rejected one is a session
   const fakeSidecar = createFakeSidecar();
   const tab = createFakeTab();
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: createFakeExpose(), tab, settings: titleSettings({}),
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -3059,7 +3059,7 @@ test("an OSC 9 notification becomes a tab notice and a rejected one is a session
   const systemTab = createFakeTab();
   const system = createFakeSidecar();
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: system, expose: createFakeExpose(), tab: systemTab, settings: titleSettings({ notifications: "system" }),
     window: { TextEncoder: FakeTextEncoder },
   });
@@ -3069,7 +3069,7 @@ test("an OSC 9 notification becomes a tab notice and a rejected one is a session
   const errors = [];
   const rejecting = createFakeSidecar();
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: rejecting, expose: createFakeExpose(), tab: createFakeTab({ reject: true }), settings: titleSettings({ title: "name" }),
     reportSurfaceError: (error) => errors.push(error.message), window: { TextEncoder: FakeTextEncoder },
   });
@@ -3084,7 +3084,7 @@ async function startWithLink({ links } = {}) {
   const view = createFakeView();
   const errors = [];
   await startTerminal({
-    view, attachImage: createFakeAttachImage().function,
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, links,
     reportSurfaceError: (error) => errors.push(error.message),
     window: { TextEncoder: FakeTextEncoder },
@@ -3145,7 +3145,7 @@ test("a session without an origin directory opens in the project root, and witho
     FakeResizeObserver.reset();
     const fakeSidecar = createFakeSidecar();
     await startTerminal({
-      view: createFakeView(), attachImage: createFakeAttachImage().function,
+      view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
       sidecar: fakeSidecar, expose: createFakeExpose(), tab: createFakeTab(), project,
       settings: titleSettings({}), window: { TextEncoder: FakeTextEncoder },
     });
@@ -3159,7 +3159,7 @@ test("terminal.cursor.set keeps the current value of each field it does not name
   const fakeSidecar = createFakeSidecar();
   const fakeExpose = createFakeExpose();
   await startTerminal({
-    view: createFakeView(), attachImage: createFakeAttachImage().function,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, window: { TextEncoder: FakeTextEncoder },
   });
   await fakeExpose.getCommand("terminal.cursor.set")({ shape: "beam", blink: "Always", interval: 900, idleTimeout: 0, unfocused: "solid" });
@@ -3175,7 +3175,7 @@ test("pointer trace correlates new gestures and records capture and focus withou
   const expose = createFakeExpose();
   const view = createFakeView();
   const native = createFakeAttachImage();
-  await startTerminal({ view, attachImage: native.function, sidecar, expose,
+  await startTerminal({ view, detachRegions: async () => {}, attachImage: native.function, sidecar, expose,
     diagnostics: terminalDiagnostics, window: { TextEncoder } });
   openSession(sidecar);
   const trace = expose.getCommand("terminal.pointer.trace");
@@ -3209,7 +3209,7 @@ test("pointer diagnostics are opt-in, bounded, and report malformed actions", as
   const expose = createFakeExpose();
   const sidecar = createFakeSidecar();
   const view = createFakeView();
-  await startTerminal({ view, attachImage: createFakeAttachImage().function, sidecar, expose,
+  await startTerminal({ view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
     diagnostics: terminalDiagnostics, window: { TextEncoder } });
   const trace = expose.getCommand("terminal.pointer.trace");
   const emit = () => view._trigger("gotpointercapture", { pointerId: 1 });
@@ -3230,7 +3230,7 @@ test("pointer diagnostics are opt-in, bounded, and report malformed actions", as
 test("pty pending reads the session transport measurement and rejects explicit errors", async () => {
   const sidecar = createFakeSidecar();
   const expose = createFakeExpose();
-  await startTerminal({ view: createFakeView(), attachImage: createFakeAttachImage().function, sidecar, expose,
+  await startTerminal({ view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
     diagnostics: terminalDiagnostics, window: { TextEncoder } });
   openSession(sidecar);
   const read = expose.getCommand("terminal.pty.pending");
@@ -3260,7 +3260,7 @@ test("a sidecar reconnection reopens the session and re-sends the bootstrap", as
   const themeTokens = { "--card": "#10121a", "--fg": "#e6e6e6", "--rail": "#2c3140" };
   let region;
   await startTerminal({
-    view: createFakeView(), attachImage: (...args) => (region = attach.function(...args)), sidecar, expose,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar, expose,
     theme: (listener) => {
       listener({ scheme: "dark", tokens: themeTokens });
       return { ready: Promise.resolve(), dispose: () => {} };
@@ -3305,7 +3305,7 @@ test("a failed reconnection reports the reason and keeps input queued", async ()
   const expose = createFakeExpose();
   let region;
   await startTerminal({
-    view: createFakeView(), attachImage: (...args) => (region = attach.function(...args)), sidecar, expose,
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar, expose,
     window: { TextEncoder: FakeTextEncoder },
   });
   openSession(sidecar);
@@ -3333,7 +3333,7 @@ test("a mouse result that carries an error is shown and keeps the later results 
   const expose = createFakeExpose();
   const view = createFakeView();
   await startTerminal({
-    view, attachImage: createFakeAttachImage().function, sidecar, expose,
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
     window: { TextEncoder: FakeTextEncoder },
   });
   openSession(sidecar);

@@ -161,7 +161,7 @@ function normalizeCursorPolicy(value) {
  * @param {Object} options.window - window 객체 (기본값: 글로벌 window)
  * @returns {Promise<void>}
  */
-export async function startTerminal({ id, view, attachImage, sidecar, expose, theme,
+export async function startTerminal({ id, view, attachImage, detachRegions, sidecar, expose, theme,
   // padding 은 변마다 view 둘레를 칠하는 overlay 요소 {top, right, bottom, left} 다. 없으면 칠하지 않는다.
   padding: paddingStrips = null,
   settings, clipboard, scrollbar = null, reportSurfaceError = () => {}, diagnostics = null,
@@ -262,6 +262,8 @@ export async function startTerminal({ id, view, attachImage, sidecar, expose, th
   let region = null;
   region = attachImage(view, "view");
   if (!region) throw new Error("Failed to attach image region");
+  // detachRegions 는 이 표면의 영역을 뗀다. 반복 호출은 같은 해제를 기다린다.
+  if (typeof detachRegions !== "function") throw new TypeError("startTerminal requires detachRegions()");
   const onRegion = (type, handler) => region.on(type, handler);
 
   const updateCompose = async (event) => {
@@ -1299,6 +1301,13 @@ export async function startTerminal({ id, view, attachImage, sidecar, expose, th
 
   const textSizeSubscription = textSize.on((factor) => setTextSize(factor).catch(reportInputError));
 
+  // 사이드카는 세션을 끝낼 때 전송 그림을 놓는다. 영역을 먼저 떼므로 그 전에 보낸 프레임은 뗀 영역에서 stale 로 답하고,
+  // 붙은 영역이 놓인 그림을 notFound 로 표시하지 못하는 일이 없다(core docs/spec/plugins.md#surface-module-ownership).
+  async function endSession() {
+    await detachRegions();
+    await terminal.send(id, { operation: "close" });
+  }
+
   // 공개 항목 등록
   await Promise.all([
     expose.status("terminal.session", read.session, watch("session")),
@@ -1346,7 +1355,7 @@ export async function startTerminal({ id, view, attachImage, sidecar, expose, th
       });
     }),
     expose.command("terminal.close", async () => {
-      await terminal.send(id, { operation: "close" });
+      await endSession();
       return null;
     }),
     expose.command("terminal.image.inline.delete", async ({ name }) => {
@@ -1493,7 +1502,7 @@ export async function startTerminal({ id, view, attachImage, sidecar, expose, th
       }
       view.removeEventListener("pointercancel", endSelection);
       view.removeEventListener("lostpointercapture", endSelection);
-      await terminal.send(id, { operation: "close" });
+      await endSession();
     },
   };
 }

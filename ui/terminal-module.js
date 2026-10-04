@@ -20,7 +20,8 @@ export async function mount(root, context) {
   const sidecar = context.runtime.sidecar();
   let controller;
   try {
-    controller = await startTerminal({ id: context.surfaceId, view, padding, attachImage: () => image, sidecar, scrollbar,
+    controller = await startTerminal({ id: context.surfaceId, view, padding, attachImage: () => image,
+      detachRegions: () => composition.dispose(), sidecar, scrollbar,
       expose: context.exposure, window, theme: context.runtime.theme, settings: context.runtime.settings,
       textSize: context.runtime.textSize, tab: context.tab, origin: context.origin, project: context.project,
       links: context.runtime.links,
@@ -39,9 +40,9 @@ export async function mount(root, context) {
     throw error;
   }
   context.status.report("ready");
+  // controller 의 dispose 는 composition 을 해제한 뒤 사이드카 세션을 끝낸다.
   return { focus: controller.focus, async dispose() {
     await controller.dispose();
-    await composition.dispose();
     await context.exposure.dispose();
     root.replaceChildren();
   } };

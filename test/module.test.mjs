@@ -128,3 +128,57 @@ test("terminal module disposes its native composition when sidecar open fails", 
   assert.equal(phases.length, 0, "a mount failure is propagated instead of being reported as ready");
   delete globalThis.window;
 });
+
+// 사이드카는 세션을 끝낼 때 전송 그림을 놓는다. 영역을 먼저 떼야 그 전에 보낸 프레임이 붙은 영역에서 notFound 로
+// 실패하지 않는다(core docs/spec/plugins.md#surface-module-ownership).
+async function mountOrdered(surfaceId) {
+  const element = () => ({ style: {}, hidden: true, addEventListener() {}, removeEventListener() {},
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 640, height: 384 }) });
+  const parts = new Map();
+  const root = {
+    set innerHTML(value) { this.childNodes = value ? [element()] : []; },
+    querySelector(selector) {
+      if (!parts.has(selector)) parts.set(selector, element());
+      return parts.get(selector);
+    },
+    replaceChildren() { this.childNodes = []; },
+  };
+  globalThis.window = { TextEncoder };
+  const order = [];
+  const commands = new Map();
+  const context = {
+    surfaceId,
+    runtime: { sidecar: () => ({
+      async on() { return () => {}; },
+      async send(_id, body) { if (body.operation === "close") order.push("session close"); },
+    }), theme: () => {}, settings: SHELL_SETTINGS },
+    composition: {
+      async create() {
+        return {
+          region: () => ({ on: () => () => {}, focus: async () => {}, setCaret: async () => {} }),
+          dispose: async () => { order.push("region detach"); },
+        };
+      },
+    },
+    exposure: { status: async () => {}, command: async (name, handler) => { commands.set(name, handler); },
+      dom: async () => {}, bind: async () => {}, delegate: async () => {}, mark: async () => {}, dispose: async () => {} },
+    status: { report: () => {} },
+  };
+  const { mount } = await import(`../ui/terminal-module.js?${surfaceId}=${Date.now()}`);
+  return { mounted: await mount(root, context), order, commands };
+}
+
+test("terminal.close detaches the image region before it ends the sidecar session", async () => {
+  const { mounted, order, commands } = await mountOrdered("terminal-close-order");
+  await commands.get("terminal.close")();
+  assert.deepEqual(order, ["region detach", "session close"]);
+  await mounted.dispose();
+  delete globalThis.window;
+});
+
+test("module dispose detaches the image region before it ends the sidecar session", async () => {
+  const { mounted, order } = await mountOrdered("terminal-dispose-order");
+  await mounted.dispose();
+  assert.deepEqual(order, ["region detach", "session close"]);
+  delete globalThis.window;
+});
