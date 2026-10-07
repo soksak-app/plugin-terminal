@@ -1,6 +1,6 @@
 {
   "name": "@soksak/plugin-terminal",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.24.0",
@@ -22,6 +22,6 @@
     "test": "node --test test/"
   },
   "devDependencies": {
-    "@soksak/plugin-api": "git+https://github.com/soksak-app/core.git#v0.0.4&path:/packages/plugin-api"
+    "@soksak/plugin-api": "git+https://github.com/soksak-app/core.git#v0.0.5&path:/packages/plugin-api"
   }
 }
