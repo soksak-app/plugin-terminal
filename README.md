@@ -6,7 +6,7 @@ Terminal plugin: a full-screen terminal surface connected to a VT engine session
 
 ```sh
 make test                                   # tests
-make pack OUT=<folder> SOK=<core>/target/debug/sok   # the plugin package
+make pack OUT=<folder> SOK=<core>/target/debug/sok   # the plugin release
 ```
 
 The checklist is [docs/features.md](docs/features.md).
