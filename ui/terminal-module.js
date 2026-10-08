@@ -27,7 +27,9 @@ export async function mount(root, context) {
       links: context.runtime.links,
       reportSurfaceError: (error) => context.status.report("error", error),
       diagnostics: context.diagnostics,
-      clipboard: context.runtime.clipboard });
+      clipboard: context.runtime.clipboard,
+      // default: a core without the surface trace has no runtime.trace, and the terminal records nothing.
+      trace: context.runtime.trace ?? (() => {}) });
     if (!controller || typeof controller.dispose !== "function") {
       throw new TypeError("startTerminal must return { dispose() }");
     }

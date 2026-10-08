@@ -173,6 +173,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   links = null,
   // 이 표면의 실제 글자 배율(docs/spec/text-size.md). 출처가 없으면 배율은 1 이다.
   textSize = { read: () => 1, on: () => () => {} },
+  // The performance trace of the surface (core docs/spec/plugins.md#tracing). default: a core without the surface trace
+  // records nothing, as a trace that is off.
+  trace = () => {},
   window: globalWindow = globalThis.window }) {
   // 브라우저 환경에서 필요한 객체들
   const window = globalWindow;
@@ -519,6 +522,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
 
   const enqueueInput = (entry) => {
     notifyInput({ kind: "terminal-input", input: entry });
+    // The trace records the kind and length of an input and whether it waits for the session, never its text.
+    trace("input", {
+      kind: entry.type, key: entry.type === "key" && entry.key !== "Char" ? entry.key : undefined,
+      length: typeof entry.text === "string" ? entry.text.length : undefined, queued: !sessionOpen, queue: inputQueue.length,
+    });
     if (!sessionOpen) {
       if (inputQueue.length >= MAX_QUEUE_SIZE) {
         const error = new Error(`Input queue overflow (max ${MAX_QUEUE_SIZE})`);
@@ -531,6 +539,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
 
   const flushInputQueue = () => {
     const pending = inputQueue.splice(0);
+    trace("input.flush", { count: pending.length });
     for (const { entry, resolve, reject } of pending) {
       scheduleInput(entry).then(resolve, reject);
     }
@@ -1004,6 +1013,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       resolveError("state");
       if (body.cursor !== undefined) applyCursor(body.cursor, body.cursor);
       sessionOpen = true;
+      trace("session.gate", { open: true, event: "state" });
       changed("session");
       flushInputQueue();
     } else if (body.event === "session") {
@@ -1013,13 +1023,18 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
       session = { ...session, sessionId: body.sessionId };
       resolveError("session");
+      // A preserved session answers a reattached surface with this event, so the input that waited during the
+      // reconnection flows now.
       sessionOpen = true;
+      trace("session.gate", { open: true, event: "session" });
       changed("session");
+      flushInputQueue();
     } else if (body.event === "connection") {
       // 영속 사이드카의 연결이 다시 맺혔다(V5-106). 이전 연결이 남긴 사이드카 오류는
       // 해소하고 세션을 다시 연다 — 재스폰된 서비스에는 이 표면의 세션이 없다. 실패했으면
       // 연결 끊김과 그 까닭을 세션 오류로 남긴다. 입력은 다시 열릴 때까지 대기열에 쌓인다.
       sessionOpen = false;
+      trace("session.gate", { open: false, event: "connection", connected: body.connected });
       if (body.connected === true) {
         if (resolveError("sidecar")) changed("session");
         rerunBootstrap().catch((error) => reportInputError(error));

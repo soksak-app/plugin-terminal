@@ -3299,6 +3299,53 @@ test("a sidecar reconnection reopens the session and re-sends the bootstrap", as
   assert.equal(expose.getStatus("terminal.session").readFn().sessionId, "s2");
 });
 
+test("input queued during a reconnection flows when the preserved session answers", async () => {
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar, expose,
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(sidecar);
+  const messages = () => sidecar.getMessages();
+  const inputs = () => messages().filter(({ body }) => body.operation === "input" && body.keys).length;
+  const settle = async (predicate, what) => {
+    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(predicate(), what);
+  };
+  // A live service keeps the session across the reconnection and answers the reattached surface with a session event,
+  // not with a state event, so that event opens the session gate (docs/spec/terminal-runtime.md in core).
+  sidecar.triggerEvent("test-session", { event: "connection", connected: true });
+  region._trigger("key", { key: "Enter", text: "\r", shift: false, alt: false, ctrl: false });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(inputs(), 0, "input did not wait for the reattached session");
+  sidecar.triggerEvent("test-session", { event: "session", sessionId: "s1" });
+  await settle(() => inputs() === 1, "input queued during the reconnection did not flow when the preserved session answered");
+});
+
+test("the trace records each input, the session gate and the flush, without the typed text", async () => {
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar();
+  const lines = [];
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, trace: (event, fields) => lines.push([event, fields]),
+  });
+  region._trigger("insert", { text: "secret" });
+  openSession(sidecar);
+  await new Promise((resolve) => setImmediate(resolve));
+  const recorded = lines.map(([event, fields]) => [event, JSON.parse(JSON.stringify(fields))]);
+  assert.deepEqual(recorded.filter(([event]) => event !== "session.gate"), [
+    ["input", { kind: "insert", length: 6, queued: true, queue: 0 }],
+    ["input.flush", { count: 1 }],
+  ]);
+  assert.deepEqual(recorded.find(([event]) => event === "session.gate"), ["session.gate", { open: true, event: "state" }]);
+  assert.equal(JSON.stringify(lines).includes("secret"), false, "the trace recorded the typed text");
+});
+
 test("a failed reconnection reports the reason and keeps input queued", async () => {
   const attach = createFakeAttachImage();
   const sidecar = createFakeSidecar();
