@@ -933,8 +933,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   const directory = origin.directory ?? project?.root ?? null;
   // 카드 발은 작업 디렉터리를 보인다. 홈 디렉터리에서 시작하면 셸이 알릴 때까지 경로를 모른다.
   if (directory !== null) tab.footer(directory);
+  // 서비스가 교체되어 새 셸을 열 때는 셸이 마지막으로 알린 디렉터리에서 시작해 사람이 이어서 쓴다. 다른 컴퓨터의
+  // 디렉터리(path null)는 기록을 지우므로 탭이 시작한 디렉터리로 돌아간다.
+  let working = directory;
   const openSession = () => terminal.send(id, { operation: "open", image: "view", shell,
-    ...(directory === null ? {} : { directory }) });
+    ...(working === null ? {} : { directory: working }) });
   const settingsPolicy = () => {
     const values = settings.read();
     return {
@@ -1161,6 +1164,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         return;
       }
       session = { ...session, vendor: { ...session.vendor, directory: body.uri } };
+      // 기본값: 다른 컴퓨터의 디렉터리(path null)는 기록을 지우므로 다음 열기는 탭이 시작한 디렉터리를 쓴다.
+      working = body.path === null ? directory : body.path;
       changed("session");
       // 다른 컴퓨터의 디렉터리(path null)는 기록한 디렉터리를 지우고, 발에는 그 주소를 보인다.
       try {

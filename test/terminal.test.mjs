@@ -3299,6 +3299,33 @@ test("a sidecar reconnection reopens the session and re-sends the bootstrap", as
   assert.equal(expose.getStatus("terminal.session").readFn().sessionId, "s2");
 });
 
+test("a replaced service opens the new shell in the last directory that the shell reported", async () => {
+  const sidecar = createFakeSidecar();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose: createFakeExpose(),
+    tab: createFakeTab(), origin: { directory: "/tmp/origin" }, window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(sidecar);
+  const settle = async (predicate, what) => {
+    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(predicate(), what);
+  };
+  const opens = () => sidecar.getMessages().filter(({ body }) => body.operation === "open").map(({ body }) => body.directory);
+  assert.deepEqual(opens(), ["/tmp/origin"]);
+
+  // The shell reports a directory; the next open after a reconnection starts in it.
+  sidecar.triggerEvent("test-session", { event: "directory", uri: "file:///tmp/a%20b", path: "/tmp/a b" });
+  sidecar.triggerEvent("test-session", { event: "connection", connected: true });
+  await settle(() => opens().length === 2, "open was not re-sent after the reconnection");
+  assert.deepEqual(opens(), ["/tmp/origin", "/tmp/a b"]);
+
+  // A directory of another machine clears the recorded directory, so the open starts where the tab started.
+  sidecar.triggerEvent("test-session", { event: "directory", uri: "file://remote/tmp", path: null });
+  sidecar.triggerEvent("test-session", { event: "connection", connected: true });
+  await settle(() => opens().length === 3, "open was not re-sent after the second reconnection");
+  assert.deepEqual(opens(), ["/tmp/origin", "/tmp/a b", "/tmp/origin"]);
+});
+
 test("input queued during a reconnection flows when the preserved session answers", async () => {
   const attach = createFakeAttachImage();
   const sidecar = createFakeSidecar();
