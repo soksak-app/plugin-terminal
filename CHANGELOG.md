@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- P27: version 0.0.9 carries P26.
+- P26: every message sent to the sidecar with its result, every event of the sidecar and every event of the image region is a trace event with its whole body, and the events `ime` and `input` carry the typed text and every range.
 - P25: version 0.0.8 carries P22.
 - P22: each native callback of the input method is written to the performance trace as the event `ime` with its kind and text length, never the text.
 - P24: version 0.0.7 carries P20, P21 and P23.

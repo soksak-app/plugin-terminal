@@ -232,13 +232,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   const notifyInput = (entry) => {
     for (const fn of inputObservers) fn(entry);
   };
-  // The trace records each native callback of the input method by kind and length, never its text. A key name is
-  // recorded for a named key only, because the name of a character key is the typed character.
-  const traceNative = (kind, text, key) => {
-    trace("ime", {
-      kind, key: typeof key === "string" && key.length > 1 && key !== "Char" ? key : undefined,
-      length: typeof text === "string" ? text.length : undefined,
-    });
+  // The trace records each native callback of the input method with every field that it carries, the typed text and the
+  // ranges included, because a defect of the input is located only from what was typed and in which order.
+  const traceNative = (kind, event) => {
+    trace("ime", { kind, ...event });
   };
   let cursor = { ...DEFAULT_CURSOR };
   if (!settings || typeof settings.read !== "function") throw new Error("terminal settings reader is required");
@@ -266,8 +263,27 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     cursor: () => cursor,
   };
 
-  // 터미널 사이드카가 이 표면의 VT 세션을 실행한다
-  const terminal = sidecar;
+  // 터미널 사이드카가 이 표면의 VT 세션을 실행한다. 보내는 모든 메시지는 본문 전체와 결과를, 받는 모든 이벤트는 본문 전체를
+  // trace 로 남긴다(docs/spec/diagnostics.md).
+  const terminal = {
+    async send(surface, body) {
+      trace("send", { body });
+      try {
+        const result = await sidecar.send(surface, body);
+        trace("send.result", { operation: body?.operation, ok: true });
+        return result;
+      } catch (error) {
+        trace("send.result", { operation: body?.operation, ok: false, error: error?.message ?? String(error) });
+        throw error;
+      }
+    },
+    on(surface, handler) {
+      return sidecar.on(surface, (body) => {
+        trace("sidecar.event", { body });
+        return handler(body);
+      });
+    },
+  };
 
   // 이미지 영역 생성 및 사이드카 메시지 핸들링
   let region = null;
@@ -275,7 +291,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   if (!region) throw new Error("Failed to attach image region");
   // detachRegions 는 이 표면의 영역을 뗀다. 반복 호출은 같은 해제를 기다린다.
   if (typeof detachRegions !== "function") throw new TypeError("startTerminal requires detachRegions()");
-  const onRegion = (type, handler) => region.on(type, handler);
+  // Every event of the image region is recorded with its type and its whole body before its handler runs.
+  const onRegion = (type, handler) => region.on(type, (event) => {
+    trace("region", { type, ...event });
+    return handler(event);
+  });
 
   const updateCompose = async (event) => {
     if (!event || typeof event !== "object" || Array.isArray(event) || typeof event.text !== "string") {
@@ -530,11 +550,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
 
   const enqueueInput = (entry) => {
     notifyInput({ kind: "terminal-input", input: entry });
-    // The trace records the kind and length of an input and whether it waits for the session, never its text.
-    trace("input", {
-      kind: entry.type, key: entry.type === "key" && entry.key !== "Char" ? entry.key : undefined,
-      length: typeof entry.text === "string" ? entry.text.length : undefined, queued: !sessionOpen, queue: inputQueue.length,
-    });
+    // The trace records each input with every field that it carries, the text included, and whether it waits for the session.
+    const { type, ...fields } = entry;
+    trace("input", { kind: type, ...fields, queued: !sessionOpen, queue: inputQueue.length });
     if (!sessionOpen) {
       if (inputQueue.length >= MAX_QUEUE_SIZE) {
         const error = new Error(`Input queue overflow (max ${MAX_QUEUE_SIZE})`);
@@ -557,7 +575,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   onRegion("insert", async (event) => {
     const { text } = event;
     notifyInput({ kind: "native-insert", text });
-    traceNative("native-insert", text);
+    traceNative("native-insert", event);
     let composeRequest = null;
     if (compose.text) {
       compose = { text: "", selectedRange: null, replacementRange: null, attributed: false };
@@ -579,7 +597,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   onRegion("key", async (event) => {
     const { key, text, shift, alt, ctrl } = event;
     notifyInput({ kind: "native-key", key, text });
-    traceNative("native-key", text, key);
+    traceNative("native-key", event);
     // 네이티브 영역은 항상 불린으로 수정자를 보낸다. 아니면 계약 위반이다.
     if (typeof shift !== "boolean" || typeof alt !== "boolean" || typeof ctrl !== "boolean") {
       setError("key", `invalid key event from region: modifiers must be boolean, got shift:${typeof shift} alt:${typeof alt} ctrl:${typeof ctrl}`);
@@ -596,7 +614,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
 
   onRegion("compose", async (event) => {
     notifyInput({ kind: "native-compose", text: event.text });
-    traceNative("native-compose", event.text);
+    traceNative("native-compose", event);
     await observeInput(updateCompose(event));
   });
 

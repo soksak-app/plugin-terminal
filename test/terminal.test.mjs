@@ -164,9 +164,17 @@ function createFakeAttachImage() {
 function createFakeSidecar({ delay = () => 0 } = {}) {
   const messages = [];
   const listeners = new Map();
+  let failure = null;
 
   return {
+    // The next send rejects with error.
+    failNext: (error) => { failure = error; },
     send: async function(id, body) {
+      if (failure) {
+        const error = failure;
+        failure = null;
+        throw error;
+      }
       const wait = delay(body);
       if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
       messages.push({ id, body });
@@ -3352,7 +3360,7 @@ test("input queued during a reconnection flows when the preserved session answer
   await settle(() => inputs() === 1, "input queued during the reconnection did not flow when the preserved session answered");
 });
 
-test("the trace records each input, the session gate and the flush, without the typed text", async () => {
+test("the trace records each input with its text, the session gate and the flush", async () => {
   const attach = createFakeAttachImage();
   const sidecar = createFakeSidecar();
   const lines = [];
@@ -3365,16 +3373,15 @@ test("the trace records each input, the session gate and the flush, without the 
   openSession(sidecar);
   await new Promise((resolve) => setImmediate(resolve));
   const recorded = lines.map(([event, fields]) => [event, JSON.parse(JSON.stringify(fields))]);
-  assert.deepEqual(recorded.filter(([event]) => event !== "session.gate"), [
-    ["ime", { kind: "native-insert", length: 6 }],
-    ["input", { kind: "insert", length: 6, queued: true, queue: 0 }],
+  assert.deepEqual(recorded.filter(([event]) => ["ime", "input", "input.flush"].includes(event)), [
+    ["ime", { kind: "native-insert", text: "secret" }],
+    ["input", { kind: "insert", text: "secret", queued: true, queue: 0 }],
     ["input.flush", { count: 1 }],
   ]);
   assert.deepEqual(recorded.find(([event]) => event === "session.gate"), ["session.gate", { open: true, event: "state" }]);
-  assert.equal(JSON.stringify(lines).includes("secret"), false, "the trace recorded the typed text");
 });
 
-test("the trace records each native input callback of the input method, without the typed text", async () => {
+test("the trace records each native input callback of the input method with its text and ranges", async () => {
   const attach = createFakeAttachImage();
   const sidecar = createFakeSidecar();
   const lines = [];
@@ -3386,17 +3393,65 @@ test("the trace records each native input callback of the input method, without 
   openSession(sidecar);
   region._trigger("key", { key: "Char", text: "s", shift: false, alt: false, ctrl: false });
   region._trigger("key", { key: "Enter", text: "\r", shift: false, alt: false, ctrl: false });
-  region._trigger("compose", { text: "비밀" });
-  region._trigger("insert", { text: "secret" });
+  region._trigger("compose", { text: "비밀", selectedRange: { location: 2, length: 0 }, replacementRange: { location: 4, length: 1 } });
+  region._trigger("insert", { text: "secret", replacementRange: { location: 28, length: 1 } });
   await new Promise((resolve) => setImmediate(resolve));
   const ime = lines.filter(([event]) => event === "ime").map(([, fields]) => JSON.parse(JSON.stringify(fields)));
   assert.deepEqual(ime, [
-    { kind: "native-key", length: 1 },
-    { kind: "native-key", key: "Enter", length: 1 },
-    { kind: "native-compose", length: 2 },
-    { kind: "native-insert", length: 6 },
+    { kind: "native-key", key: "Char", text: "s", shift: false, alt: false, ctrl: false },
+    { kind: "native-key", key: "Enter", text: "\r", shift: false, alt: false, ctrl: false },
+    { kind: "native-compose", text: "비밀", selectedRange: { location: 2, length: 0 }, replacementRange: { location: 4, length: 1 } },
+    { kind: "native-insert", text: "secret", replacementRange: { location: 28, length: 1 } },
   ]);
-  for (const text of ["secret", "비밀"]) assert.equal(JSON.stringify(lines).includes(text), false, `the trace recorded ${text}`);
+});
+
+test("the trace records every message sent to the sidecar with its result, every event received and every region event", async () => {
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar();
+  const lines = [];
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, trace: (event, fields) => lines.push([event, JSON.parse(JSON.stringify(fields))]),
+  });
+  openSession(sidecar);
+  region._trigger("insert", { text: "한" });
+  region._trigger("focus", { focused: true });
+  sidecar.triggerEvent("test-session", { event: "directory", uri: "file:///tmp/a", path: "/tmp/a" });
+  await new Promise((resolve) => setImmediate(resolve));
+  const of = (name) => lines.filter(([event]) => event === name).map(([, fields]) => fields);
+  // Every message that the plugin sends is recorded with its whole body before it is sent and with its result after.
+  const sent = of("send");
+  assert.ok(sent.some((fields) => fields.body.operation === "open"), "the open message was not recorded");
+  const input = sent.find((fields) => fields.body.operation === "input" && fields.body.bytes);
+  assert.ok(input, "the input message was not recorded");
+  assert.equal(input.body.bytes, Buffer.from(new FakeTextEncoder().encode("한")).toString("base64"));
+  const results = of("send.result");
+  assert.ok(results.some((fields) => fields.operation === "input" && fields.ok === true), "the result of the input message was not recorded");
+  // Every event that the sidecar sends is recorded with its whole body.
+  assert.ok(of("sidecar.event").some((fields) => fields.body.event === "directory" && fields.body.path === "/tmp/a"));
+  assert.ok(of("sidecar.event").some((fields) => fields.body.event === "state"));
+  // Every event of the image region is recorded with its type and its whole body.
+  assert.ok(of("region").some((fields) => fields.type === "insert" && fields.text === "한"));
+  assert.ok(of("region").some((fields) => fields.type === "focus" && fields.focused === true));
+});
+
+test("a failed send is recorded with its error", async () => {
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar();
+  const lines = [];
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, trace: (event, fields) => lines.push([event, JSON.parse(JSON.stringify(fields))]),
+  });
+  openSession(sidecar);
+  sidecar.failNext(new Error("denied"));
+  region._trigger("insert", { text: "x" });
+  await new Promise((resolve) => setImmediate(resolve));
+  const failed = lines.filter(([event]) => event === "send.result").map(([, fields]) => fields).find((fields) => fields.ok === false);
+  assert.ok(failed, "the failed send was not recorded");
+  assert.equal(failed.error, "denied");
 });
 
 test("a failed reconnection reports the reason and keeps input queued", async () => {
