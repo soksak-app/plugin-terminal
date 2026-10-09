@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P22: each native callback of the input method is written to the performance trace as the event `ime` with its kind and text length, never the text.
 - P24: version 0.0.7 carries P20, P21 and P23.
 - P23: a terminal service that was replaced opens the new shell in the last directory that the shell reported, and a directory of another machine returns to the directory where the tab started.
 - P21: the plugin requires the terminal service `^0.0.7`, whose hello answer carries its version.

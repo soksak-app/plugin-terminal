@@ -232,6 +232,14 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   const notifyInput = (entry) => {
     for (const fn of inputObservers) fn(entry);
   };
+  // The trace records each native callback of the input method by kind and length, never its text. A key name is
+  // recorded for a named key only, because the name of a character key is the typed character.
+  const traceNative = (kind, text, key) => {
+    trace("ime", {
+      kind, key: typeof key === "string" && key.length > 1 && key !== "Char" ? key : undefined,
+      length: typeof text === "string" ? text.length : undefined,
+    });
+  };
   let cursor = { ...DEFAULT_CURSOR };
   if (!settings || typeof settings.read !== "function") throw new Error("terminal settings reader is required");
   const initialSettings = settings.read();
@@ -549,6 +557,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   onRegion("insert", async (event) => {
     const { text } = event;
     notifyInput({ kind: "native-insert", text });
+    traceNative("native-insert", text);
     let composeRequest = null;
     if (compose.text) {
       compose = { text: "", selectedRange: null, replacementRange: null, attributed: false };
@@ -570,6 +579,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   onRegion("key", async (event) => {
     const { key, text, shift, alt, ctrl } = event;
     notifyInput({ kind: "native-key", key, text });
+    traceNative("native-key", text, key);
     // 네이티브 영역은 항상 불린으로 수정자를 보낸다. 아니면 계약 위반이다.
     if (typeof shift !== "boolean" || typeof alt !== "boolean" || typeof ctrl !== "boolean") {
       setError("key", `invalid key event from region: modifiers must be boolean, got shift:${typeof shift} alt:${typeof alt} ctrl:${typeof ctrl}`);
@@ -586,6 +596,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
 
   onRegion("compose", async (event) => {
     notifyInput({ kind: "native-compose", text: event.text });
+    traceNative("native-compose", event.text);
     await observeInput(updateCompose(event));
   });
 

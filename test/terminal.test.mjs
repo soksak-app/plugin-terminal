@@ -3366,11 +3366,37 @@ test("the trace records each input, the session gate and the flush, without the 
   await new Promise((resolve) => setImmediate(resolve));
   const recorded = lines.map(([event, fields]) => [event, JSON.parse(JSON.stringify(fields))]);
   assert.deepEqual(recorded.filter(([event]) => event !== "session.gate"), [
+    ["ime", { kind: "native-insert", length: 6 }],
     ["input", { kind: "insert", length: 6, queued: true, queue: 0 }],
     ["input.flush", { count: 1 }],
   ]);
   assert.deepEqual(recorded.find(([event]) => event === "session.gate"), ["session.gate", { open: true, event: "state" }]);
   assert.equal(JSON.stringify(lines).includes("secret"), false, "the trace recorded the typed text");
+});
+
+test("the trace records each native input callback of the input method, without the typed text", async () => {
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar();
+  const lines = [];
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, trace: (event, fields) => lines.push([event, fields]),
+  });
+  openSession(sidecar);
+  region._trigger("key", { key: "Char", text: "s", shift: false, alt: false, ctrl: false });
+  region._trigger("key", { key: "Enter", text: "\r", shift: false, alt: false, ctrl: false });
+  region._trigger("compose", { text: "비밀" });
+  region._trigger("insert", { text: "secret" });
+  await new Promise((resolve) => setImmediate(resolve));
+  const ime = lines.filter(([event]) => event === "ime").map(([, fields]) => JSON.parse(JSON.stringify(fields)));
+  assert.deepEqual(ime, [
+    { kind: "native-key", length: 1 },
+    { kind: "native-key", key: "Enter", length: 1 },
+    { kind: "native-compose", length: 2 },
+    { kind: "native-insert", length: 6 },
+  ]);
+  for (const text of ["secret", "비밀"]) assert.equal(JSON.stringify(lines).includes(text), false, `the trace recorded ${text}`);
 });
 
 test("a failed reconnection reports the reason and keeps input queued", async () => {

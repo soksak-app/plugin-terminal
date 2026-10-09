@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- P22: 입력기의 네이티브 콜백마다 종류와 글자 수를 담은 event `ime`을 글자 없이 performance trace에 쓴다.
 - P24: 0.0.7이 P20, P21, P23을 담는다.
 - P23: 교체된 terminal service는 셸이 마지막으로 알린 디렉터리에서 새 셸을 열고, 다른 컴퓨터의 디렉터리는 탭이 시작한 디렉터리로 돌아간다.
 - P21: plugin이 hello 답에 version을 싣는 terminal service `^0.0.7`을 요구한다.
