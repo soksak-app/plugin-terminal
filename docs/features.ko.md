@@ -28,3 +28,4 @@
 - [o] P25 — P1: P22의 입력기 trace를 담는 0.0.8을 릴리스한다. core 체크리스트 항목 F124.2를 위한 것이다. 2026-10-09 완료: `package.json`이 0.0.8을 선언하고 `make test`가 통과한다.
 - [o] P26 — P0: terminal이 sidecar로 보내는 모든 메시지와 그 결과, sidecar가 보내는 모든 이벤트, 이미지 영역의 모든 이벤트를 본문 전체(글, 범위, 플래그)와 함께 기록한다. core 체크리스트 항목 F143과 F144.3을 위한 것이다. 입력: 입력의 trace가 종류와 길이만 담아 엉망인 입력을 `logs/performance.ndjson`으로 읽을 수 없다. 2026-10-09 완료: trace event `send`, `send.result`, `sidecar.event`, `region`이 본문 전체를 담고, event `ime`과 `input`은 글과 모든 범위를 담는다. 이는 trace가 길이만 담는다는 P22의 규칙을 대체한다. `make test`가 통과한다.
 - [o] P27 — P0: P26을 담는 0.0.9를 릴리스한다. core 체크리스트 항목 F144.3을 위한 것이다. 2026-10-09 완료: `package.json`이 0.0.9를 선언하고 `make test`가 통과한다.
+- [o] P28 — P0: 입력 경로 전체를 기록하는 terminal service `^0.0.8`을 요구하고 0.0.10을 릴리스한다. core 체크리스트 항목 F144.5를 위한 것이다. 2026-10-09 완료: `plugin.json`이 `^0.0.8`을 요구하고 `package.json`이 0.0.10을 선언하며 `make test`가 통과한다.

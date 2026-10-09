@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P28: the plugin requires the terminal service `^0.0.8`, and version 0.0.10 carries it.
 - P27: version 0.0.9 carries P26.
 - P26: every message sent to the sidecar with its result, every event of the sidecar and every event of the image region is a trace event with its whole body, and the events `ime` and `input` carry the typed text and every range.
 - P25: version 0.0.8 carries P22.
