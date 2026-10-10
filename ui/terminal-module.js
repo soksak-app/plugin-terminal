@@ -20,7 +20,7 @@ export async function mount(root, context) {
   const sidecar = context.runtime.sidecar();
   let controller;
   try {
-    controller = await startTerminal({ id: context.surfaceId, view, padding, attachImage: () => image,
+    controller = await startTerminal({ id: context.surfaceId, closing: context.closing, view, padding, attachImage: () => image,
       detachRegions: () => composition.dispose(), sidecar, scrollbar,
       expose: context.exposure, window, theme: context.runtime.theme, settings: context.runtime.settings,
       textSize: context.runtime.textSize, tab: context.tab, origin: context.origin, project: context.project,

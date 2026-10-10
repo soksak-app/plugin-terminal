@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- P29: `context.closing`이 abort되면 terminal이 사이드카 event를 무시하므로, 표면 제거 때 워크벤치가 뗀 region의 caret을 더는 설정하지 않는다.
 - P28: plugin이 terminal service `^0.0.8`을 요구하고 0.0.10이 이를 담는다.
 - P27: 0.0.9가 P26을 담는다.
 - P26: sidecar로 보낸 모든 메시지와 그 결과, sidecar의 모든 이벤트, 이미지 영역의 모든 이벤트가 본문 전체를 담은 trace event이고, event `ime`과 `input`은 입력한 글과 모든 범위를 담는다.

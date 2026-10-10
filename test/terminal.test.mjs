@@ -3507,3 +3507,25 @@ test("a mouse result that carries an error is shown and keeps the later results 
   assert.equal(error(), "terminal input failed: invalidParams: selection coordinates are outside the terminal region: 10,12");
   assert.equal(expose.getStatus("terminal.session").readFn().mouse.inputId, second.inputId);
 });
+
+test("a closing surface stops handling sidecar events before its regions are detached", async () => {
+  FakeResizeObserver.reset();
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  const closing = new AbortController();
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)),
+    sidecar, expose, closing: closing.signal,
+    window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  openSession(sidecar);
+  closing.abort();
+  sidecar.triggerEvent("test-session", {
+    event: "screen", cols: 100, rows: 50, lines: [],
+    cursor: { col: 7, row: 3, shape: "Block", visible: true, blinking: false, blink_visible: true, focused: true, preedit: null },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(region._caret, undefined, "the caret of a region that is about to detach was set");
+});

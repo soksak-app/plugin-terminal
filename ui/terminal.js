@@ -162,6 +162,9 @@ function normalizeCursorPolicy(value) {
  * @returns {Promise<void>}
  */
 export async function startTerminal({ id, view, attachImage, detachRegions, sidecar, expose, theme,
+  // Aborts when the removal of the surface starts, before its regions are detached (context.closing).
+  // 기본값: a terminal started without a surface (a test) is never removed, so its signal never aborts.
+  closing = new AbortController().signal,
   // padding 은 변마다 view 둘레를 칠하는 overlay 요소 {top, right, bottom, left} 다. 없으면 칠하지 않는다.
   padding: paddingStrips = null,
   settings, clipboard, scrollbar = null, reportSurfaceError = () => {}, diagnostics = null,
@@ -1012,6 +1015,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
 
   // 사이드카 메시지 수신
   const stopSidecar = await terminal.on(id, (body) => {
+    // The regions detach at the removal; an event after it would operate on a detached region.
+    if (closing.aborted) return;
     if (body.event === "state") {
       // 숫자 필드의 유효성을 확인한다. 계약 위반이면 오류로 보고한다.
       const errorDetails = [];
