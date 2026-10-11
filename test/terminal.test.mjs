@@ -3700,6 +3700,28 @@ test("a screen message is stored as the frame event with the hash of the golden 
   }
 });
 
+test("terminal.screen.alter changes the next screen message before the page hashes it, as a change on the way would", async () => {
+  const lines = [];
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
+    diagnostics: terminalDiagnostics, window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
+  });
+  openSession(sidecar);
+  const alter = expose.getCommand("terminal.screen.alter");
+  assert.equal(typeof alter, "function", "the fault injection must be a declared diagnostic command");
+  assert.equal(await alter({}), null);
+  const [vector] = SCREEN_MESSAGES.vectors;
+  sidecar.triggerEvent("test-session", vector.message);
+  await framesStored(lines, 1);
+  sidecar.triggerEvent("test-session", vector.message);
+  await framesStored(lines, 2);
+  const hashes = lines.filter(([name]) => name === "frame").map(([, fields]) => fields.hash);
+  assert.notEqual(hashes[0], vector.hash, "the altered message must hash to another screen");
+  assert.equal(hashes[1], vector.hash, "only the next message is altered");
+});
+
 test("a closed gate of the event log computes no hash and stores no frame event", async () => {
   const lines = [];
   const sidecar = await startScreenTerminal(lines);

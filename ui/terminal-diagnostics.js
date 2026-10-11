@@ -16,10 +16,11 @@ const IME_TRACE_CAPACITY = 256;
  *   onInput         입력 기록 함수를 등록한다
  *   readPtyPending  현재 세션의 PTY 전송 상태(읽지 않은 입력 바이트 수와 읽은 자식 출력 누적
  *                   바이트 수)를 사이드카에 묻는 측정 함수
+ *   alterNextScreen 다음 screen 메시지 하나를 검사와 hash 전에 바꾸도록 요청한다
  *   reportError     trace 출처의 세션 오류를 보고한다
  *   resolveError    trace 출처의 세션 오류를 지운다. 새 trace 를 시작하면 해소된다
  */
-export async function attach({ expose, updateCompose, onInput, onPointer, readPtyPending, reportError, resolveError }) {
+export async function attach({ expose, updateCompose, onInput, onPointer, readPtyPending, alterNextScreen, reportError, resolveError }) {
   await attachPointerTrace({ expose, onPointer, reportError });
   let trace = { enabled: false, overflow: false, entries: [] };
   const watchers = new Set();
@@ -44,6 +45,12 @@ export async function attach({ expose, updateCompose, onInput, onPointer, readPt
     }),
     expose.command("terminal.compose.update", updateCompose),
     expose.command("terminal.pty.pending", readPtyPending),
+    // 다음 screen 메시지 하나를 페이지가 검사하고 hash 하기 전에 바꾼다. core 의 재생이 그 변경을 층 plugin 의 불일치로
+    // 보고하는지 window check 가 관찰한다.
+    expose.command("terminal.screen.alter", async () => {
+      alterNextScreen();
+      return null;
+    }),
     expose.command("terminal.ime.trace", async ({ action }) => {
       if (action === "start") {
         trace = { enabled: true, overflow: false, entries: [] };

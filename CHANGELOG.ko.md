@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- P32.6: 진단 command `terminal.screen.alter`가 다음 screen message를 page가 hash하기 전에 바꾸므로, window check가 core의 replay가 그 변경을 보고하는지 관찰한다.
 - P32.5: frame event가 surface 식별자 대신 sidecar의 session을 적는다.
 - P32.4: frame event가 screen message의 replay segment인 `segment`를 담는다.
 - P32.3: terminal은 모든 `screen` message를 `screenFromMessage`로 검사하고 `lines` 대신 `cells`로 행을 만들며, cursor는 `col`, `row`, `visible`만 요구하고 `focused`, `shape`, `blinking`은 있을 때 검사한다. `terminal.screen.read`는 셀 행을 돌려준다. Red: golden message가 `invalid screen cursor from sidecar`로 거부됐다. macOS에서 `npm test`로 시험했다(manifest 시험은 고정된 plugin-api 때문에 변경 전후 모두 실패한다).

@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P32.6: the diagnostic command `terminal.screen.alter` changes the next screen message before the page hashes it, so a window check observes that the replay of core reports the change.
 - P32.5: the frame event names the session of the sidecar instead of the identifier of the surface.
 - P32.4: the frame event carries `segment`, the replay segment of the screen message.
 - P32.3: the terminal validates every `screen` message with `screenFromMessage`, builds its rows from `cells` instead of `lines`, requires only `col`, `row` and `visible` of the cursor and checks `focused`, `shape` and `blinking` when present; `terminal.screen.read` resolves the cell rows. Red: the golden message was refused with `invalid screen cursor from sidecar`. Tested with `npm test` on macOS (the manifest test fails on the pinned plugin-api before and after this change).

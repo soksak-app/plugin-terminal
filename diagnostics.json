@@ -52,6 +52,12 @@
         "result": { "type": "object", "properties": { "pending": { "type": "integer" }, "written": { "type": "integer" } } }
       },
       {
+        "name": "terminal.screen.alter",
+        "description": "Changes the next screen message before the page checks and hashes it, as a change between the sidecar and the page would.",
+        "params": { "type": "object", "properties": {} },
+        "result": { "type": "null" }
+      },
+      {
         "name": "terminal.ime.trace",
         "description": "Starts or stops the bounded real IME callback and terminal-input trace.",
         "params": {

@@ -177,6 +177,14 @@ const NO_LOG = Object.fromEntries([["enabled", () => false], ...["error", "warn"
  * @param {Object} options.window - window 객체 (글로벌 window 가 기본값이다)
  * @returns {Promise<void>}
  */
+// 첫 칸의 bold 속성을 뒤집은 screen 메시지. 진단 command terminal.screen.alter 가 사이드카와 페이지 사이의 변경을 흉내 낸다.
+// 속성은 어느 칸에서나 유효하므로 바뀐 메시지도 검사를 통과하고 다른 화면으로 hash 된다. 칸이 없는 메시지는 그대로다.
+function alteredScreen(body) {
+  if (!Array.isArray(body.cells) || body.cells.length === 0 || !Number.isInteger(body.cells[0]?.attributes)) return body;
+  const [first, ...rest] = body.cells;
+  return { ...body, cells: [{ ...first, attributes: first.attributes ^ 0x01 }, ...rest] };
+}
+
 export async function startTerminal({ id, view, attachImage, detachRegions, sidecar, expose, theme,
   // Aborts when the removal of the surface starts, before its regions are detached (context.closing).
   // default: a terminal started without a surface (a test) is never removed, so its signal never aborts.
@@ -243,6 +251,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   let compose = session.compose;
   // 네이티브 입력 callback 과 터미널 입력 작업을 받는 함수. 진단 빌드의 진단 모듈만 등록한다.
   const inputObservers = new Set();
+  // 진단 command terminal.screen.alter 가 다음 screen 메시지를 바꾸도록 요청했는지.
+  let alterNextScreen = false;
   const pointerObservers = new Set();
   const notifyPointer = (entry) => {
     if (pointerObservers.size === 0) return;
@@ -1121,6 +1131,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         setError("sidecar", `sidecar connection failed${reason}`);
       }
     } else if (body.event === "screen") {
+      // 진단 command terminal.screen.alter 가 요청한 변경은 메시지를 검사하고 hash 하기 전에, 중간에 바뀐 것처럼 적용한다.
+      if (alterNextScreen) {
+        alterNextScreen = false;
+        body = alteredScreen(body);
+      }
       // screen 이벤트를 처리한다. screen.read 응답이나 화면 변화 알림.
       // 메시지가 화면을 모두 담으므로(docs/spec/terminal-runtime.md in core) 메시지는 항상 검사하고, frame 이벤트의 hash 는
       // 메시지만으로 계산한다. screenHash 는 SHA-256 이라 비동기이므로 fields 는 builder 가 아니라 hash 가 나온 뒤의 객체다.
@@ -1576,6 +1591,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         return () => pointerObservers.delete(fn);
       },
       readPtyPending,
+      alterNextScreen: () => {
+        alterNextScreen = true;
+      },
       reportError: (message) => setError("trace", message),
       resolveError: () => {
         if (resolveError("trace")) changed("session");
