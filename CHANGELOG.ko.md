@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- P31.2: event `input`과 `send`가 그것을 일으킨 입력의 `cids`를 싣는다.
+- P31.1: 터미널이 `runtime.log.<level>`을 직접 호출하고, event `ime`, `input`, `send`, `send.result`, `sidecar.event`, `region`의 필드를 builder로 넘기며, emitter `ui/events.js`를 제거했다. `test/terminal.test.mjs`와 `test/events.test.mjs`가 통과하고, `soksak-events`는 선언된 event 12개와 emit site 15개를 보고한다.
 - P30.4: `make test`가 `census.json`과 `events.json`으로 `soksak-events`를 실행하고, 사유 주석 9개를 `default: <reason>` 형태로 쓴다.
 - P30.3: 입력마다 그 입력을 일으킨 region event의 `cids`를 사이드카에 넘기고(`sidecar.send(surface, body, cids)`), 세션을 기다린 입력도 마찬가지다. 잘못된 `cids`는 세션 오류로 보인다.
 - P30.2: trace event가 plugin의 emitter를 거치고, `send.result`가 `ok`, `micros`, `error`를 적으며, 세션 gate·세션 열기·닫기·가득 찬 대기열의 입력 거절·보인 오류마다 event로 저장한다. `test/terminal.test.mjs`와 `test/module.test.mjs`가 통과한다.

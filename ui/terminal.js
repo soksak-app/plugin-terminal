@@ -162,6 +162,8 @@ function normalizeCursorPolicy(value) {
   };
 }
 
+const NO_LOG = Object.fromEntries(["error", "warn", "info", "debug", "trace"].map((level) => [level, () => {}]));
+
 /**
  * 터미널 표면을 초기화하고 사이드카와 연결한다.
  *
@@ -188,9 +190,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   links = null,
   // 이 표면의 실제 글자 배율(docs/spec/text-size.md). 출처가 없으면 배율은 1 이다.
   textSize = { read: () => 1, on: () => () => {} },
-  // The emitter of the events of the plugin (ui/events.js). default: a terminal started without a surface (a test) has no
-  // event log, as a log that is off.
-  emitEvent = () => {},
+  // The runtime of the surface, of which the terminal uses the event log (context.runtime.log, core
+  // docs/spec/plugins.md#logging). default: a terminal started without a surface (a test) has no event log, as a log that is off.
+  runtime = { log: NO_LOG },
   window: globalWindow = globalThis.window }) {
   // 브라우저 환경에서 필요한 객체들
   const window = globalWindow;
@@ -250,7 +252,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // The trace records each native callback of the input method with every field that it carries, the typed text and the
   // ranges included, because a defect of the input is located only from what was typed and in which order.
   const traceNative = (kind, event) => {
-    emitEvent("debug", "plugin.terminal.ime", () => ({ kind, ...event }));
+    runtime.log.debug("ime", () => ({ kind, ...event }));
   };
   let cursor = { ...DEFAULT_CURSOR };
   if (!settings || typeof settings.read !== "function") throw new Error("terminal settings reader is required");
@@ -282,23 +284,23 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // trace 로 남긴다(docs/spec/diagnostics.md).
   const terminal = {
     async send(surface, body, cids = []) {
-      emitEvent("debug", "plugin.terminal.send", { body });
+      runtime.log.debug("send", () => ({ body }), { cids });
       const started = performance.now();
       const micros = () => Math.round((performance.now() - started) * 1000);
       try {
         const result = await sidecar.send(surface, body, cids);
-        emitEvent("debug", "plugin.terminal.send.result", { operation: body?.operation ?? null, ok: true, micros: micros() });
+        runtime.log.debug("send.result", () => ({ operation: body?.operation ?? null, ok: true, micros: micros() }));
         return result;
       } catch (error) {
         const code = typeof error?.code === "number" ? error.code : -32603;
-        emitEvent("warn", "plugin.terminal.send.result", { operation: body?.operation ?? null, ok: false, micros: micros(),
-          error: `${code}: ${error?.message ?? String(error)}` });
+        runtime.log.warn("send.result", () => ({ operation: body?.operation ?? null, ok: false, micros: micros(),
+          error: `${code}: ${error?.message ?? String(error)}` }));
         throw error;
       }
     },
     on(surface, handler) {
       return sidecar.on(surface, (body) => {
-        emitEvent("trace", "plugin.terminal.sidecar.event", () => ({ body }));
+        runtime.log.trace("sidecar.event", () => ({ body }));
         return handler(body);
       });
     },
@@ -312,7 +314,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   if (typeof detachRegions !== "function") throw new TypeError("startTerminal requires detachRegions()");
   // Every event of the image region is recorded with its type and its whole body before its handler runs.
   const onRegion = (type, handler) => region.on(type, (event) => {
-    emitEvent("trace", "plugin.terminal.region", () => ({ type, ...event }));
+    runtime.log.trace("region", () => ({ type, ...event }));
     return handler(event);
   });
 
@@ -358,7 +360,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   const errors = new Map();
   const setError = (source, message) => {
     console.error(message);
-    emitEvent("error", "plugin.terminal.error", { source, message });
+    runtime.log.error("error", { source, message });
     errors.delete(source);
     errors.set(source, message);
     session = { ...session, error: message };
@@ -582,10 +584,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     notifyInput({ kind: "terminal-input", input: entry });
     // The trace records each input with every field that it carries, the text included, and whether it waits for the session.
     const { type, ...fields } = entry;
-    emitEvent("debug", "plugin.terminal.input", { kind: type, ...fields, queued: !sessionOpen, queue: inputQueue.length });
+    runtime.log.debug("input", () => ({ kind: type, ...fields, queued: !sessionOpen, queue: inputQueue.length }), { cids });
     if (!sessionOpen) {
       if (inputQueue.length >= MAX_QUEUE_SIZE) {
-        emitEvent("warn", "plugin.terminal.input.overflow", { kind: type, max: MAX_QUEUE_SIZE, queue: inputQueue.length });
+        runtime.log.warn("input.overflow", { kind: type, max: MAX_QUEUE_SIZE, queue: inputQueue.length });
         const error = new Error(`Input queue overflow (max ${MAX_QUEUE_SIZE})`);
         return Promise.reject(error);
       }
@@ -596,7 +598,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
 
   const flushInputQueue = () => {
     const pending = inputQueue.splice(0);
-    emitEvent("debug", "plugin.terminal.input.flush", { count: pending.length });
+    runtime.log.debug("input.flush", { count: pending.length });
     for (const { entry, cids, resolve, reject } of pending) {
       scheduleInput(entry, cids).then(resolve, reject);
     }
@@ -1003,7 +1005,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 디렉터리(path null)는 기록을 지우므로 탭이 시작한 디렉터리로 돌아간다.
   let working = directory;
   const openSession = () => {
-    emitEvent("info", "plugin.terminal.session.open", { shell, directory: working });
+    runtime.log.info("session.open", { shell, directory: working });
     return terminal.send(id, { operation: "open", image: "view", shell,
       ...(working === null ? {} : { directory: working }) });
   };
@@ -1087,7 +1089,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       resolveError("state");
       if (body.cursor !== undefined) applyCursor(body.cursor, body.cursor);
       sessionOpen = true;
-      emitEvent("info", "plugin.terminal.session.gate", { open: true, event: "state" });
+      runtime.log.info("session.gate", { open: true, event: "state" });
       changed("session");
       flushInputQueue();
     } else if (body.event === "session") {
@@ -1100,7 +1102,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       // A preserved session answers a reattached surface with this event, so the input that waited during the
       // reconnection flows now.
       sessionOpen = true;
-      emitEvent("info", "plugin.terminal.session.gate", { open: true, event: "session" });
+      runtime.log.info("session.gate", { open: true, event: "session" });
       changed("session");
       flushInputQueue();
     } else if (body.event === "connection") {
@@ -1108,7 +1110,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       // 해소하고 세션을 다시 연다 — 재스폰된 서비스에는 이 표면의 세션이 없다. 실패했으면
       // 연결 끊김과 그 까닭을 세션 오류로 남긴다. 입력은 다시 열릴 때까지 대기열에 쌓인다.
       sessionOpen = false;
-      emitEvent("info", "plugin.terminal.session.gate", { open: false, event: "connection", connected: body.connected });
+      runtime.log.info("session.gate", { open: false, event: "connection", connected: body.connected });
       if (body.connected === true) {
         if (resolveError("sidecar")) changed("session");
         rerunBootstrap().catch((error) => reportInputError(error));
@@ -1396,7 +1398,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 붙은 영역이 놓인 그림을 notFound 로 표시하지 못하는 일이 없다(core docs/spec/plugins.md#surface-module-ownership).
   async function endSession() {
     await detachRegions();
-    emitEvent("info", "plugin.terminal.close", {});
+    runtime.log.info("close", {});
     await terminal.send(id, { operation: "close" });
   }
 

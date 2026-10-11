@@ -158,12 +158,17 @@ function createFakeAttachImage() {
   };
 }
 
-/** The emitter of a terminal that stores `[event, fields, level]` for each event, with a builder run and the fields copied as JSON. */
+/**
+ * The event log of a terminal (`context.runtime.log`) that stores `[event, fields, level, cids]` for each event, with a builder
+ * run and the fields copied as JSON. `lines.builders` holds the names of the events whose fields were passed as a builder.
+ */
 function recorder(lines) {
-  return (level, name, fields) => {
-    assert.ok(name.startsWith("plugin.terminal."), name);
-    lines.push([name.slice("plugin.terminal.".length), JSON.parse(JSON.stringify(typeof fields === "function" ? fields() : fields)), level]);
-  };
+  lines.builders = new Set();
+  return Object.fromEntries(["error", "warn", "info", "debug", "trace"].map((level) => [level, (name, fields, options = {}) => {
+    assert.ok(!name.startsWith("plugin."), `the log adds the prefix plugin.terminal., got ${name}`);
+    if (typeof fields === "function") lines.builders.add(name);
+    lines.push([name, JSON.parse(JSON.stringify(typeof fields === "function" ? fields() : fields)), level, options.cids]);
+  }]));
 }
 
 /**
@@ -3375,7 +3380,7 @@ test("the trace records each input with its text, the session gate and the flush
   let region;
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
-    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, emitEvent: recorder(lines),
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
   });
   region._trigger("insert", { text: "secret" });
   openSession(sidecar);
@@ -3396,7 +3401,7 @@ test("the trace records each native input callback of the input method with its 
   let region;
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
-    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, emitEvent: recorder(lines),
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
   });
   openSession(sidecar);
   region._trigger("key", { key: "Char", text: "s", shift: false, alt: false, ctrl: false });
@@ -3420,7 +3425,7 @@ test("the trace records every message sent to the sidecar with its result, every
   let region;
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
-    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, emitEvent: recorder(lines),
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
   });
   openSession(sidecar);
   region._trigger("insert", { text: "한" });
@@ -3451,7 +3456,7 @@ test("a failed send is recorded with its error", async () => {
   let region;
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
-    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, emitEvent: recorder(lines),
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
   });
   openSession(sidecar);
   sidecar.failNext(new Error("denied"));
@@ -3472,7 +3477,7 @@ test("the session gate, the session open, the refused input, the shown error and
   let region;
   const terminal = await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
-    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, emitEvent: recorder(lines),
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
   });
   const of = (name) => lines.filter(([event]) => event === name);
   assert.deepEqual(of("session.open").map(([, fields, level]) => [fields.shell, fields.directory, level]), [["/bin/sh", null, "info"]]);
@@ -3616,4 +3621,40 @@ test("a closing surface stops handling sidecar events before its regions are det
   });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(region._caret, undefined, "the caret of a region that is about to detach was set");
+});
+
+test("the high-rate events pass their fields as a builder so that a closed level builds no object", async () => {
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar();
+  const lines = [];
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
+  });
+  openSession(sidecar);
+  region._trigger("key", { key: "Enter", text: "\r", shift: false, alt: false, ctrl: false });
+  await new Promise((resolve) => setImmediate(resolve));
+  for (const name of ["ime", "input", "send", "send.result", "sidecar.event", "region"]) {
+    assert.ok(lines.some(([event]) => event === name), `${name} was not stored`);
+    assert.ok(lines.builders.has(name), `${name} was not passed as a builder`);
+  }
+});
+
+test("the events input and send carry the cids of their input", async () => {
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar();
+  const lines = [];
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
+  });
+  openSession(sidecar);
+  region._trigger("key", { key: "Enter", text: "\r", shift: false, alt: false, ctrl: false, cids: ["b1.7"] });
+  await new Promise((resolve) => setImmediate(resolve));
+  const input = lines.find(([event, fields]) => event === "input" && fields.kind === "key");
+  assert.deepEqual(input?.[3], ["b1.7"], "the input event did not carry the cids");
+  const send = lines.find(([event, fields]) => event === "send" && fields.body.operation === "input");
+  assert.deepEqual(send?.[3], ["b1.7"], "the send event did not carry the cids");
 });

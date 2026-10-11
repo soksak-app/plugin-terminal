@@ -1,4 +1,3 @@
-import { createEmitter } from "./events.js";
 import { startTerminal } from "./terminal.js";
 
 // 스크롤바는 네이티브 그림 위의 DOM overlay 다. 뷰 오른쪽 가장자리에 놓는다. 네이티브 영역의 조상은 배경을 가질 수
@@ -29,7 +28,7 @@ export async function mount(root, context) {
       reportSurfaceError: (error) => context.status.report("error", error),
       diagnostics: context.diagnostics,
       clipboard: context.runtime.clipboard,
-      emitEvent: createEmitter(context.runtime, "terminal") });
+      runtime: { log: context.runtime.log } });
     if (!controller || typeof controller.dispose !== "function") {
       throw new TypeError("startTerminal must return { dispose() }");
     }

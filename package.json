@@ -16,7 +16,6 @@
   "files": [
     "plugin.json",
     "events.json",
-    "ui/events.js",
     "ui/terminal-module.js",
     "ui/terminal.js"
   ],
