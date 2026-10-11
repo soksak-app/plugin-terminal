@@ -185,6 +185,10 @@ function alteredScreen(body) {
   return { ...body, cells: [{ ...first, attributes: first.attributes ^ 0x01 }, ...rest] };
 }
 
+// screen 메시지의 attributes byte 의 flag 와 그 이름(core docs/spec/replay.md#screen-hash).
+const ATTRIBUTE_FLAGS = [[0x01, "bold"], [0x02, "dim"], [0x04, "italic"], [0x08, "underline"], [0x10, "blink"], [0x20, "inverse"],
+  [0x40, "hidden"], [0x80, "strikethrough"]];
+
 export async function startTerminal({ id, view, attachImage, detachRegions, sidecar, expose, theme,
   // Aborts when the removal of the surface starts, before its regions are detached (context.closing).
   // default: a terminal started without a surface (a test) is never removed, so its signal never aborts.
@@ -1165,9 +1169,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       // 링크와 screen.read 는 글자, 폭, 링크만 쓴다. 색과 속성은 래스터가 그린다.
       screen = body.cells.reduce((rows, cell, index) => {
         if (index % body.cols === 0) rows.push([]);
-        // 빈 칸과 넓은 글자의 이어지는 칸은 글자가 없다. 읽는 쪽은 그 폭을 공백으로 센다.
+        // 빈 칸과 넓은 글자의 이어지는 칸은 글자가 없다. 읽는 쪽은 그 폭을 공백으로 센다. 켜진 속성 flag 는 이름으로 담는다.
+        const flags = {};
+        for (const [bit, name] of ATTRIBUTE_FLAGS) if (cell.attributes & bit) flags[name] = true;
         rows[rows.length - 1].push({
-          ...(cell.grapheme === "" ? {} : { ch: cell.grapheme }), width: cell.width, ...(cell.link === undefined ? {} : { link: cell.link }),
+          ...(cell.grapheme === "" ? {} : { ch: cell.grapheme }), width: cell.width, ...flags,
+          ...(cell.link === undefined ? {} : { link: cell.link }),
         });
         return rows;
       }, []);

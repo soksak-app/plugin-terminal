@@ -176,7 +176,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "properties": { "ch": { "type": "string" } }
+              "properties": { "ch": { "type": "string" }, "width": { "type": "integer" }, "link": { "type": "string" }, "bold": { "type": "boolean" }, "dim": { "type": "boolean" }, "italic": { "type": "boolean" }, "underline": { "type": "boolean" }, "blink": { "type": "boolean" }, "inverse": { "type": "boolean" }, "hidden": { "type": "boolean" }, "strikethrough": { "type": "boolean" } }
             }
           }
         }
@@ -354,7 +354,7 @@
             "type": "array",
             "items": {
               "type": "object",
-              "properties": { "ch": { "type": "string" } }
+              "properties": { "ch": { "type": "string" }, "width": { "type": "integer" }, "link": { "type": "string" }, "bold": { "type": "boolean" }, "dim": { "type": "boolean" }, "italic": { "type": "boolean" }, "underline": { "type": "boolean" }, "blink": { "type": "boolean" }, "inverse": { "type": "boolean" }, "hidden": { "type": "boolean" }, "strikethrough": { "type": "boolean" } }
             }
           }
         }

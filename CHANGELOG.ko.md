@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- P36: 화면 행의 cell이 screen message에서 켜진 속성 flag를 이름으로 담는다.
 - P35: 화면 행의 빈 칸과 넓은 글자의 이어지는 칸은 `ch`가 없으므로, 읽는 쪽이 다시 그 폭을 공백으로 센다.
 - P33: `test/census.test.mjs`가 event도 이유도 없는 발생 source가 이 repository의 guard에서 실패함을 보인다.
 - P32.6: 진단 command `terminal.screen.alter`가 다음 screen message를 page가 hash하기 전에 바꾸므로, window check가 core의 replay가 그 변경을 보고하는지 관찰한다.

@@ -1435,6 +1435,25 @@ test("terminal.focus command reports focus rejection through terminal.session", 
   assert.match(expose.getStatus("terminal.session").readFn().error, /terminal input failed: focus rejected/);
 });
 
+test("a cell of the screen names each attribute flag of the message that is set", async () => {
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  await startTerminal({ view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
+    window: { TextEncoder: FakeTextEncoder } });
+  openSession(sidecar);
+  const cell = (grapheme, attributes) => ({ grapheme, width: 1, fg: null, bg: null, attributes });
+  // The flags of the screen hash (docs/spec/replay.md#screen-hash in core): bold 01, dim 02, italic 04, underline 08, blink 10,
+  // inverse 20, hidden 40, strikethrough 80.
+  sidecar.triggerEvent("test-session", { event: "screen", sequence: 1, segment: "b1", rows: 1, cols: 3, cursor: { row: 0, col: 0, visible: true },
+    cells: [cell("Z", 0x2d), cell("Y", 0xd2), cell("N", 0)] });
+  const [row] = expose.getStatus("terminal.screen").readFn();
+  assert.deepEqual(row, [
+    { ch: "Z", width: 1, bold: true, italic: true, underline: true, inverse: true },
+    { ch: "Y", width: 1, dim: true, blink: true, hidden: true, strikethrough: true },
+    { ch: "N", width: 1 },
+  ]);
+});
+
 test("a row of the screen keeps its blank cells and the continuation of a wide character carries no character", async () => {
   const sidecar = createFakeSidecar();
   const expose = createFakeExpose();
