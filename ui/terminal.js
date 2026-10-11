@@ -1139,9 +1139,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         return;
       }
       if (runtime.log.enabled("debug")) {
+        // The session of the sidecar, which its frame records name (docs/spec/replay.md#records in core).
         const { sequence, segment } = body;
+        const { sessionId } = session;
         screenHash(message).then(
-          (hash) => runtime.log.debug("frame", { session: id, segment, sequence, rows: message.rows, cols: message.cols, hash }),
+          (hash) => runtime.log.debug("frame", { session: sessionId, segment, sequence, rows: message.rows, cols: message.cols, hash }),
           (error) => reportInputError(error, "screen"),
         );
       }

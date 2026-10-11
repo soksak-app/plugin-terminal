@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P32.5: the frame event names the session of the sidecar instead of the identifier of the surface.
 - P32.4: the frame event carries `segment`, the replay segment of the screen message.
 - P32.3: the terminal validates every `screen` message with `screenFromMessage`, builds its rows from `cells` instead of `lines`, requires only `col`, `row` and `visible` of the cursor and checks `focused`, `shape` and `blinking` when present; `terminal.screen.read` resolves the cell rows. Red: the golden message was refused with `invalid screen cursor from sidecar`. Tested with `npm test` on macOS (the manifest test fails on the pinned plugin-api before and after this change).
 - P32.1: the terminal hashes each `screen` message of the sidecar with `screenFromMessage` and `screenHash` and stores the event `frame` (`session`, `sequence`, `rows`, `cols`, `hash`) behind the gate `runtime.log.enabled`; a refused message is the error of the source `screen`. This closes P31.3. `test/terminal.test.mjs` reproduces the hashes of the 7 golden messages of core.

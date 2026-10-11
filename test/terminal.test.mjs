@@ -3691,7 +3691,8 @@ test("a screen message is stored as the frame event with the hash of the golden 
     const [event] = lines.filter(([name]) => name === "frame").slice(-1);
     assert.deepEqual(event && event.slice(1, 3), [
       {
-        session: "test-session", segment: vector.message.segment, sequence: vector.message.sequence, rows: vector.message.rows,
+        // The session of the frame record is the session of the sidecar ("s1" of openSession), which its frame records name.
+        session: "s1", segment: vector.message.segment, sequence: vector.message.sequence, rows: vector.message.rows,
         cols: vector.message.cols, hash: vector.hash,
       },
       "debug",
