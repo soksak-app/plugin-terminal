@@ -1165,7 +1165,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       // 링크와 screen.read 는 글자, 폭, 링크만 쓴다. 색과 속성은 래스터가 그린다.
       screen = body.cells.reduce((rows, cell, index) => {
         if (index % body.cols === 0) rows.push([]);
-        rows[rows.length - 1].push({ ch: cell.grapheme, width: cell.width, ...(cell.link === undefined ? {} : { link: cell.link }) });
+        // 빈 칸과 넓은 글자의 이어지는 칸은 글자가 없다. 읽는 쪽은 그 폭을 공백으로 센다.
+        rows[rows.length - 1].push({
+          ...(cell.grapheme === "" ? {} : { ch: cell.grapheme }), width: cell.width, ...(cell.link === undefined ? {} : { link: cell.link }),
+        });
         return rows;
       }, []);
       changed("screen");

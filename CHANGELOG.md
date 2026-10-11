@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P35: a blank cell and the continuation of a wide character have no `ch` in the rows of the screen, so a reader counts their width as spaces again.
 - P33: `test/census.test.mjs` shows that a source of occurrences without an event or a reason fails the guard of this repository.
 - P32.6: the diagnostic command `terminal.screen.alter` changes the next screen message before the page hashes it, so a window check observes that the replay of core reports the change.
 - P32.5: the frame event names the session of the sidecar instead of the identifier of the surface.

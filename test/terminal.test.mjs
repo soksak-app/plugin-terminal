@@ -399,7 +399,8 @@ test("terminal.screen publishes sidecar output without polling or input commands
   assert.deepEqual(received, [lines]);
   stop();
   sidecar.triggerEvent("test-session", { event: "screen", lines: [] });
-  assert.deepEqual(status.readFn(), [[{ ch: "", width: 1 }]]);
+  // A blank cell has no character; a reader counts its width as spaces (docs/spec/terminal-runtime.md#screen-message in core).
+  assert.deepEqual(status.readFn(), [[{ width: 1 }]]);
   assert.deepEqual(received, [lines]);
   assert.deepEqual(sessionMessages(sidecar).map(({ body }) => body.operation), ["open"]);
 });
@@ -1432,6 +1433,18 @@ test("terminal.focus command reports focus rejection through terminal.session", 
 
   await assert.rejects(expose.getCommand("terminal.focus")(), /focus rejected/);
   assert.match(expose.getStatus("terminal.session").readFn().error, /terminal input failed: focus rejected/);
+});
+
+test("a row of the screen keeps its blank cells and the continuation of a wide character carries no character", async () => {
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  await startTerminal({ view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
+    window: { TextEncoder: FakeTextEncoder } });
+  openSession(sidecar);
+  sidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "A", width: 1 }, { width: 1 }, { width: 1 }, { ch: "B", width: 1 }, { ch: "한", width: 2 }, { width: 0 }]] });
+  const [row] = expose.getStatus("terminal.screen").readFn();
+  assert.deepEqual(row, [{ ch: "A", width: 1 }, { width: 1 }, { width: 1 }, { ch: "B", width: 1 }, { ch: "한", width: 2 }, { width: 0 }]);
+  assert.equal(row.map((cell) => cell.ch ?? " ".repeat(cell.width)).join(""), "A  B한");
 });
 
 // 테스트 6: terminal.screen.read → sidecar에 screen.read가 가고, 가짜가 screen 이벤트로 답하면 줄 텍스트 배열이 돌아온다
