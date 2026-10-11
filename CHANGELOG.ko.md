@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- P32.1: 터미널이 sidecar의 `screen` message마다 `screenFromMessage`와 `screenHash`로 hash를 계산해 gate `runtime.log.enabled` 뒤에서 event `frame`(`session`, `sequence`, `rows`, `cols`, `hash`)을 저장하고, 거부된 message는 출처 `screen`의 오류다. P31.3을 닫는다. `test/terminal.test.mjs`가 core의 golden message 7개의 hash를 재현한다.
 - P31.2: event `input`과 `send`가 그것을 일으킨 입력의 `cids`를 싣는다.
 - P31.1: 터미널이 `runtime.log.<level>`을 직접 호출하고, event `ime`, `input`, `send`, `send.result`, `sidecar.event`, `region`의 필드를 builder로 넘기며, emitter `ui/events.js`를 제거했다. `test/terminal.test.mjs`와 `test/events.test.mjs`가 통과하고, `soksak-events`는 선언된 event 12개와 emit site 15개를 보고한다.
 - P30.4: `make test`가 `census.json`과 `events.json`으로 `soksak-events`를 실행하고, 사유 주석 9개를 `default: <reason>` 형태로 쓴다.

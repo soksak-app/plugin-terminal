@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P32.1: the terminal hashes each `screen` message of the sidecar with `screenFromMessage` and `screenHash` and stores the event `frame` (`session`, `sequence`, `rows`, `cols`, `hash`) behind the gate `runtime.log.enabled`; a refused message is the error of the source `screen`. This closes P31.3. `test/terminal.test.mjs` reproduces the hashes of the 7 golden messages of core.
 - P31.2: the events `input` and `send` carry the `cids` of the input that caused them.
 - P31.1: the terminal calls `runtime.log.<level>` directly, passes the fields of the events `ime`, `input`, `send`, `send.result`, `sidecar.event` and `region` as a builder, and the emitter `ui/events.js` is removed. `test/terminal.test.mjs` and `test/events.test.mjs` pass; `soksak-events` reports 12 declared events and 15 emit sites.
 - P30.4: `make test` runs `soksak-events` with `census.json` and `events.json`, and the 9 reason comments are written as `default: <reason>`.

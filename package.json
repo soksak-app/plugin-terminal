@@ -20,7 +20,7 @@
     "ui/terminal.js"
   ],
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --import ./test/core-screen-hash.mjs --test test/"
   },
   "devDependencies": {
     "@soksak/plugin-api": "git+https://github.com/soksak-app/core.git#v0.0.5&path:/packages/plugin-api"

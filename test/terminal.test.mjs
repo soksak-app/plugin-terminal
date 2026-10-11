@@ -164,11 +164,11 @@ function createFakeAttachImage() {
  */
 function recorder(lines) {
   lines.builders = new Set();
-  return Object.fromEntries(["error", "warn", "info", "debug", "trace"].map((level) => [level, (name, fields, options = {}) => {
+  return Object.fromEntries([["enabled", () => !lines.closed], ...["error", "warn", "info", "debug", "trace"].map((level) => [level, (name, fields, options = {}) => {
     assert.ok(!name.startsWith("plugin."), `the log adds the prefix plugin.terminal., got ${name}`);
     if (typeof fields === "function") lines.builders.add(name);
     lines.push([name, JSON.parse(JSON.stringify(typeof fields === "function" ? fields() : fields)), level, options.cids]);
-  }]));
+  }])]);
 }
 
 /**
@@ -3657,4 +3657,62 @@ test("the events input and send carry the cids of their input", async () => {
   assert.deepEqual(input?.[3], ["b1.7"], "the input event did not carry the cids");
   const send = lines.find(([event, fields]) => event === "send" && fields.body.operation === "input");
   assert.deepEqual(send?.[3], ["b1.7"], "the send event did not carry the cids");
+});
+
+// test/fixtures/screen-message.json is a copy of core packages/log-contract/fixtures/replay/screen-message.json, which core owns.
+const SCREEN_MESSAGES = JSON.parse(readFileSync(new URL("./fixtures/screen-message.json", import.meta.url), "utf8"));
+
+// The hash of a screen is computed asynchronously: yields until the event log holds `count` frame events.
+async function framesStored(lines, count) {
+  for (let turn = 0; turn < 10000 && lines.filter(([name]) => name === "frame").length < count; turn++) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(lines.filter(([name]) => name === "frame").length, count, "the frame event was not stored");
+}
+
+async function startScreenTerminal(lines) {
+  const sidecar = createFakeSidecar();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar,
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
+  });
+  openSession(sidecar);
+  return sidecar;
+}
+
+test("a screen message is stored as the frame event with the hash of the golden vector", async () => {
+  const lines = [];
+  const sidecar = await startScreenTerminal(lines);
+  for (const [index, vector] of SCREEN_MESSAGES.vectors.entries()) {
+    sidecar.triggerEvent("test-session", vector.message);
+    await framesStored(lines, index + 1);
+    const [event] = lines.filter(([name]) => name === "frame").slice(-1);
+    assert.deepEqual(event && event.slice(1, 3), [
+      { session: "test-session", sequence: vector.message.sequence, rows: vector.message.rows, cols: vector.message.cols, hash: vector.hash },
+      "debug",
+    ], vector.name);
+  }
+});
+
+test("a closed gate of the event log computes no hash and stores no frame event", async () => {
+  const lines = [];
+  const sidecar = await startScreenTerminal(lines);
+  lines.closed = true;
+  sidecar.triggerEvent("test-session", SCREEN_MESSAGES.vectors[0].message);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(lines.filter(([name]) => name === "frame").length, 0);
+});
+
+test("a screen message that screenFromMessage refuses is the error of the source screen", async () => {
+  const lines = [];
+  const sidecar = await startScreenTerminal(lines);
+  // The vector "event is not screen" is no screen event: the terminal routes it by its event name to another handler.
+  for (const rejected of SCREEN_MESSAGES.rejected.filter(({ message }) => message.event === "screen")) {
+    lines.length = 0;
+    sidecar.triggerEvent("test-session", rejected.message);
+    assert.deepEqual(lines.filter(([name]) => name === "error").map(([, fields]) => fields), [
+      { source: "screen", message: `terminal input failed: ${rejected.error}` },
+    ], rejected.name);
+    assert.equal(lines.filter(([name]) => name === "frame").length, 0, rejected.name);
+  }
 });

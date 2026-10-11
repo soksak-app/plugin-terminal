@@ -1,4 +1,5 @@
 import { shellQuotePath } from "@soksak/plugin-api";
+import { screenFromMessage, screenHash } from "@soksak/plugin-api/screen-hash";
 
 // 터미널 표면의 부팅과 동작을 처리한다.
 //
@@ -162,7 +163,7 @@ function normalizeCursorPolicy(value) {
   };
 }
 
-const NO_LOG = Object.fromEntries(["error", "warn", "info", "debug", "trace"].map((level) => [level, () => {}]));
+const NO_LOG = Object.fromEntries([["enabled", () => false], ...["error", "warn", "info", "debug", "trace"].map((level) => [level, () => {}])]);
 
 /**
  * 터미널 표면을 초기화하고 사이드카와 연결한다.
@@ -1120,6 +1121,23 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
     } else if (body.event === "screen") {
       // screen 이벤트를 처리한다. screen.read 응답이나 화면 변화 알림.
+      // 메시지가 화면을 모두 담으므로(docs/spec/terminal-runtime.md in core) frame 이벤트의 hash 는 메시지만으로 계산한다.
+      // screenHash 는 SHA-256 이라 비동기이므로 fields 는 builder 가 아니라 hash 가 나온 뒤의 객체다. gate 가 닫히면 메시지를
+      // 검사하지도 hash 를 계산하지도 않는다. 거부된 메시지는 screen 출처의 오류이고 처리하지 않는다.
+      if (runtime.log.enabled("debug")) {
+        let message;
+        try {
+          message = screenFromMessage(body);
+        } catch (error) {
+          reportInputError(error, "screen");
+          return;
+        }
+        const { sequence } = body;
+        screenHash(message).then(
+          (hash) => runtime.log.debug("frame", { session: id, sequence, rows: message.rows, cols: message.cols, hash }),
+          (error) => reportInputError(error, "screen"),
+        );
+      }
       screen = body.lines;
       changed("screen");
       if (typeof body.background === "string" && body.background !== terminalBackground) {
