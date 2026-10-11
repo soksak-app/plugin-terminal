@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P30.1: the plugin declares the catalog `events.json` (named in `plugin.json`, packed with the release) and the emitter `ui/events.js`, which stores an event through `context.runtime.log` with the prefix `plugin.terminal.`. `test/events.test.mjs` passes 5 of 5.
 - P29: the terminal ignores the events of its sidecar once `context.closing` aborts, so it no longer sets the caret of a region that the workbench detached at the removal of the surface.
 - P28: the plugin requires the terminal service `^0.0.8`, and version 0.0.10 carries it.
 - P27: version 0.0.9 carries P26.

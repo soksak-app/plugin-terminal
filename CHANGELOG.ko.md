@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- P30.1: plugin이 catalog `events.json`(`plugin.json`이 가리키고 release에 담긴다)과 emitter `ui/events.js`를 선언한다. emitter는 접두사 `plugin.terminal.`로 `context.runtime.log`에 event를 저장한다. `test/events.test.mjs` 5개 중 5개 통과.
 - P29: `context.closing`이 abort되면 terminal이 사이드카 event를 무시하므로, 표면 제거 때 워크벤치가 뗀 region의 caret을 더는 설정하지 않는다.
 - P28: plugin이 terminal service `^0.0.8`을 요구하고 0.0.10이 이를 담는다.
 - P27: 0.0.9가 P26을 담는다.

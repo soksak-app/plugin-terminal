@@ -1,0 +1,66 @@
+{
+  "schema": 2,
+  "layers": ["plugin"],
+  "events": {
+    "plugin.terminal.ime": {
+      "layer": "plugin", "class": "input", "level": "debug",
+      "fields": { "kind": "string", "text?": "string", "key?": "string", "shift?": "boolean", "alt?": "boolean", "ctrl?": "boolean", "selectedRange?": "object|null", "replacementRange?": "object|null", "attributed?": "boolean", "cids?": "array" },
+      "description": "A native callback of the input method (insert, key, compose) with every field it carries, the typed text and the ranges included."
+    },
+    "plugin.terminal.input": {
+      "layer": "plugin", "class": "input", "level": "debug",
+      "fields": { "kind": "string", "text?": "string", "key?": "string", "shift?": "boolean", "alt?": "boolean", "ctrl?": "boolean", "selectedRange?": "object|null", "replacementRange?": "object|null", "attributed?": "boolean", "focused?": "boolean", "selector?": "string", "queued": "boolean", "queue": "number" },
+      "description": "One input of the terminal with every field it carries; queued is true while the input waits for the session and queue is the number of inputs that wait."
+    },
+    "plugin.terminal.input.flush": {
+      "layer": "plugin", "class": "input", "level": "debug",
+      "fields": { "count": "number" },
+      "description": "The inputs that waited for the session are sent, count of them."
+    },
+    "plugin.terminal.input.overflow": {
+      "layer": "plugin", "class": "input", "level": "warn",
+      "fields": { "kind": "string", "max": "number", "queue": "number" },
+      "description": "An input is refused because the queue of inputs that wait for the session holds max inputs; the input is rejected with an error."
+    },
+    "plugin.terminal.session.gate": {
+      "layer": "plugin", "class": "lifecycle", "level": "info",
+      "fields": { "open": "boolean", "event": "string", "connected?": "boolean" },
+      "description": "The session gate opened or closed because of the sidecar event named in event; inputs wait while it is closed."
+    },
+    "plugin.terminal.session.open": {
+      "layer": "plugin", "class": "lifecycle", "level": "info",
+      "fields": { "shell": "string", "directory": "string|null" },
+      "description": "The terminal asks the sidecar to open its session with the shell and the working directory."
+    },
+    "plugin.terminal.close": {
+      "layer": "plugin", "class": "lifecycle", "level": "info",
+      "fields": {},
+      "description": "The terminal ends its session at the removal of the surface."
+    },
+    "plugin.terminal.send": {
+      "layer": "plugin", "class": "io", "level": "debug",
+      "fields": { "body": "object" },
+      "description": "A message to the sidecar with its whole body."
+    },
+    "plugin.terminal.send.result": {
+      "layer": "plugin", "class": "call", "level": ["debug", "warn"],
+      "fields": { "operation": "string|null", "ok": "boolean", "micros": "number", "error?": "string" },
+      "description": "The result of a message to the sidecar; error is <code>: <text> when ok is false."
+    },
+    "plugin.terminal.sidecar.event": {
+      "layer": "plugin", "class": "io", "level": "trace",
+      "fields": { "body": "object" },
+      "description": "An event of the sidecar with its whole body, before the terminal handles it."
+    },
+    "plugin.terminal.region": {
+      "layer": "plugin", "class": "input", "level": "trace",
+      "fields": { "type": "string", "text?": "string", "key?": "string", "focused?": "boolean", "selector?": "string", "name?": "string", "reason?": "string", "cids?": "array" },
+      "description": "An event of the image region with its type and its whole body, before the terminal handles it."
+    },
+    "plugin.terminal.error": {
+      "layer": "plugin", "class": "lifecycle", "level": "error",
+      "fields": { "source": "string", "message": "string" },
+      "description": "An error that the terminal shows in its session status; source names where it came from."
+    }
+  }
+}

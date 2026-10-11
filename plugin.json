@@ -20,6 +20,7 @@
       "overlays": ["scrollbar", "padding-top", "padding-right", "padding-bottom", "padding-left"]
     }
   },
+  "events": "events.json",
   "preview": {
     "ink": "--fg"
   },
