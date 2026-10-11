@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P30.4: `make test` runs `soksak-events` with `census.json` and `events.json`, and the 9 reason comments are written as `default: <reason>`.
 - P30.3: each input carries the `cids` of the region event that caused it to the sidecar (`sidecar.send(surface, body, cids)`), also when it waited for the session; an invalid `cids` is shown as a session error.
 - P30.2: the trace events go through the emitter of the plugin, `send.result` states `ok`, `micros` and `error`, and the session gate, the session open, the close, the refusal of an input by the full queue and each shown error are stored as events. `test/terminal.test.mjs` and `test/module.test.mjs` pass.
 - P30.1: the plugin declares the catalog `events.json` (named in `plugin.json`, packed with the release) and the emitter `ui/events.js`, which stores an event through `context.runtime.log` with the prefix `plugin.terminal.`. `test/events.test.mjs` passes 5 of 5.

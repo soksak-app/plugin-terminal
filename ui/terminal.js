@@ -170,12 +170,12 @@ function normalizeCursorPolicy(value) {
  * @param {Function} options.attachImage - 이미지 영역 붙이기 함수
  * @param {Object} options.sidecar - 사이드카 포트
  * @param {Object} options.expose - 공개 항목 등록 함수 모음
- * @param {Object} options.window - window 객체 (기본값: 글로벌 window)
+ * @param {Object} options.window - window 객체 (글로벌 window 가 기본값이다)
  * @returns {Promise<void>}
  */
 export async function startTerminal({ id, view, attachImage, detachRegions, sidecar, expose, theme,
   // Aborts when the removal of the surface starts, before its regions are detached (context.closing).
-  // 기본값: a terminal started without a surface (a test) is never removed, so its signal never aborts.
+  // default: a terminal started without a surface (a test) is never removed, so its signal never aborts.
   closing = new AbortController().signal,
   // padding 은 변마다 view 둘레를 칠하는 overlay 요소 {top, right, bottom, left} 다. 없으면 칠하지 않는다.
   padding: paddingStrips = null,
@@ -914,14 +914,14 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // padding 은 터미널의 현재 기본 배경색을 보인다.
   const paintPadding = () => {
     if (!paddingStrips) return;
-    // 기본값: 첫 화면의 배경을 받기 전에는 padding 을 아직 색칠하지 않는다.
+    // default: 첫 화면의 배경을 받기 전에는 padding 을 아직 색칠하지 않는다.
     for (const side of PADDING_SIDES) paddingStrips[side].style.background = terminalBackground ?? "";
   };
   // 트랙은 네이티브 그림이 잘린 자리를 칠한다. terminal 은 터미널의 현재 기본 배경색이다.
   const paintScrollbar = () => {
     if (!scrollbar) return;
     scrollbar.track.style.width = `${scrollbarStyle.width}px`;
-    // 기본값: 첫 화면의 배경을 받기 전에는 트랙을 아직 색칠하지 않는다.
+    // default: 첫 화면의 배경을 받기 전에는 트랙을 아직 색칠하지 않는다.
     scrollbar.track.style.background = scrollbarStyle.track === "terminal" ? (terminalBackground ?? "") : scrollbarStyle.track;
     scrollbar.thumb.style.background = scrollbarStyle.thumb;
     scrollbar.thumb.style.borderRadius = scrollbarStyle.shape === "square" ? "0px" : "999px";
@@ -995,7 +995,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   if (typeof shell !== "string" || shell.length === 0) throw new Error("terminal shell setting is missing");
   // 터미널에서 쪼갠 터미널은 그 터미널이 마지막으로 알린 디렉터리에서, 아니면 프로젝트 루트에서 시작한다.
   // 프로젝트가 없는 창에서는 홈 디렉터리에서 시작한다(docs/spec/terminal-runtime.md).
-  // 기본값: 분할 출처에 디렉터리가 없으면 프로젝트 루트, 프로젝트도 없으면 홈 디렉터리에서 연다.
+  // default: 분할 출처에 디렉터리가 없으면 프로젝트 루트, 프로젝트도 없으면 홈 디렉터리에서 연다.
   const directory = origin.directory ?? project?.root ?? null;
   // 카드 발은 작업 디렉터리를 보인다. 홈 디렉터리에서 시작하면 셸이 알릴 때까지 경로를 모른다.
   if (directory !== null) tab.footer(directory);
@@ -1235,7 +1235,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         return;
       }
       session = { ...session, vendor: { ...session.vendor, directory: body.uri } };
-      // 기본값: 다른 컴퓨터의 디렉터리(path null)는 기록을 지우므로 다음 열기는 탭이 시작한 디렉터리를 쓴다.
+      // default: 다른 컴퓨터의 디렉터리(path null)는 기록을 지우므로 다음 열기는 탭이 시작한 디렉터리를 쓴다.
       working = body.path === null ? directory : body.path;
       changed("session");
       // 다른 컴퓨터의 디렉터리(path null)는 기록한 디렉터리를 지우고, 발에는 그 주소를 보인다.
@@ -1356,7 +1356,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
       return request.catch(reportInputError);
     });
-    // 기본값: 구독 결과에 ready 약속이 없으면 구독 결과 자체가 첫 테마 적용의 완료다.
+    // default: 구독 결과에 ready 약속이 없으면 구독 결과 자체가 첫 테마 적용의 완료다.
     themeReady = Promise.resolve(themeSubscription?.ready ?? themeSubscription).catch((error) => {
       reportInputError(error);
       throw error;
@@ -1571,12 +1571,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     async dispose() {
       if (diagnostics) for (const type of pointerTraceTypes) view.removeEventListener(type, tracePointer);
       const offTheme = await themeSubscription?.dispose;
-      // 기본값: 테마나 설정 구독이 없으면 해제 함수도 없다.
+      // default: 테마나 설정 구독이 없으면 해제 함수도 없다.
       offTheme?.();
-      // 기본값: 설정 구독이 없으면 해제 함수도 없다.
+      // default: 설정 구독이 없으면 해제 함수도 없다.
       settingsSubscription?.();
       textSizeSubscription();
-      // 기본값: 사이드카 구독을 만들지 못한 경우에는 해제 함수가 없다.
+      // default: 사이드카 구독을 만들지 못한 경우에는 해제 함수가 없다.
       stopSidecar?.();
       view.removeEventListener("pointerdown", preventDefaultFocus);
       view.removeEventListener("pointerdown", beginSelection);
