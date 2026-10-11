@@ -4,6 +4,7 @@ import test from "node:test";
 import { createBinder } from "@soksak/plugin-api";
 import * as terminalDiagnostics from "../ui/terminal-diagnostics.js";
 import { startTerminal as realStartTerminal } from "../ui/terminal.js";
+import { screenMessage } from "./screen-message.mjs";
 
 // 설정을 받지 않는 테스트의 터미널은 매니페스트 기본값과 /bin/sh 로 시작한다. 설정을 받는 테스트는 shell 값을 직접 적는다.
 const SHELL_SETTINGS = {
@@ -204,7 +205,7 @@ function createFakeSidecar({ delay = () => 0 } = {}) {
     triggerEvent: function(id, event) {
       if (listeners.has(id)) {
         for (const handler of listeners.get(id)) {
-          handler(event);
+          handler(screenMessage(event));
         }
       }
     },
@@ -398,7 +399,7 @@ test("terminal.screen publishes sidecar output without polling or input commands
   assert.deepEqual(received, [lines]);
   stop();
   sidecar.triggerEvent("test-session", { event: "screen", lines: [] });
-  assert.deepEqual(status.readFn(), []);
+  assert.deepEqual(status.readFn(), [[{ ch: "", width: 1 }]]);
   assert.deepEqual(received, [lines]);
   assert.deepEqual(sessionMessages(sidecar).map(({ body }) => body.operation), ["open"]);
 });
@@ -1473,8 +1474,9 @@ test("terminal.screen.read sends request and returns lines on screen event", asy
     fakeSidecar.triggerEvent("test-session", { event: "screen", lines: ["line1", "line2", "line3"] });
   }, 10);
 
-  const lines = await screenReadCommand();
-  assert.deepEqual(lines, ["line1", "line2", "line3"], "screen.read returns lines from sidecar screen event");
+  const rows = await screenReadCommand();
+  assert.deepEqual(rows.map((row) => row.map((cell) => cell.ch).join("")), ["line1", "line2", "line3"],
+    "screen.read returns the cell rows of the sidecar screen event");
 
   // sidecar에 screen.read가 갔는가?
   const messages = fakeSidecar.getMessages();

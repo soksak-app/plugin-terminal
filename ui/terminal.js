@@ -88,6 +88,7 @@ const REJECTED_KEPT = 8;
 
 // 사이드카가 화면에 그린 커서 모양. 프로그램의 요청과 초점 규칙이 적용된 값이다.
 const DRAWN_SHAPES = { Block: "block", Underline: "underline", Beam: "beam", HollowBlock: "hollowBlock", Hidden: "hidden" };
+const DRAWN_SHAPE_KEYS = new Set([...Object.keys(DRAWN_SHAPES), ...Object.values(DRAWN_SHAPES)]);
 
 function normalizeRange(range) {
   if (range === null || range === undefined) return null;
@@ -1121,24 +1122,35 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
     } else if (body.event === "screen") {
       // screen 이벤트를 처리한다. screen.read 응답이나 화면 변화 알림.
-      // 메시지가 화면을 모두 담으므로(docs/spec/terminal-runtime.md in core) frame 이벤트의 hash 는 메시지만으로 계산한다.
-      // screenHash 는 SHA-256 이라 비동기이므로 fields 는 builder 가 아니라 hash 가 나온 뒤의 객체다. gate 가 닫히면 메시지를
-      // 검사하지도 hash 를 계산하지도 않는다. 거부된 메시지는 screen 출처의 오류이고 처리하지 않는다.
-      if (runtime.log.enabled("debug")) {
-        let message;
-        try {
-          message = screenFromMessage(body);
-        } catch (error) {
-          reportInputError(error, "screen");
-          return;
+      // 메시지가 화면을 모두 담으므로(docs/spec/terminal-runtime.md in core) 메시지는 항상 검사하고, frame 이벤트의 hash 는
+      // 메시지만으로 계산한다. screenHash 는 SHA-256 이라 비동기이므로 fields 는 builder 가 아니라 hash 가 나온 뒤의 객체다.
+      // gate 가 닫히면 hash 를 계산하지 않는다. 거부된 메시지는 screen 출처의 오류이고 처리하지 않는다.
+      let message;
+      try {
+        const { col, row, visible, focused, shape, blinking } = body.cursor ?? {};
+        if (body.cursor && typeof body.cursor === "object" && (!Number.isInteger(col) || !Number.isInteger(row) || typeof visible !== "boolean" ||
+          (focused !== undefined && typeof focused !== "boolean") || (blinking !== undefined && typeof blinking !== "boolean") ||
+          (shape !== undefined && !DRAWN_SHAPE_KEYS.has(shape)))) {
+          throw new Error(`invalid screen cursor from sidecar: ${JSON.stringify(body.cursor)}`);
         }
+        message = screenFromMessage(body);
+      } catch (error) {
+        reportInputError(error, "screen");
+        return;
+      }
+      if (runtime.log.enabled("debug")) {
         const { sequence } = body;
         screenHash(message).then(
           (hash) => runtime.log.debug("frame", { session: id, sequence, rows: message.rows, cols: message.cols, hash }),
           (error) => reportInputError(error, "screen"),
         );
       }
-      screen = body.lines;
+      // 링크와 screen.read 는 글자, 폭, 링크만 쓴다. 색과 속성은 래스터가 그린다.
+      screen = body.cells.reduce((rows, cell, index) => {
+        if (index % body.cols === 0) rows.push([]);
+        rows[rows.length - 1].push({ ch: cell.grapheme, width: cell.width, ...(cell.link === undefined ? {} : { link: cell.link }) });
+        return rows;
+      }, []);
       changed("screen");
       if (typeof body.background === "string" && body.background !== terminalBackground) {
         terminalBackground = body.background;
@@ -1157,18 +1169,17 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
       // 화면의 커서는 현재 위치·표시·포커스와 그린 모양이다. 그린 모양은 표시 규칙이 적용된 값이므로 정책 값을 바꾸지 않고
       // drawn 에 둔다.
-      if (body.cursor !== undefined) {
+      {
+        // 해시가 덮는 멤버는 col, row, visible 이고 focused, shape, blinking 은 있을 때만 검사해 반영한다.
         const { col, row, visible, focused, shape, blinking } = body.cursor;
-        if (!Number.isInteger(col) || !Number.isInteger(row) || typeof visible !== "boolean" || typeof focused !== "boolean" ||
-          !Object.hasOwn(DRAWN_SHAPES, shape) || typeof blinking !== "boolean") {
-          reportInputError(`invalid screen cursor from sidecar: ${JSON.stringify(body.cursor)}`, "screen");
-        } else {
-          applyCursor(body.cursor, { col, row, visible, focused, drawn: { shape: DRAWN_SHAPES[shape], blinking } });
-          if (resolveError("screen")) changed("session");
-        }
+        const drawn = { ...cursor.drawn };
+        if (shape !== undefined) drawn.shape = DRAWN_SHAPES[shape] ?? shape;
+        if (blinking !== undefined) drawn.blinking = blinking;
+        applyCursor(body.cursor, { col, row, visible, ...(focused === undefined ? {} : { focused }), drawn });
+        if (resolveError("screen")) changed("session");
       }
       if (pendingScreenRead) {
-        pendingScreenRead(body);
+        pendingScreenRead(screen);
         pendingScreenRead = null;
       }
     } else if (body.event === "cursor") {
@@ -1452,7 +1463,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
           if (!resolved) {
             resolved = true;
             clearTimeout(timeout);
-            resolve(event.lines);
+            resolve(event);
           }
         };
 
