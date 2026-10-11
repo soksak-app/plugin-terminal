@@ -54,9 +54,21 @@ function keyToMessage(keyName, text = "", modifiers = {}) {
 /**
  * 텍스트 입력을 base64로 인코딩하여 사이드카로 전송한다.
  */
-function sendInput(text, terminal, id, encoder) {
+function sendInput(text, terminal, id, encoder, cids) {
   const base64 = encodeBytes(text, encoder);
-  return terminal.send(id, { operation: "input", bytes: base64 });
+  return terminal.send(id, { operation: "input", bytes: base64 }, cids);
+}
+
+/**
+ * The correlation identifiers of the input that a region event reports (core docs/spec/logging.md#correlation-identifier):
+ * none for an event without `cids`, and an error for a value that is no list of identifiers.
+ */
+function cidsOf(event) {
+  if (event.cids === undefined) return [];
+  if (!Array.isArray(event.cids) || event.cids.some((cid) => typeof cid !== "string" || cid === "")) {
+    throw new Error(`region event cids must be a list of identifiers, got ${JSON.stringify(event.cids)}`);
+  }
+  return event.cids;
 }
 
 const CURSOR_SHAPES = new Set(["block", "underline", "beam"]);
@@ -176,9 +188,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   links = null,
   // 이 표면의 실제 글자 배율(docs/spec/text-size.md). 출처가 없으면 배율은 1 이다.
   textSize = { read: () => 1, on: () => () => {} },
-  // The performance trace of the surface (core docs/spec/plugins.md#tracing). default: a core without the surface trace
-  // records nothing, as a trace that is off.
-  trace = () => {},
+  // The emitter of the events of the plugin (ui/events.js). default: a terminal started without a surface (a test) has no
+  // event log, as a log that is off.
+  emitEvent = () => {},
   window: globalWindow = globalThis.window }) {
   // 브라우저 환경에서 필요한 객체들
   const window = globalWindow;
@@ -238,7 +250,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // The trace records each native callback of the input method with every field that it carries, the typed text and the
   // ranges included, because a defect of the input is located only from what was typed and in which order.
   const traceNative = (kind, event) => {
-    trace("ime", { kind, ...event });
+    emitEvent("debug", "plugin.terminal.ime", () => ({ kind, ...event }));
   };
   let cursor = { ...DEFAULT_CURSOR };
   if (!settings || typeof settings.read !== "function") throw new Error("terminal settings reader is required");
@@ -269,20 +281,24 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 터미널 사이드카가 이 표면의 VT 세션을 실행한다. 보내는 모든 메시지는 본문 전체와 결과를, 받는 모든 이벤트는 본문 전체를
   // trace 로 남긴다(docs/spec/diagnostics.md).
   const terminal = {
-    async send(surface, body) {
-      trace("send", { body });
+    async send(surface, body, cids = []) {
+      emitEvent("debug", "plugin.terminal.send", { body });
+      const started = performance.now();
+      const micros = () => Math.round((performance.now() - started) * 1000);
       try {
-        const result = await sidecar.send(surface, body);
-        trace("send.result", { operation: body?.operation, ok: true });
+        const result = await sidecar.send(surface, body, cids);
+        emitEvent("debug", "plugin.terminal.send.result", { operation: body?.operation ?? null, ok: true, micros: micros() });
         return result;
       } catch (error) {
-        trace("send.result", { operation: body?.operation, ok: false, error: error?.message ?? String(error) });
+        const code = typeof error?.code === "number" ? error.code : -32603;
+        emitEvent("warn", "plugin.terminal.send.result", { operation: body?.operation ?? null, ok: false, micros: micros(),
+          error: `${code}: ${error?.message ?? String(error)}` });
         throw error;
       }
     },
     on(surface, handler) {
       return sidecar.on(surface, (body) => {
-        trace("sidecar.event", { body });
+        emitEvent("trace", "plugin.terminal.sidecar.event", () => ({ body }));
         return handler(body);
       });
     },
@@ -296,11 +312,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   if (typeof detachRegions !== "function") throw new TypeError("startTerminal requires detachRegions()");
   // Every event of the image region is recorded with its type and its whole body before its handler runs.
   const onRegion = (type, handler) => region.on(type, (event) => {
-    trace("region", { type, ...event });
+    emitEvent("trace", "plugin.terminal.region", () => ({ type, ...event }));
     return handler(event);
   });
 
   const updateCompose = async (event) => {
+    const cids = cidsOf(event);
     if (!event || typeof event !== "object" || Array.isArray(event) || typeof event.text !== "string") {
       throw new Error("terminal.compose.update requires a text string");
     }
@@ -318,7 +335,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     changed("session");
     changed("compose");
     try {
-      await enqueueInput({ type: "compose", ...compose });
+      await enqueueInput({ type: "compose", ...compose }, cids);
     } catch (error) {
       reportInputError(error);
       throw error;
@@ -341,6 +358,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   const errors = new Map();
   const setError = (source, message) => {
     console.error(message);
+    emitEvent("error", "plugin.terminal.error", { source, message });
     errors.delete(source);
     errors.set(source, message);
     session = { ...session, error: message };
@@ -355,6 +373,15 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   const reportInputError = (error, source = "input") => {
     const message = error instanceof Error ? error.message : String(error);
     setError(source, `terminal input failed: ${message}`);
+  };
+  // The cids of a region event, or null after the error of an invalid value is reported.
+  const regionCids = (event) => {
+    try {
+      return cidsOf(event);
+    } catch (error) {
+      reportInputError(error);
+      return null;
+    }
   };
 
   // 프로그램이 정한 마지막 제목(OSC 0/2). 설정 title 이 program 이면 탭에 보이고, name 이면 지운다.
@@ -499,31 +526,31 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   });
   const recoverInputTail = () => undefined;
 
-  const sendEntry = async (entry) => {
+  const sendEntry = async (entry, cids) => {
     if (entry.type === "insert") {
-      await sendInput(entry.text, terminal, id, encoder);
+      await sendInput(entry.text, terminal, id, encoder, cids);
     } else if (entry.type === "key") {
       await terminal.send(id, keyToMessage(entry.key, entry.text, {
         shift: entry.shift, alt: entry.alt, ctrl: entry.ctrl,
-      }));
+      }), cids);
     } else if (entry.type === "compose") {
       await terminal.send(id, { operation: "input", compose: {
         text: entry.text,
         selectedRange: entry.selectedRange,
         replacementRange: entry.replacementRange,
         attributed: entry.attributed === true,
-      }});
+      }}, cids);
     } else if (entry.type === "command") {
-      await terminal.send(id, { operation: "input", command: { selector: entry.selector } });
+      await terminal.send(id, { operation: "input", command: { selector: entry.selector } }, cids);
     } else if (entry.type === "focus") {
-      await terminal.send(id, { operation: "input", focus: { focused: entry.focused } });
+      await terminal.send(id, { operation: "input", focus: { focused: entry.focused } }, cids);
     } else {
       throw new Error(`unknown terminal input type: ${entry.type}`);
     }
   };
 
-  const scheduleInput = (entry) => {
-    const request = inputChain.then(() => sendEntry(entry));
+  const scheduleInput = (entry, cids) => {
+    const request = inputChain.then(() => sendEntry(entry, cids));
     // 복구된 tail은 다음 요청의 실행만 허용한다. 원래 요청은 호출자에게
     // 거절된 상태로 남는다. native callback은 observeInput으로 그 거절을
     // 관측하고 오류를 세션 status에 발행한다.
@@ -551,26 +578,27 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     }
   };
 
-  const enqueueInput = (entry) => {
+  const enqueueInput = (entry, cids = []) => {
     notifyInput({ kind: "terminal-input", input: entry });
     // The trace records each input with every field that it carries, the text included, and whether it waits for the session.
     const { type, ...fields } = entry;
-    trace("input", { kind: type, ...fields, queued: !sessionOpen, queue: inputQueue.length });
+    emitEvent("debug", "plugin.terminal.input", { kind: type, ...fields, queued: !sessionOpen, queue: inputQueue.length });
     if (!sessionOpen) {
       if (inputQueue.length >= MAX_QUEUE_SIZE) {
+        emitEvent("warn", "plugin.terminal.input.overflow", { kind: type, max: MAX_QUEUE_SIZE, queue: inputQueue.length });
         const error = new Error(`Input queue overflow (max ${MAX_QUEUE_SIZE})`);
         return Promise.reject(error);
       }
-      return new Promise((resolve, reject) => inputQueue.push({ entry, resolve, reject }));
+      return new Promise((resolve, reject) => inputQueue.push({ entry, cids, resolve, reject }));
     }
-    return scheduleInput(entry);
+    return scheduleInput(entry, cids);
   };
 
   const flushInputQueue = () => {
     const pending = inputQueue.splice(0);
-    trace("input.flush", { count: pending.length });
-    for (const { entry, resolve, reject } of pending) {
-      scheduleInput(entry).then(resolve, reject);
+    emitEvent("debug", "plugin.terminal.input.flush", { count: pending.length });
+    for (const { entry, cids, resolve, reject } of pending) {
+      scheduleInput(entry, cids).then(resolve, reject);
     }
   };
 
@@ -579,15 +607,17 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     const { text } = event;
     notifyInput({ kind: "native-insert", text });
     traceNative("native-insert", event);
+    const cids = regionCids(event);
+    if (cids === null) return;
     let composeRequest = null;
     if (compose.text) {
       compose = { text: "", selectedRange: null, replacementRange: null, attributed: false };
       session = { ...session, compose };
       changed("session");
       changed("compose");
-      composeRequest = enqueueInput({ type: "compose", ...compose });
+      composeRequest = enqueueInput({ type: "compose", ...compose }, cids);
     }
-    const insertRequest = enqueueInput({ type: "insert", text });
+    const insertRequest = enqueueInput({ type: "insert", text }, cids);
     if (composeRequest) {
       await Promise.all([observeInput(composeRequest), observeInput(insertRequest)]);
     } else {
@@ -601,12 +631,14 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     const { key, text, shift, alt, ctrl } = event;
     notifyInput({ kind: "native-key", key, text });
     traceNative("native-key", event);
+    const cids = regionCids(event);
+    if (cids === null) return;
     // 네이티브 영역은 항상 불린으로 수정자를 보낸다. 아니면 계약 위반이다.
     if (typeof shift !== "boolean" || typeof alt !== "boolean" || typeof ctrl !== "boolean") {
       setError("key", `invalid key event from region: modifiers must be boolean, got shift:${typeof shift} alt:${typeof alt} ctrl:${typeof ctrl}`);
       return;
     }
-    await observeInput(enqueueInput({ type: "key", key, text, shift, alt, ctrl }));
+    await observeInput(enqueueInput({ type: "key", key, text, shift, alt, ctrl }, cids));
   });
 
   onRegion("error", (event) => {
@@ -626,7 +658,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       reportInputError("native command event requires selector");
       return;
     }
-    await observeInput(enqueueInput({ type: "command", selector: event.selector }));
+    const cids = regionCids(event);
+    if (cids === null) return;
+    await observeInput(enqueueInput({ type: "command", selector: event.selector }, cids));
   });
 
   // Edit 메뉴 동작은 선언된 명령을 레지스트리로 실행한다(docs/spec/terminal-runtime.md).
@@ -968,8 +1002,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 서비스가 교체되어 새 셸을 열 때는 셸이 마지막으로 알린 디렉터리에서 시작해 사람이 이어서 쓴다. 다른 컴퓨터의
   // 디렉터리(path null)는 기록을 지우므로 탭이 시작한 디렉터리로 돌아간다.
   let working = directory;
-  const openSession = () => terminal.send(id, { operation: "open", image: "view", shell,
-    ...(working === null ? {} : { directory: working }) });
+  const openSession = () => {
+    emitEvent("info", "plugin.terminal.session.open", { shell, directory: working });
+    return terminal.send(id, { operation: "open", image: "view", shell,
+      ...(working === null ? {} : { directory: working }) });
+  };
   const settingsPolicy = () => {
     const values = settings.read();
     return {
@@ -1050,7 +1087,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       resolveError("state");
       if (body.cursor !== undefined) applyCursor(body.cursor, body.cursor);
       sessionOpen = true;
-      trace("session.gate", { open: true, event: "state" });
+      emitEvent("info", "plugin.terminal.session.gate", { open: true, event: "state" });
       changed("session");
       flushInputQueue();
     } else if (body.event === "session") {
@@ -1063,7 +1100,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       // A preserved session answers a reattached surface with this event, so the input that waited during the
       // reconnection flows now.
       sessionOpen = true;
-      trace("session.gate", { open: true, event: "session" });
+      emitEvent("info", "plugin.terminal.session.gate", { open: true, event: "session" });
       changed("session");
       flushInputQueue();
     } else if (body.event === "connection") {
@@ -1071,7 +1108,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       // 해소하고 세션을 다시 연다 — 재스폰된 서비스에는 이 표면의 세션이 없다. 실패했으면
       // 연결 끊김과 그 까닭을 세션 오류로 남긴다. 입력은 다시 열릴 때까지 대기열에 쌓인다.
       sessionOpen = false;
-      trace("session.gate", { open: false, event: "connection", connected: body.connected });
+      emitEvent("info", "plugin.terminal.session.gate", { open: false, event: "connection", connected: body.connected });
       if (body.connected === true) {
         if (resolveError("sidecar")) changed("session");
         rerunBootstrap().catch((error) => reportInputError(error));
@@ -1359,6 +1396,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 붙은 영역이 놓인 그림을 notFound 로 표시하지 못하는 일이 없다(core docs/spec/plugins.md#surface-module-ownership).
   async function endSession() {
     await detachRegions();
+    emitEvent("info", "plugin.terminal.close", {});
     await terminal.send(id, { operation: "close" });
   }
 

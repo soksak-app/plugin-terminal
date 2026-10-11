@@ -158,6 +158,14 @@ function createFakeAttachImage() {
   };
 }
 
+/** The emitter of a terminal that stores `[event, fields, level]` for each event, with a builder run and the fields copied as JSON. */
+function recorder(lines) {
+  return (level, name, fields) => {
+    assert.ok(name.startsWith("plugin.terminal."), name);
+    lines.push([name.slice("plugin.terminal.".length), JSON.parse(JSON.stringify(typeof fields === "function" ? fields() : fields)), level]);
+  };
+}
+
 /**
  * 가짜 sidecar 구현.
  */
@@ -3367,7 +3375,7 @@ test("the trace records each input with its text, the session gate and the flush
   let region;
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
-    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, trace: (event, fields) => lines.push([event, fields]),
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, emitEvent: recorder(lines),
   });
   region._trigger("insert", { text: "secret" });
   openSession(sidecar);
@@ -3388,7 +3396,7 @@ test("the trace records each native input callback of the input method with its 
   let region;
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
-    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, trace: (event, fields) => lines.push([event, fields]),
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, emitEvent: recorder(lines),
   });
   openSession(sidecar);
   region._trigger("key", { key: "Char", text: "s", shift: false, alt: false, ctrl: false });
@@ -3412,7 +3420,7 @@ test("the trace records every message sent to the sidecar with its result, every
   let region;
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
-    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, trace: (event, fields) => lines.push([event, JSON.parse(JSON.stringify(fields))]),
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, emitEvent: recorder(lines),
   });
   openSession(sidecar);
   region._trigger("insert", { text: "한" });
@@ -3427,7 +3435,7 @@ test("the trace records every message sent to the sidecar with its result, every
   assert.ok(input, "the input message was not recorded");
   assert.equal(input.body.bytes, Buffer.from(new FakeTextEncoder().encode("한")).toString("base64"));
   const results = of("send.result");
-  assert.ok(results.some((fields) => fields.operation === "input" && fields.ok === true), "the result of the input message was not recorded");
+  assert.ok(results.some((fields) => fields.operation === "input" && fields.ok === true && Number.isInteger(fields.micros) && fields.micros >= 0 && fields.error === undefined), "the result of the input message was not recorded");
   // Every event that the sidecar sends is recorded with its whole body.
   assert.ok(of("sidecar.event").some((fields) => fields.body.event === "directory" && fields.body.path === "/tmp/a"));
   assert.ok(of("sidecar.event").some((fields) => fields.body.event === "state"));
@@ -3443,7 +3451,7 @@ test("a failed send is recorded with its error", async () => {
   let region;
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
-    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, trace: (event, fields) => lines.push([event, JSON.parse(JSON.stringify(fields))]),
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, emitEvent: recorder(lines),
   });
   openSession(sidecar);
   sidecar.failNext(new Error("denied"));
@@ -3451,7 +3459,87 @@ test("a failed send is recorded with its error", async () => {
   await new Promise((resolve) => setImmediate(resolve));
   const failed = lines.filter(([event]) => event === "send.result").map(([, fields]) => fields).find((fields) => fields.ok === false);
   assert.ok(failed, "the failed send was not recorded");
-  assert.equal(failed.error, "denied");
+  assert.equal(failed.error, "-32603: denied");
+  assert.equal(failed.operation, "input");
+  assert.ok(Number.isInteger(failed.micros) && failed.micros >= 0, "the failed send states its time");
+  assert.equal(lines.find(([event, fields]) => event === "send.result" && fields.ok === false)[2], "warn");
+});
+
+test("the session gate, the session open, the refused input, the shown error and the close are stored as events", async () => {
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar();
+  const lines = [];
+  let region;
+  const terminal = await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, emitEvent: recorder(lines),
+  });
+  const of = (name) => lines.filter(([event]) => event === name);
+  assert.deepEqual(of("session.open").map(([, fields, level]) => [fields.shell, fields.directory, level]), [["/bin/sh", null, "info"]]);
+  for (let index = 0; index <= 1024; index += 1) region._trigger("insert", { text: "a" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(of("input.overflow").map(([, fields, level]) => [fields, level]), [[{ kind: "insert", max: 1024, queue: 1024 }, "warn"]]);
+  assert.ok(of("error").some(([, fields, level]) => level === "error" && fields.source === "input" && /queue overflow/.test(fields.message)), "the shown error was not stored");
+  openSession(sidecar);
+  assert.deepEqual(of("session.gate").map(([, fields, level]) => [fields, level]), [[{ open: true, event: "state" }, "info"]]);
+  await terminal.dispose();
+  assert.equal(of("close").length, 1);
+});
+
+test("the input of a region event reaches the sidecar with the cids of that event", async () => {
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar();
+  const sent = [];
+  const send = sidecar.send;
+  sidecar.send = (id, body, cids) => { sent.push({ body, cids }); return send(id, body); };
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(sidecar);
+  region._trigger("key", { key: "Enter", text: "\r", shift: false, alt: false, ctrl: false, cids: ["b1.7"] });
+  region._trigger("insert", { text: "x", cids: ["b1.8"] });
+  region._trigger("key", { key: "Tab", text: "\t", shift: false, alt: false, ctrl: false });
+  await new Promise((resolve) => setImmediate(resolve));
+  const inputs = sent.filter(({ body }) => body.operation === "input");
+  assert.deepEqual(inputs.map(({ cids }) => cids), [["b1.7"], ["b1.8"], []]);
+});
+
+test("the inputs that waited for the session keep their cids when they are sent", async () => {
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar();
+  const sent = [];
+  const send = sidecar.send;
+  sidecar.send = (id, body, cids) => { sent.push({ body, cids }); return send(id, body); };
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder },
+  });
+  region._trigger("key", { key: "Enter", text: "\r", shift: false, alt: false, ctrl: false, cids: ["b1.7"] });
+  region._trigger("insert", { text: "x", cids: ["b1.8"] });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(sent.filter(({ body }) => body.operation === "input"), []);
+  openSession(sidecar);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(sent.filter(({ body }) => body.operation === "input").map(({ cids }) => cids), [["b1.7"], ["b1.8"]]);
+});
+
+test("cids that are no list of identifiers are an observable input error", async () => {
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar, expose,
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(sidecar);
+  region._trigger("insert", { text: "x", cids: "b1.7" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.match(expose.getStatus("terminal.session").readFn().error, /cids/);
+  assert.equal(sidecar.getMessages().filter(({ body }) => body.operation === "input").length, 0);
 });
 
 test("a failed reconnection reports the reason and keeps input queued", async () => {

@@ -4,6 +4,8 @@ import test from "node:test";
 
 const manifest = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
 
+// The event log of a surface context; the events are checked in terminal.test.mjs and events.test.mjs.
+const LOG = Object.fromEntries(["error", "warn", "info", "debug", "trace"].map((level) => [level, () => {}]));
 
 // 터미널은 설정 shell 이 가리키는 셸을 연다.
 // 실제 표면 문맥처럼 매니페스트의 모든 설정 기본값을 읽는다.
@@ -44,7 +46,7 @@ test("terminal module waits for composition presentation, publishes state, and d
   const statuses = new Map();
   const context = {
     surfaceId: "terminal-test",
-    runtime: { sidecar: () => sidecar, theme: (listener) => listener({ scheme: "light",
+    runtime: { log: LOG, sidecar: () => sidecar, theme: (listener) => listener({ scheme: "light",
       tokens: { "--card": "#ffffff", "--fg": "#252735", "--edge": "#d8dbe4", "--rail": "#5962e8" } }), settings: SHELL_SETTINGS },
     composition: {
       async create() {
@@ -105,7 +107,7 @@ test("terminal module disposes its native composition when sidecar open fails", 
   const phases = [];
   const context = {
     surfaceId: "terminal-open-failure",
-    runtime: { sidecar: () => ({
+    runtime: { log: LOG, sidecar: () => ({
       async on() { return () => {}; },
       async send(_id, body) {
         if (body.operation === "open") throw new Error("connect authenticated service: socket missing");
@@ -148,7 +150,7 @@ async function mountOrdered(surfaceId) {
   const commands = new Map();
   const context = {
     surfaceId,
-    runtime: { sidecar: () => ({
+    runtime: { log: LOG, sidecar: () => ({
       async on() { return () => {}; },
       async send(_id, body) { if (body.operation === "close") order.push("session close"); },
     }), theme: () => {}, settings: SHELL_SETTINGS },
