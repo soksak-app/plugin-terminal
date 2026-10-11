@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- P33: `test/census.test.mjs`가 event도 이유도 없는 발생 source가 이 repository의 guard에서 실패함을 보인다.
 - P32.6: 진단 command `terminal.screen.alter`가 다음 screen message를 page가 hash하기 전에 바꾸므로, window check가 core의 replay가 그 변경을 보고하는지 관찰한다.
 - P32.5: frame event가 surface 식별자 대신 sidecar의 session을 적는다.
 - P32.4: frame event가 screen message의 replay segment인 `segment`를 담는다.
