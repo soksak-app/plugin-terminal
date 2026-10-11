@@ -1,5 +1,6 @@
 // Builds the `screen` message of core (docs/spec/terminal-runtime.md#screen-message) from the compact form that the tests write:
-// `lines` holds a string or a row of `{ ch, width, link }` per row, and `rows`, `cols` and `cursor` are filled in when absent.
+// `lines` holds a string or a row of `{ ch, width, link }` per row, and `sequence`, `segment`, `rows`, `cols` and `cursor` are
+// filled in when absent.
 const DEFAULT_CURSOR = { visible: false, row: 0, col: 0, focused: false, shape: "Block", blinking: false };
 
 export function screenMessage(compact) {
@@ -21,5 +22,5 @@ export function screenMessage(compact) {
       });
     }
   }
-  return { sequence: 1, ...rest, rows, cols, cursor, cells };
+  return { sequence: 1, segment: "b1", ...rest, rows, cols, cursor, cells };
 }

@@ -1139,9 +1139,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         return;
       }
       if (runtime.log.enabled("debug")) {
-        const { sequence } = body;
+        const { sequence, segment } = body;
         screenHash(message).then(
-          (hash) => runtime.log.debug("frame", { session: id, sequence, rows: message.rows, cols: message.cols, hash }),
+          (hash) => runtime.log.debug("frame", { session: id, segment, sequence, rows: message.rows, cols: message.cols, hash }),
           (error) => reportInputError(error, "screen"),
         );
       }

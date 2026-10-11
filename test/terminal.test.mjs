@@ -3690,7 +3690,10 @@ test("a screen message is stored as the frame event with the hash of the golden 
     await framesStored(lines, index + 1);
     const [event] = lines.filter(([name]) => name === "frame").slice(-1);
     assert.deepEqual(event && event.slice(1, 3), [
-      { session: "test-session", sequence: vector.message.sequence, rows: vector.message.rows, cols: vector.message.cols, hash: vector.hash },
+      {
+        session: "test-session", segment: vector.message.segment, sequence: vector.message.sequence, rows: vector.message.rows,
+        cols: vector.message.cols, hash: vector.hash,
+      },
       "debug",
     ], vector.name);
   }

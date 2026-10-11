@@ -59,8 +59,8 @@
     },
     "plugin.terminal.frame": {
       "layer": "plugin", "class": "frame", "level": "debug",
-      "fields": { "session": "string", "sequence": "number", "rows": "number", "cols": "number", "hash": "string" },
-      "description": "The screen hash of a screen message of the sidecar: the surface session, the sequence of the message, the size of the grid and the SHA-256 of the screen as 64 lowercase hexadecimal characters."
+      "fields": { "session": "string", "segment": "string", "sequence": "number", "rows": "number", "cols": "number", "hash": "string" },
+      "description": "The screen hash of a screen message of the sidecar: the surface session, the replay segment and the sequence of the message, the size of the grid and the SHA-256 of the screen as 64 lowercase hexadecimal characters."
     },
     "plugin.terminal.error": {
       "layer": "plugin", "class": "lifecycle", "level": "error",
