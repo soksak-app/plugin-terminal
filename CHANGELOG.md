@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P37: a paste awaits the copy of the latest selection release of its surface, which the sidecar sends after the raster that shows the release, so a paste that follows a release returns the text of that selection.
 - P36: a cell of the rows of the screen names each attribute flag of the screen message that is set.
 - P35: a blank cell and the continuation of a wide character have no `ch` in the rows of the screen, so a reader counts their width as spaces again.
 - P33: `test/census.test.mjs` shows that a source of occurrences without an event or a reason fails the guard of this repository.

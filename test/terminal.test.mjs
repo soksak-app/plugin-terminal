@@ -627,6 +627,43 @@ test("the region's paste action runs terminal.paste once", async () => {
   assert.equal(fakeSidecar.getMessages()[0].body.text, "echo pasted");
 });
 
+test("terminal.paste waits for the copy of the released selection", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  // The sidecar sends the copy of a release after the raster that shows it; the clipboard holds the text of the write only then.
+  let copied = false;
+  const clipboard = {
+    read: async () => (copied ? "chosen text" : "earlier text"),
+    writeText: async () => { copied = true; },
+  };
+  const view = createFakeView();
+  await startTerminal({
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose, clipboard,
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(fakeSidecar);
+  // 이벤트 수신자는 남기고 보낸 메시지만 비운다.
+  fakeSidecar.getMessages().length = 0;
+
+  view._trigger("pointerdown", { button: 0, pointerId: 4, clientX: 10, clientY: 12 });
+  view._trigger("pointermove", { pointerId: 4, clientX: 42, clientY: 12 });
+  view._trigger("pointerup", { pointerId: 4, clientX: 42, clientY: 12 });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.ok(fakeSidecar.getMessages().some(({ body }) => body.operation === "selection.end"), "the gesture released the selection");
+
+  const paste = fakeExpose.getCommand("terminal.paste");
+  let pasted = null;
+  const pasting = paste().then(() => { pasted = fakeSidecar.getMessages().at(-1).body.text; });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(pasted, null, "the paste read the clipboard before the copy of the released selection arrived");
+  fakeSidecar.triggerEvent("test-session", { event: "selection.copy", text: "chosen text", userInitiated: true });
+  await pasting;
+  assert.equal(pasted, "chosen text", "the paste sent the text of the released selection");
+});
+
 test("the region's copy action runs terminal.copy and writes the sidecar's selection text once", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();

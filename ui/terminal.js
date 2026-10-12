@@ -469,6 +469,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     if (!clipboard || typeof clipboard.read !== "function") {
       throw new Error("terminal.paste requires a clipboard capability");
     }
+    // 뗌의 복사가 아직 오지 않았으면 그 text가 clipboard에 쓰이기를 기다린다.
+    await waitForCopy;
     const text = await clipboard.read("text");
     if (text !== null) {
       if (typeof text !== "string") throw new Error("text clipboard returned a non-text value");
@@ -532,6 +534,18 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     session = { ...session, selectionReleases: session.selectionReleases + 1 };
     changed("session");
   };
+  // 사이드카는 뗌의 복사 event를 그 뗌이 그린 raster 뒤에 보내므로 복사의 도착이 뗌보다 늦다. 붙어넣기가 clipboard를
+  // 읽기 전에 자기 표면의 마지막 뗌의 복사를 기다리게 한다. 대기자는 뗌마다 하나씩 들어가고 도착하는 복사 event가
+  // 앞에서부터 하나씩 끝낸다. 세션이 닫히면 남은 대기자를 모두 끝낸다.
+  const copyWaiters = [];
+  let waitForCopy = Promise.resolve();
+  const armCopyWait = () => {
+    let settle;
+    waitForCopy = new Promise((resolve) => { settle = resolve; });
+    copyWaiters.push(settle);
+  };
+  const settleNextCopy = () => copyWaiters.shift()?.();
+  const endCopyWaits = () => { while (copyWaiters.length > 0) settleNextCopy(); };
   const handleSelectionCopy = async (body) => {
     if (body.userInitiated !== true) throw new Error("selection.copy requires userInitiated true");
     if (typeof body.text !== "string" || body.text.length === 0) throw new Error("selection.copy requires non-empty text");
@@ -854,7 +868,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     event.preventDefault();
     // 움직이지 않은 클릭은 누른 칸에서 빈 선택을 시작하고 끝낸다. 빈 선택의 뗌은 이전 선택을 지운다.
     if (!started) queuePointerInput({ operation: "selection.start", ...start });
-    queuePointerInput({ operation: "selection.end" });
+    armCopyWait();
+    // 보내기가 실패하면 올 복사 event가 없으므로 대기자를 바로 끝낸다.
+    queuePointerInput({ operation: "selection.end" }).catch(settleNextCopy);
     // 뗌은 선택 연산 뒤에 보낸다. 사이드카는 마우스 보고 제스처의 선택 연산을 뗌 전에 받아 선택하지 않는다.
     try {
       sendMouse("up", selectionPoint(event, true), event, false);
@@ -1275,7 +1291,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     } else if (body.event === "clipboard.rejected") {
       reportInputError(new Error(typeof body.reason === "string" ? body.reason : "program clipboard query rejected"));
     } else if (body.event === "selection.copy") {
-      handleSelectionCopy(body).catch(reportInputError);
+      handleSelectionCopy(body).catch(reportInputError).finally(settleNextCopy);
       releasedSelection();
     } else if (body.event === "copy") {
       // 복사 명령의 답이다. 선택이 없으면 사이드카가 copied false 로 알리고 클립보드는 그대로 둔다.
@@ -1287,6 +1303,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       // 글자를 담지 않은 선택의 해제다. 사이드카가 선택을 지웠고 복사할 것이 없다.
       if (body.copied !== false) reportInputError(new Error("selection.end requires copied false"));
       releasedSelection();
+      settleNextCopy();
     } else if (body.event === "directory") {
       if (typeof body.uri !== "string" || body.uri.length === 0 || (body.path !== null && typeof body.path !== "string")) {
         reportInputError(new Error("invalid directory event from sidecar"));
@@ -1454,6 +1471,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 붙은 영역이 놓인 그림을 notFound 로 표시하지 못하는 일이 없다(core docs/spec/plugins.md#surface-module-ownership).
   async function endSession() {
     await detachRegions();
+    endCopyWaits();
     runtime.log.info("close", {});
     await terminal.send(id, { operation: "close" });
   }
