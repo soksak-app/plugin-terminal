@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- P39: `surface.menu`가 제목 `복사`의 `terminal.copy`와 제목 `붙여넣기`의 `terminal.paste`를 나열하므로, terminal을 오른쪽 클릭하면 둘이 열린다.
 - P40: `make test`가 record 검사 `soksak-records`를 실행하고, CI가 push된 각 commit message의 형식을 `soksak-commits`로 검사한다.
 - P32.2: test가 `@soksak/plugin-api/screen-hash`를 설치된 core release 0.0.11에서 import한다. core checkout에서 그 module을 찾던 hook은 지웠다.
 - P30.5: `@soksak/plugin-api`를 core release 0.0.11에서 받고 `engines.soksak`은 `>=0.0.11`이므로, manifest member `events`가 받아들여지고 `make test`가 설치된 의존성의 event 가드를 실행한다.

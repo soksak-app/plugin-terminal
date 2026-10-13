@@ -61,3 +61,13 @@ test("the terminal exposes its session, input, preedit, paste, file drop, screen
   assert.deepEqual(names("commands"), ["terminal.close", "terminal.copy", "terminal.cursor.set", "terminal.drop", "terminal.focus", "terminal.image.inline.delete", "terminal.input", "terminal.link.open", "terminal.paste", "terminal.screen.read", "terminal.scrollback.set"]);
   assert.deepEqual(names("dom"), ["terminal.scrollbar", "terminal.scrollbar.thumb", "terminal.view"]);
 });
+
+test("the context menu of the surface copies and pastes", () => {
+  assert.deepEqual(manifest.surface.menu, [
+    { command: "terminal.copy", title: "복사" },
+    { command: "terminal.paste", title: "붙여넣기" },
+  ]);
+  for (const { command } of manifest.surface.menu) {
+    assert.ok(manifest.exposes.commands.some((entry) => entry.name === command), `${command} is not declared`);
+  }
+});

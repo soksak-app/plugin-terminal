@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P39: `surface.menu` lists `terminal.copy` titled `복사` and `terminal.paste` titled `붙여넣기`, so a right click on a terminal opens them.
 - P40: `make test` runs the record check `soksak-records`, and CI checks the form of each pushed commit message with `soksak-commits`.
 - P32.2: the tests import `@soksak/plugin-api/screen-hash` from the installed core release 0.0.11; the hook that resolved it from the core checkout is removed.
 - P30.5: `@soksak/plugin-api` comes from the core release 0.0.11 and `engines.soksak` is `>=0.0.11`, so the manifest member `events` is accepted and `make test` runs the event guard from the installed dependency.

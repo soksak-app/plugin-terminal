@@ -7,6 +7,10 @@
   "surface": {
     "module": "ui/terminal-module.js",
     "drop": "terminal.drop",
+    "menu": [
+      { "command": "terminal.copy", "title": "복사" },
+      { "command": "terminal.paste", "title": "붙여넣기" }
+    ],
     "composition": {
       "kind": "hybrid",
       "regions": [
