@@ -887,8 +887,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     const delta = event.deltaMode === 1 ? event.deltaY : event.deltaMode === 2 ? event.deltaY * rows : event.deltaY / cellHeight;
     wheelLines -= delta;
     const lines = Math.trunc(wheelLines);
-    if (lines === 0) return;
     wheelLines -= lines;
+    // Each gesture is recorded, a move that sends no line included, so the log tells a gesture that never arrived from one
+    // that did not add up to a line.
+    runtime.log.debug("wheel", () => ({ deltaY: event.deltaY, deltaMode: event.deltaMode, cellHeight, lines, carry: wheelLines }));
+    if (lines === 0) return;
     const rect = view.getBoundingClientRect();
     const col = Math.min(cols - 1, Math.max(0, Math.floor((event.clientX - rect.left) / cellWidth)));
     const row = Math.min(rows - 1, Math.max(0, Math.floor((event.clientY - rect.top) / cellHeight)));

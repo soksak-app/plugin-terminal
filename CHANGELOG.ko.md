@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- P38.1: 표면이 각 wheel 제스처를 이동량, 칸 높이, 보내는 줄, 남은 이동과 함께 `plugin.terminal.wheel`로 기록하므로, scroll을 보내지 않는 제스처도 log에 남는다.
 - P36: 화면 행의 cell이 screen message에서 켜진 속성 flag를 이름으로 담는다.
 - P35: 화면 행의 빈 칸과 넓은 글자의 이어지는 칸은 `ch`가 없으므로, 읽는 쪽이 다시 그 폭을 공백으로 센다.
 - P33: `test/census.test.mjs`가 event도 이유도 없는 발생 source가 이 repository의 guard에서 실패함을 보인다.

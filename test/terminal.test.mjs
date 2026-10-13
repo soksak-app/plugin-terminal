@@ -729,6 +729,27 @@ test("wheel input is sent as whole scroll lines at the pointer cell and the scre
   assert.deepEqual(fakeExpose.getStatus("terminal.session").readFn().scrollback, { offset: 3, history: 40 });
 });
 
+test("the trace records each wheel gesture with its deltas, the cell height and the lines it sends", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const view = createFakeView();
+  const lines = [];
+  await startTerminal({
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
+  });
+  openSession(fakeSidecar);
+  // A move smaller than a line sends nothing and is recorded with the carry that waits for the next move.
+  view._trigger("wheel", { deltaY: 10, deltaMode: 0, clientX: 20, clientY: 40 });
+  view._trigger("wheel", { deltaY: -48, deltaMode: 0, clientX: 20, clientY: 40 });
+  const wheels = lines.filter(([event]) => event === "wheel").map(([, fields, level]) => [fields, level]);
+  assert.deepEqual(wheels, [
+    [{ deltaY: 10, deltaMode: 0, cellHeight: 16, lines: 0, carry: -0.625 }, "debug"],
+    [{ deltaY: -48, deltaMode: 0, cellHeight: 16, lines: 2, carry: 0.375 }, "debug"],
+  ]);
+  assert.ok(lines.builders.has("wheel"), "the fields of a wheel record are built only when the level is stored");
+});
+
 test("the scrollbar shows the scrollback position and dragging its thumb moves the viewport", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();

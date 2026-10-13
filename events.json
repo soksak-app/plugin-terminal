@@ -12,6 +12,11 @@
       "fields": { "kind": "string", "text?": "string", "key?": "string", "shift?": "boolean", "alt?": "boolean", "ctrl?": "boolean", "selectedRange?": "object|null", "replacementRange?": "object|null", "attributed?": "boolean", "focused?": "boolean", "selector?": "string", "queued": "boolean", "queue": "number" },
       "description": "One input of the terminal with every field it carries; queued is true while the input waits for the session and queue is the number of inputs that wait."
     },
+    "plugin.terminal.wheel": {
+      "layer": "plugin", "class": "input", "level": "debug",
+      "fields": { "deltaY": "number", "deltaMode": "number", "cellHeight": "number", "lines": "number", "carry": "number" },
+      "description": "A wheel gesture over the terminal: its vertical move and unit, the cell height, the whole lines it sends (0 for a move smaller than a line) and the carry that waits for the next move."
+    },
     "plugin.terminal.input.flush": {
       "layer": "plugin", "class": "input", "level": "debug",
       "fields": { "count": "number" },
