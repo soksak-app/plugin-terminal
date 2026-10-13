@@ -2,7 +2,9 @@
 
 [English](CHANGELOG.md)
 
-## 미배포
+## 0.0.11 (2026-10-13)
+
+- P41: event 계약(P30), screen hash(P32), wheel 기록(P38.1), context menu(P39)를 담은 version 0.0.11을 release한다. tag `v0.0.11`이 `terminal-0.0.11.tgz`를 게시한다.
 
 - P39: `surface.menu`가 제목 `복사`의 `terminal.copy`와 제목 `붙여넣기`의 `terminal.paste`를 나열하므로, terminal을 오른쪽 클릭하면 둘이 열린다.
 - P40: `make test`가 record 검사 `soksak-records`를 실행하고, CI가 push된 각 commit message의 형식을 `soksak-commits`로 검사한다.

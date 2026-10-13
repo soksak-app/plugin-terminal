@@ -2,8 +2,9 @@
 
 [한국어](CHANGELOG.ko.md)
 
-## Unreleased
+## 0.0.11 (2026-10-13)
 
+- P41: Release version 0.0.11 with the event contract (P30), the screen hash (P32), the wheel records (P38.1) and the context menu (P39); the tag `v0.0.11` publishes `terminal-0.0.11.tgz`.
 - P39: `surface.menu` lists `terminal.copy` titled `복사` and `terminal.paste` titled `붙여넣기`, so a right click on a terminal opens them.
 - P40: `make test` runs the record check `soksak-records`, and CI checks the form of each pushed commit message with `soksak-commits`.
 - P32.2: the tests import `@soksak/plugin-api/screen-hash` from the installed core release 0.0.11; the hook that resolved it from the core checkout is removed.
