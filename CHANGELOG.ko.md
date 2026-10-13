@@ -2,8 +2,9 @@
 
 [English](CHANGELOG.md)
 
-## Unreleased
+## 0.0.13 (2026-10-14)
 
+- P46: terminal.cursor의 drawn preedit(P45)을 담은 version 0.0.13을 release한다. tag `v0.0.13`이 `terminal-0.0.13.tgz`를 게시한다.
 - P45: `terminal.cursor`가 `screen` event의 `cursor.preedit`에 service가 그린 preedit을 담는다(없으면 null). 다른 형태의 preedit은 잘못된 screen cursor로 거부된다.
 
 ## 0.0.12 (2026-10-14)

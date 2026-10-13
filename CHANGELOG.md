@@ -2,8 +2,9 @@
 
 [한국어](CHANGELOG.ko.md)
 
-## Unreleased
+## 0.0.13 (2026-10-14)
 
+- P46: Release version 0.0.13 with the drawn preedit in `terminal.cursor` (P45); the tag `v0.0.13` publishes `terminal-0.0.13.tgz`.
 - P45: `terminal.cursor` holds the preedit that the service drew in `cursor.preedit` of a `screen` event (null when none), and a preedit of another shape is refused as an invalid screen cursor.
 
 ## 0.0.12 (2026-10-14)
