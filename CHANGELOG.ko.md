@@ -2,11 +2,10 @@
 
 [English](CHANGELOG.md)
 
-## 미출시
+## 0.0.12 (2026-10-14)
 
+- P44: screen read의 frame(P42)을 담은 version 0.0.12를 release한다. terminal service `^0.0.10`을 요구하며, 0.0.10이 `screen` event의 `frame`을 담고, tag `v0.0.12`가 `terminal-0.0.12.tgz`를 게시한다.
 - P42: `terminal.screen.read`가 `{ rows, frame }`을 돌려준다. `frame`은 가장 최근 `screen` event의 `frame`이며(이미지가 없는 표면이면 null), `frame`이 없거나 다른 모양인 `screen` event는 잘못된 screen 메시지로 거부한다.
-## 미배포
-
 - P43: `make hooks`가 `.githooks`를 hook 폴더로 정해, commit message의 형식이나 용어 규칙, record 규칙을 어긴 commit이 만들어질 때 거부된다.
 
 ## 0.0.11 (2026-10-13)

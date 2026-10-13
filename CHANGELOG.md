@@ -2,8 +2,9 @@
 
 [한국어](CHANGELOG.ko.md)
 
-## Unreleased
+## 0.0.12 (2026-10-14)
 
+- P44: Release version 0.0.12 with the frame of a screen read (P42); it requires the terminal service `^0.0.10`, which carries the `frame` of the `screen` event, and the tag `v0.0.12` publishes `terminal-0.0.12.tgz`.
 - P42: `terminal.screen.read` resolves with `{ rows, frame }`, where `frame` is the `frame` of the latest `screen` event (null for a surface without an image), and a `screen` event whose `frame` is absent or of another shape is refused as an invalid screen message.
 - P43: `make hooks` sets `.githooks` as the hook folder, so a commit whose message breaks the commit form or the term rules, or whose records break the record rules, is refused when it is made.
 
