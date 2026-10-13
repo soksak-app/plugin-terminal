@@ -2,6 +2,10 @@
 
 [English](CHANGELOG.md)
 
+## 미배포
+
+- P43: `make hooks`가 `.githooks`를 hook 폴더로 정해, commit message의 형식이나 용어 규칙, record 규칙을 어긴 commit이 만들어질 때 거부된다.
+
 ## 0.0.11 (2026-10-13)
 
 - P41: event 계약(P30), screen hash(P32), wheel 기록(P38.1), context menu(P39)를 담은 version 0.0.11을 release한다. tag `v0.0.11`이 `terminal-0.0.11.tgz`를 게시한다.

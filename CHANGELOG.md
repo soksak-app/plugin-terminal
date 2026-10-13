@@ -2,6 +2,10 @@
 
 [한국어](CHANGELOG.ko.md)
 
+## Unreleased
+
+- P43: `make hooks` sets `.githooks` as the hook folder, so a commit whose message breaks the commit form or the term rules, or whose records break the record rules, is refused when it is made.
+
 ## 0.0.11 (2026-10-13)
 
 - P41: Release version 0.0.11 with the event contract (P30), the screen hash (P32), the wheel records (P38.1) and the context menu (P39); the tag `v0.0.11` publishes `terminal-0.0.11.tgz`.
