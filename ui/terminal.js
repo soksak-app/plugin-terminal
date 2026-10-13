@@ -80,7 +80,7 @@ const NOTIFICATION_POLICIES = new Set(["tab", "system"]);
 const DEFAULT_CURSOR = Object.freeze({
   row: 0, col: 0, shape: "block", visible: true, blinking: false, focused: false,
   blink: "Off", interval: 750, idleTimeout: 5000, unfocused: "hollow", hollow: false,
-  blinkVisible: true, drawn: Object.freeze({ shape: "block", blinking: false }),
+  blinkVisible: true, drawn: Object.freeze({ shape: "block", blinking: false }), preedit: null,
 });
 
 // terminal.session.rejected 에 남기는 거부한 시퀀스의 수.
@@ -107,6 +107,26 @@ function normalizeRange(range) {
     throw new Error("IME range must contain nonnegative integer location and length");
   }
   return { location: range.location, length: range.length };
+}
+
+// The preedit that the service drew in the cursor of a screen event (docs/spec/terminal-runtime.md in core): the composition
+// text, its ranges and the attributed flag, the shape of the compose state. The service omits the key when it draws no preedit.
+function isPreedit(value) {
+  if (value === null || value === undefined) return true;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const isRange = (range) => range === null || range === undefined || (typeof range === "object" && !Array.isArray(range) &&
+    Number.isInteger(range.location) && Number.isInteger(range.length) && range.location >= 0 && range.length >= 0);
+  return typeof value.text === "string" && typeof value.attributed === "boolean" &&
+    isRange(value.selectedRange) && isRange(value.replacementRange);
+}
+
+function normalizePreedit(value) {
+  if (value === null || value === undefined) return null;
+  if (!isPreedit(value)) throw new Error(`cursor.preedit is invalid: ${JSON.stringify(value)}`);
+  return {
+    text: value.text, selectedRange: normalizeRange(value.selectedRange),
+    replacementRange: normalizeRange(value.replacementRange), attributed: value.attributed,
+  };
 }
 
 // 커서 상태를 검사한다. 값은 이전 상태에 사이드카가 알린 필드를 덮은 전체 상태이므로 모든 필드가 있어야 한다.
@@ -150,6 +170,7 @@ function normalizeCursor(value) {
     hollow: boolean("hollow"),
     blinkVisible: boolean("blinkVisible"),
     drawn: cursor.drawn,
+    preedit: normalizePreedit(cursor.preedit),
   };
 }
 
@@ -1133,7 +1154,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         unsupported: session.unsupported,
       };
       resolveError("state");
-      if (body.cursor !== undefined) applyCursor(body.cursor, body.cursor);
+      if (body.cursor !== undefined) applyCursor(body.cursor, { ...body.cursor, preedit: body.cursor.preedit ?? null });
       sessionOpen = true;
       runtime.log.info("session.gate", { open: true, event: "state" });
       changed("session");
@@ -1179,7 +1200,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         const { col, row, visible, focused, shape, blinking } = body.cursor ?? {};
         if (body.cursor && typeof body.cursor === "object" && (!Number.isInteger(col) || !Number.isInteger(row) || typeof visible !== "boolean" ||
           (focused !== undefined && typeof focused !== "boolean") || (blinking !== undefined && typeof blinking !== "boolean") ||
-          (shape !== undefined && !DRAWN_SHAPE_KEYS.has(shape)))) {
+          (shape !== undefined && !DRAWN_SHAPE_KEYS.has(shape)) || !isPreedit(body.cursor.preedit))) {
           throw new Error(`invalid screen cursor from sidecar: ${JSON.stringify(body.cursor)}`);
         }
         if (!isScreenFrame(body.frame)) {
@@ -1236,7 +1257,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         const drawn = { ...cursor.drawn };
         if (shape !== undefined) drawn.shape = DRAWN_SHAPES[shape] ?? shape;
         if (blinking !== undefined) drawn.blinking = blinking;
-        applyCursor(body.cursor, { col, row, visible, ...(focused === undefined ? {} : { focused }), drawn });
+        applyCursor(body.cursor, {
+          col, row, visible, ...(focused === undefined ? {} : { focused }), drawn, preedit: body.cursor.preedit ?? null,
+        });
         if (resolveError("screen")) changed("session");
       }
       if (pendingScreenRead) {

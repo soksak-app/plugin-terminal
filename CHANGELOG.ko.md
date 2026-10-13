@@ -2,6 +2,10 @@
 
 [English](CHANGELOG.md)
 
+## Unreleased
+
+- P45: `terminal.cursor`가 `screen` event의 `cursor.preedit`에 service가 그린 preedit을 담는다(없으면 null). 다른 형태의 preedit은 잘못된 screen cursor로 거부된다.
+
 ## 0.0.12 (2026-10-14)
 
 - P44: screen read의 frame(P42)을 담은 version 0.0.12를 release한다. terminal service `^0.0.10`을 요구하며, 0.0.10이 `screen` event의 `frame`을 담고, tag `v0.0.12`가 `terminal-0.0.12.tgz`를 게시한다.

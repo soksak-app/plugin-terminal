@@ -2443,7 +2443,7 @@ test("cursor state exposes typed shape and blink policy while routing the caret"
   assert.deepEqual(fakeExpose.getStatus("terminal.cursor").readFn(), {
     row: 1, col: 2, shape: "beam", visible: true, blinking: true, focused: true,
     blink: "Always", interval: 700, idleTimeout: 1200, unfocused: "hollow", hollow: true,
-    blinkVisible: true, drawn: { shape: "block", blinking: false },
+    blinkVisible: true, drawn: { shape: "block", blinking: false }, preedit: null,
   });
   assert.deepEqual(regionReference._caret, { x: 18, y: 18, width: 9, height: 18 });
 });
@@ -2471,6 +2471,46 @@ test("the drawn cursor follows the screen event while the policy shape stays", a
     cursor: { col: 1, row: 0, visible: true, focused: false, shape: "HollowBlock", blinking: false },
   });
   assert.deepEqual(fakeExpose.getStatus("terminal.cursor").readFn().drawn, { shape: "hollowBlock", blinking: false });
+});
+
+test("the preedit drawn by the service is exposed in terminal.cursor", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose,
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(fakeSidecar);
+  const cursor = { col: 2, row: 1, visible: true, focused: true, shape: "Block", blinking: false };
+  const preedit = { text: "한", selectedRange: { location: 0, length: 1 }, replacementRange: null, attributed: false };
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], cursor: { ...cursor, preedit } });
+  assert.deepEqual(fakeExpose.getStatus("terminal.cursor").readFn().preedit, preedit,
+    "terminal.cursor holds the preedit that the service drew");
+
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], cursor: { ...cursor, preedit: null } });
+  assert.equal(fakeExpose.getStatus("terminal.cursor").readFn().preedit, null, "a null preedit is null");
+
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], cursor });
+  assert.equal(fakeExpose.getStatus("terminal.cursor").readFn().preedit, null, "a cursor without a preedit key is null");
+
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], cursor: { ...cursor, preedit } });
+  const before = fakeExpose.getStatus("terminal.cursor").readFn();
+  const invalid = [
+    ["a string", "한"],
+    ["an array", [preedit]],
+    ["a text that is not a string", { text: 1, selectedRange: null, replacementRange: null, attributed: false }],
+    ["a missing attributed flag", { text: "한", selectedRange: null, replacementRange: null }],
+    ["a negative range location", { text: "한", selectedRange: { location: -1, length: 0 }, replacementRange: null, attributed: false }],
+  ];
+  for (const [name, value] of invalid) {
+    fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], cursor: { ...cursor, preedit: value } });
+    assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "",
+      /^terminal input failed: invalid screen cursor from sidecar: /, `${name} was not refused`);
+    assert.deepEqual(fakeExpose.getStatus("terminal.cursor").readFn(), before, `${name} changed terminal.cursor`);
+  }
 });
 
 test("an OSC 22 pointer event sets the view cursor and the session pointer", async () => {

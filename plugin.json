@@ -278,7 +278,7 @@
       },
       {
         "name": "terminal.cursor",
-        "description": "The terminal cursor position, the rendering policy that the sidecar applied and presented, and the shape and blink request that the sidecar drew after the program's request and the focus rule.",
+        "description": "The terminal cursor position, the rendering policy that the sidecar applied and presented, and the shape and blink request that the sidecar drew after the program's request and the focus rule, and the preedit that the sidecar drew, or null.",
         "schema": {
           "type": "object",
           "properties": {
@@ -299,6 +299,15 @@
               "properties": {
                 "shape": { "type": "string", "enum": ["block", "underline", "beam", "hollowBlock", "hidden"] },
                 "blinking": { "type": "boolean" }
+              }
+            },
+            "preedit": {
+              "type": ["object", "null"],
+              "properties": {
+                "text": { "type": "string" },
+                "selectedRange": { "type": ["object", "null"] },
+                "replacementRange": { "type": ["object", "null"] },
+                "attributed": { "type": "boolean" }
               }
             }
           }

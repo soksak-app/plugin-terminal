@@ -2,6 +2,10 @@
 
 [한국어](CHANGELOG.ko.md)
 
+## Unreleased
+
+- P45: `terminal.cursor` holds the preedit that the service drew in `cursor.preedit` of a `screen` event (null when none), and a preedit of another shape is refused as an invalid screen cursor.
+
 ## 0.0.12 (2026-10-14)
 
 - P44: Release version 0.0.12 with the frame of a screen read (P42); it requires the terminal service `^0.0.10`, which carries the `frame` of the `screen` event, and the tag `v0.0.12` publishes `terminal-0.0.12.tgz`.
