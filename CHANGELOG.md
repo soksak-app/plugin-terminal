@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P40: `make test` runs the record check `soksak-records`, and CI checks the form of each pushed commit message with `soksak-commits`.
 - P32.2: the tests import `@soksak/plugin-api/screen-hash` from the installed core release 0.0.11; the hook that resolved it from the core checkout is removed.
 - P30.5: `@soksak/plugin-api` comes from the core release 0.0.11 and `engines.soksak` is `>=0.0.11`, so the manifest member `events` is accepted and `make test` runs the event guard from the installed dependency.
 - P38.1: the surface records each wheel gesture as `plugin.terminal.wheel` with its deltas, the cell height, the lines it sends and the carry, so a gesture that sends no scroll is in the log.
