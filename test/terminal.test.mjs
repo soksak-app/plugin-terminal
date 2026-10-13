@@ -1564,7 +1564,7 @@ test("terminal.screen.read sends request and returns lines on screen event", asy
     fakeSidecar.triggerEvent("test-session", { event: "screen", lines: ["line1", "line2", "line3"] });
   }, 10);
 
-  const rows = await screenReadCommand();
+  const { rows } = await screenReadCommand();
   assert.deepEqual(rows.map((row) => row.map((cell) => cell.ch).join("")), ["line1", "line2", "line3"],
     "screen.read returns the cell rows of the sidecar screen event");
 
@@ -1573,6 +1573,65 @@ test("terminal.screen.read sends request and returns lines on screen event", asy
   const screenReadMessage = messages.find((m) => m.body.operation === "screen.read");
   assert(screenReadMessage, "screen.read message sent to sidecar");
 });
+
+// The terminal of the frame cases: a read starts first and the screen event that answers it is sent after it.
+async function startScreenReadTerminal() {
+  FakeResizeObserver.reset();
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
+    scale: 1, window: { ResizeObserver: FakeResizeObserver, TextEncoder: FakeTextEncoder, devicePixelRatio: 1 },
+  });
+  FakeResizeObserver.triggerAll();
+  const read = (event) => {
+    const pending = expose.getCommand("terminal.screen.read")();
+    sidecar.triggerEvent("test-session", event);
+    return pending;
+  };
+  return { sidecar, expose, read };
+}
+
+// The frame that the service names with a screen event (docs/spec/terminal-runtime.md in core).
+const SCREEN_FRAME = { generation: 3, raster: 7, sequence: 12 };
+
+test("terminal.screen.read resolves with the frame of the screen event", async () => {
+  const { read } = await startScreenReadTerminal();
+  const result = await read({ event: "screen", lines: ["line1"], frame: SCREEN_FRAME });
+  assert.deepEqual(result.rows.map((row) => row.map((cell) => cell.ch).join("")), ["line1"]);
+  assert.deepEqual(result.frame, SCREEN_FRAME, "terminal.screen.read did not return the frame of the screen event");
+});
+
+test("terminal.screen.read resolves with a null frame when the surface has no image", async () => {
+  const { read } = await startScreenReadTerminal();
+  const result = await read({ event: "screen", lines: ["line1"], frame: null });
+  assert.equal(result.frame, null, "a null frame of the screen event did not resolve as null");
+});
+
+// A frame of another shape is refused through the error path of an invalid cursor and is not passed on to the pending read.
+const INVALID_FRAMES = [
+  ["an absent frame", undefined],
+  ["a frame that is not an object", 7],
+  ["a frame without sequence", { generation: 1, raster: 2 }],
+  ["a negative sequence", { generation: 1, raster: 2, sequence: -1 }],
+  ["a non-integer raster", { generation: 1, raster: 2.5, sequence: 0 }],
+  ["a string generation", { generation: "1", raster: 2, sequence: 0 }],
+  ["an extra member", { generation: 1, raster: 2, sequence: 0, cells: 1 }],
+];
+
+for (const [name, frame] of INVALID_FRAMES) {
+  test(`a screen event with ${name} is refused and terminal.screen.read waits for the next valid screen event`, async () => {
+    const { expose, sidecar } = await startScreenReadTerminal();
+    const message = `terminal input failed: invalid screen frame from sidecar: ${JSON.stringify(frame)}`;
+    const pending = expose.getCommand("terminal.screen.read")();
+    sidecar.triggerEvent("test-session", { event: "screen", lines: ["bad"], frame });
+    assert.equal(expose.getStatus("terminal.session").readFn().error, message, `${name} was not refused`);
+    sidecar.triggerEvent("test-session", { event: "screen", lines: ["good"], frame: SCREEN_FRAME });
+    const result = await pending;
+    assert.deepEqual(result.rows.map((row) => row.map((cell) => cell.ch).join("")), ["good"], `${name} was passed on to the read`);
+    assert.equal(expose.getStatus("terminal.session").readFn().error, undefined, "a valid screen event did not resolve the error");
+  });
+}
 
 // 테스트 7: sidecar state event → terminal.session 상태가 그 값을 갖는다
 test("Sidecar state event updates terminal.session status", async () => {

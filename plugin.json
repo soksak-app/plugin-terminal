@@ -347,18 +347,27 @@
       },
       {
         "name": "terminal.screen.read",
-        "description": "Requests the current terminal screen and returns its cell rows.",
+        "description": "Requests the current terminal screen and returns its cell rows and the frame that shows them.",
         "params": {
           "type": "object",
           "properties": {}
         },
         "result": {
-          "type": "array",
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": { "ch": { "type": "string" }, "width": { "type": "integer" }, "link": { "type": "string" }, "bold": { "type": "boolean" }, "dim": { "type": "boolean" }, "italic": { "type": "boolean" }, "underline": { "type": "boolean" }, "blink": { "type": "boolean" }, "inverse": { "type": "boolean" }, "hidden": { "type": "boolean" }, "strikethrough": { "type": "boolean" } }
+          "type": "object",
+          "properties": {
+            "rows": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": { "ch": { "type": "string" }, "width": { "type": "integer" }, "link": { "type": "string" }, "bold": { "type": "boolean" }, "dim": { "type": "boolean" }, "italic": { "type": "boolean" }, "underline": { "type": "boolean" }, "blink": { "type": "boolean" }, "inverse": { "type": "boolean" }, "hidden": { "type": "boolean" }, "strikethrough": { "type": "boolean" } }
+                }
+              }
+            },
+            "frame": {
+              "type": ["object", "null"],
+              "properties": { "generation": { "type": "integer" }, "raster": { "type": "integer" }, "sequence": { "type": "integer" } }
             }
           }
         }

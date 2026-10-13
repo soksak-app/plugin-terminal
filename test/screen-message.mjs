@@ -1,11 +1,14 @@
 // Builds the `screen` message of core (docs/spec/terminal-runtime.md#screen-message) from the compact form that the tests write:
 // `lines` holds a string or a row of `{ ch, width, link }` per row, and `sequence`, `segment`, `rows`, `cols` and `cursor` are
-// filled in when absent.
+// filled in when absent. A message without the `frame` key gets the null frame of a surface without an image; a `frame` key
+// that is present is passed on unchanged, undefined included.
 const DEFAULT_CURSOR = { visible: false, row: 0, col: 0, focused: false, shape: "Block", blinking: false };
 
 export function screenMessage(compact) {
-  if (compact.event !== "screen" || !Array.isArray(compact.lines)) return compact;
-  const { lines, ...rest } = compact;
+  if (compact.event !== "screen") return compact;
+  const framed = "frame" in compact ? compact : { ...compact, frame: null };
+  if (!Array.isArray(framed.lines)) return framed;
+  const { lines, ...rest } = framed;
   const rowsOfCells = lines.map((line) => (typeof line === "string"
     ? [...line].map((ch) => ({ ch, width: 1 }))
     : line));

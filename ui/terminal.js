@@ -90,6 +90,15 @@ const REJECTED_KEPT = 8;
 const DRAWN_SHAPES = { Block: "block", Underline: "underline", Beam: "beam", HollowBlock: "hollowBlock", Hidden: "hidden" };
 const DRAWN_SHAPE_KEYS = new Set([...Object.keys(DRAWN_SHAPES), ...Object.values(DRAWN_SHAPES)]);
 
+// The frame of a screen event (docs/spec/terminal-runtime.md in core): null for a surface without an image, or an object of
+// exactly the non-negative integers generation, raster and sequence, which names the frame that shows the screen.
+const SCREEN_FRAME_KEYS = ["generation", "raster", "sequence"];
+function isScreenFrame(frame) {
+  if (frame === null) return true;
+  if (typeof frame !== "object" || Array.isArray(frame) || Object.keys(frame).length !== SCREEN_FRAME_KEYS.length) return false;
+  return SCREEN_FRAME_KEYS.every((key) => Number.isInteger(frame[key]) && frame[key] >= 0);
+}
+
 function normalizeRange(range) {
   if (range === null || range === undefined) return null;
   if (!range || typeof range !== "object" || Array.isArray(range) ||
@@ -252,6 +261,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     theme: "dark",
   };
   let screen = [];
+  // The frame of the latest screen event, which terminal.screen.read returns with the rows.
+  let screenFrame = null;
   let compose = session.compose;
   // 네이티브 입력 callback 과 터미널 입력 작업을 받는 함수. 진단 빌드의 진단 모듈만 등록한다.
   const inputObservers = new Set();
@@ -1171,6 +1182,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
           (shape !== undefined && !DRAWN_SHAPE_KEYS.has(shape)))) {
           throw new Error(`invalid screen cursor from sidecar: ${JSON.stringify(body.cursor)}`);
         }
+        if (!isScreenFrame(body.frame)) {
+          throw new Error(`invalid screen frame from sidecar: ${JSON.stringify(body.frame)}`);
+        }
         message = screenFromMessage(body);
       } catch (error) {
         reportInputError(error, "screen");
@@ -1197,6 +1211,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         });
         return rows;
       }, []);
+      screenFrame = body.frame;
       changed("screen");
       if (typeof body.background === "string" && body.background !== terminalBackground) {
         terminalBackground = body.background;
@@ -1225,7 +1240,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         if (resolveError("screen")) changed("session");
       }
       if (pendingScreenRead) {
-        pendingScreenRead(screen);
+        pendingScreenRead({ rows: screen, frame: screenFrame });
         pendingScreenRead = null;
       }
     } else if (body.event === "cursor") {

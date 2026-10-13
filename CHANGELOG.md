@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P42: `terminal.screen.read` resolves with `{ rows, frame }`, where `frame` is the `frame` of the latest `screen` event (null for a surface without an image), and a `screen` event whose `frame` is absent or of another shape is refused as an invalid screen message.
 - P43: `make hooks` sets `.githooks` as the hook folder, so a commit whose message breaks the commit form or the term rules, or whose records break the record rules, is refused when it is made.
 
 ## 0.0.11 (2026-10-13)

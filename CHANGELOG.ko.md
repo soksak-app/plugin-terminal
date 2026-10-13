@@ -2,6 +2,9 @@
 
 [English](CHANGELOG.md)
 
+## 미출시
+
+- P42: `terminal.screen.read`가 `{ rows, frame }`을 돌려준다. `frame`은 가장 최근 `screen` event의 `frame`이며(이미지가 없는 표면이면 null), `frame`이 없거나 다른 모양인 `screen` event는 잘못된 screen 메시지로 거부한다.
 ## 미배포
 
 - P43: `make hooks`가 `.githooks`를 hook 폴더로 정해, commit message의 형식이나 용어 규칙, record 규칙을 어긴 commit이 만들어질 때 거부된다.
