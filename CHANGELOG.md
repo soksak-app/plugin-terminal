@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P30.5: `@soksak/plugin-api` comes from the core release 0.0.11 and `engines.soksak` is `>=0.0.11`, so the manifest member `events` is accepted and `make test` runs the event guard from the installed dependency.
 - P38.1: the surface records each wheel gesture as `plugin.terminal.wheel` with its deltas, the cell height, the lines it sends and the carry, so a gesture that sends no scroll is in the log.
 - P37: a paste awaits the copy of the latest selection release of its surface, which the sidecar sends after the raster that shows the release, so a paste that follows a release returns the text of that selection.
 - P36: a cell of the rows of the screen names each attribute flag of the screen message that is set.
