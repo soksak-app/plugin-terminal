@@ -2,6 +2,10 @@
 
 [English](CHANGELOG.md)
 
+## 미배포
+
+- P48: 새 커밋의 작성자는 `min-0-max <max@blue.tools>`다. `.mailmap`이 이전 이름 `min-median-max`를 잇고, 게시된 커밋은 다시 쓰지 않는다.
+
 ## 0.0.14 (2026-10-18)
 
 - P47: terminal service `^0.0.11`을 요구하는 version 0.0.14를 release한다. service 0.0.11은 그려지는 surface에 대한 `image` 없는 `open`을 거부하므로, card의 tab이 가렸다가 다시 보인 terminal이 출력을 그린다. tag `v0.0.14`가 `terminal-0.0.14.tgz`를 게시한다.

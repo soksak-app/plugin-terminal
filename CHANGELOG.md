@@ -2,6 +2,10 @@
 
 [한국어](CHANGELOG.ko.md)
 
+## Unreleased
+
+- P48: new commits are authored as `min-0-max <max@blue.tools>`; `.mailmap` maps the former name `min-median-max`, and published commits are not rewritten.
+
 ## 0.0.14 (2026-10-18)
 
 - P47: Release version 0.0.14, which requires the terminal service `^0.0.11`; the service 0.0.11 refuses an `open` without `image` for a drawn surface, so a terminal shown again after a tab of its card hid it draws its output; the tag `v0.0.14` publishes `terminal-0.0.14.tgz`.
