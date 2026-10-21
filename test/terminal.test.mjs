@@ -21,13 +21,19 @@ const screenFromMessage = (message) => {
   }
   return { ...message, frame: message.frame ?? null };
 };
+const alteredScreenMessage = {
+  ...SCREEN_MESSAGE.message,
+  cells: [{ ...SCREEN_MESSAGE.message.cells[0], attributes: 1 }],
+};
+const screenHashCases = [
+  { input: SCREEN_MESSAGE.message, output: SCREEN_MESSAGE.hash },
+  { input: alteredScreenMessage, output: "terminal-test-altered-screen-hash" },
+];
 const screenHash = async (screen) => {
   const { frame: _frame, ...message } = screen;
-  if (isDeepStrictEqual(message, SCREEN_MESSAGE.message)) return SCREEN_MESSAGE.hash;
-  if (message.sequence === SCREEN_MESSAGE.message.sequence && message.segment === SCREEN_MESSAGE.message.segment && message.cells?.[0]?.attributes === 1) {
-    return "terminal-test-altered-screen-hash";
-  }
-  return "terminal-test-screen-hash";
+  const found = screenHashCases.find(({ input }) => isDeepStrictEqual(message, input));
+  if (!found) throw new Error("screenHash fake has no literal case for this input");
+  return found.output;
 };
 const api = "@" + "soksak/plugin-api";
 mock.module(api, { exports: { shellQuotePath } });
@@ -192,7 +198,7 @@ function createFakeAttachImage() {
  */
 function recorder(lines) {
   lines.builders = new Set();
-  return Object.fromEntries([["enabled", () => !lines.closed], ...["error", "warn", "info", "debug", "trace"].map((level) => [level, (name, fields, options = {}) => {
+  return Object.fromEntries([["enabled", (level) => !lines.closed && (level !== "debug" || lines.screenHashEnabled === true)], ...["error", "warn", "info", "debug", "trace"].map((level) => [level, (name, fields, options = {}) => {
     assert.ok(!name.startsWith("plugin."), `the log adds the prefix plugin.terminal., got ${name}`);
     if (typeof fields === "function") lines.builders.add(name);
     lines.push([name, JSON.parse(JSON.stringify(typeof fields === "function" ? fields() : fields)), level, options.cids]);
@@ -3904,6 +3910,7 @@ async function framesStored(lines, count) {
 }
 
 async function startScreenTerminal(lines) {
+  lines.screenHashEnabled = true;
   const sidecar = createFakeSidecar();
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar,
@@ -3932,6 +3939,7 @@ test("a screen message is stored as the frame event with the hash of the golden 
 
 test("terminal.screen.alter changes the next screen message before the page hashes it, as a change on the way would", async () => {
   const lines = [];
+  lines.screenHashEnabled = true;
   const sidecar = createFakeSidecar();
   const expose = createFakeExpose();
   await startTerminal({
