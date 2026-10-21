@@ -6,7 +6,8 @@ import * as terminalDiagnostics from "../ui/terminal-diagnostics.js";
 import { screenMessage } from "./screen-message.mjs";
 
 const terminalManifest = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
-const SCREEN_MESSAGE = JSON.parse(readFileSync(new URL("./fixtures/screen-message.json", import.meta.url), "utf8"));
+const SCREEN_MESSAGES = JSON.parse(readFileSync(new URL("./fixtures/screen-message.json", import.meta.url), "utf8"));
+const SCREEN_MESSAGE = SCREEN_MESSAGES.vectors[0];
 
 // Literal SDK fakes keep this unit test at the plugin boundary; core owns the published contract cases.
 const shellQuotePath = (path) => {

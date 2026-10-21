@@ -1,25 +1,29 @@
 {
-  "name": "empty one cell",
-  "message": {
-    "event": "screen",
-    "sequence": 2,
-    "segment": "b1",
-    "rows": 1,
-    "cols": 1,
-    "cursor": {
-      "row": 0,
-      "col": 0,
-      "visible": true
-    },
-    "cells": [
-      {
-        "grapheme": "",
-        "width": 1,
-        "fg": null,
-        "bg": null,
-        "attributes": 0
-      }
-    ]
-  },
-  "hash": "0b1b5a155fc09ab5d44c3aab7da1069acfbd4bb865de6831a15f2cfb8f8161a0"
+  "vectors": [
+    {
+      "name": "empty one cell",
+      "message": {
+        "event": "screen",
+        "sequence": 2,
+        "segment": "b1",
+        "rows": 1,
+        "cols": 1,
+        "cursor": {
+          "row": 0,
+          "col": 0,
+          "visible": true
+        },
+        "cells": [
+          {
+            "grapheme": "",
+            "width": 1,
+            "fg": null,
+            "bg": null,
+            "attributes": 0
+          }
+        ]
+      },
+      "hash": "0b1b5a155fc09ab5d44c3aab7da1069acfbd4bb865de6831a15f2cfb8f8161a0"
+    }
+  ]
 }
