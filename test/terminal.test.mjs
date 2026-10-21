@@ -1,58 +1,14 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import test, { mock } from "node:test";
-import { isDeepStrictEqual } from "node:util";
-import * as terminalDiagnostics from "../ui/terminal-diagnostics.js";
+import test from "node:test";
+import * as terminalDiagnostics from "../build/test/ui/terminal-diagnostics.js";
 import { screenMessage } from "./screen-message.mjs";
 
 const terminalManifest = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
 const SCREEN_MESSAGES = JSON.parse(readFileSync(new URL("./fixtures/screen-message.json", import.meta.url), "utf8"));
 const SCREEN_MESSAGE = SCREEN_MESSAGES.vectors[0];
 
-// Literal SDK fakes keep this unit test at the plugin boundary; core owns the published contract cases.
-const shellQuotePathCases = [
-  {
-    "input": "/tmp/a b.txt",
-    "output": "'/tmp/a b.txt'"
-  },
-  {
-    "input": "/tmp/quote'name.txt",
-    "output": "'/tmp/quote'\\''name.txt'"
-  },
-  {
-    "input": "/tmp/dropped file.txt",
-    "output": "'/tmp/dropped file.txt'"
-  }
-];
-const shellQuotePath = (path) => {
-  const found = shellQuotePathCases.find(({ input }) => input === path);
-  if (!found) throw new Error("shellQuotePath fake has no literal case for this path");
-  return found.output;
-};
-const screenFromMessage = (message) => {
-  if (message.event !== "screen") throw new Error("screen message: event must be \"screen\", found " + JSON.stringify(message.event));
-  if (!Number.isInteger(message.sequence) || message.sequence < 1) {
-    throw new Error("screen message: sequence must be an integer from 1, found " + String(message.sequence));
-  }
-  return { ...message, frame: message.frame ?? null };
-};
-const alteredScreenMessage = {
-  ...SCREEN_MESSAGE.message,
-  cells: [{ ...SCREEN_MESSAGE.message.cells[0], attributes: 1 }],
-};
-const screenHashCases = [
-  { input: SCREEN_MESSAGE.message, output: SCREEN_MESSAGE.hash },
-  { input: alteredScreenMessage, output: "terminal-test-altered-screen-hash" },
-];
-const screenHash = async (screen) => {
-  const { frame: _frame, ...message } = screen;
-  const found = screenHashCases.find(({ input }) => isDeepStrictEqual(message, input));
-  if (!found) throw new Error("screenHash fake has no literal case for this input");
-  return found.output;
-};
-mock.module("@soksak/plugin-api", { exports: { shellQuotePath } });
-mock.module("@soksak/plugin-api/screen-hash", { exports: { screenFromMessage, screenHash } });
-const { startTerminal: realStartTerminal } = await import("../ui/terminal.js?terminal-test");
+const { startTerminal: realStartTerminal } = await import("../build/test/ui/terminal.js?terminal-test");
 
 // Tests without explicit settings use the manifest defaults and /bin/sh.
 const SHELL_SETTINGS = {
@@ -263,70 +219,29 @@ function createFakeSidecar({ delay = () => 0 } = {}) {
   };
 }
 
-/**
- * A literal fake of the binder surface used by the terminal (core docs/spec/exposure.md, User interface).
- */
+/** A plugin-local registry for recorded terminal registrations and user-driven command calls. */
 function createFakeExpose() {
   const statuses = new Map();
   const commands = new Map();
   const doms = new Map();
-  const binds = [];
-  const listeners = [];
-  const declared = new Set(terminalManifest.exposes.commands.map(({ name }) => name));
-  const check = (name) => { if (!declared.has(name)) throw new Error(`command ${name} is not declared`); };
-  const run = (name, params = {}) => {
-    check(name);
-    const command = commands.get(name);
-    assert.ok(command, `command ${name} must be registered before binding`);
-    return command(params);
-  };
-  const mark = (element, name) => {
-    check(name);
-    element.dataset.command = name;
-    return element;
-  };
-  const bind = (element, name, params = {}, { event = "click", stop = false, when, failed } = {}) => {
-    mark(element, name);
-    const listener = (input) => {
-      if (when && !when(input)) return;
-      if (stop) input.stopPropagation();
-      const result = run(name, typeof params === "function" ? params(input) : params);
-      return failed ? Promise.resolve(result).catch(failed) : result;
-    };
-    element.addEventListener(event, listener);
-    listeners.push(() => element.removeEventListener(event, listener));
-    return element;
-  };
-
   return {
-    status: async function(name, readFn, watchFn) {
-      statuses.set(name, { readFn, watchFn });
-      return Promise.resolve();
+    async status(name, readFn, watchFn) { statuses.set(name, { readFn, watchFn }); },
+    async command(name, handler) { commands.set(name, handler); },
+    async dom(name, element) { doms.set(name, element); },
+    async mark(element, name) { element.dataset.command = name; return element; },
+    async run(name, params = {}) {
+      const handler = commands.get(name);
+      if (!handler) throw new Error("terminal command is not registered: " + name);
+      return handler(params);
     },
-    command: async function(name, handler) {
-      commands.set(name, handler);
-      return Promise.resolve();
-    },
-    dom: async function(name, element) {
-      doms.set(name, element);
-      return Promise.resolve();
-    },
-    bind: async function(...args) { binds.push(args); return bind(...args); },
-    mark: async function(element, name) { return mark(element, name); },
-    run: async function(name, params) { return run(name, params); },
-    dispose: async function() { listeners.splice(0).forEach((remove) => remove()); },
+    async dispose() {},
     getStatus: (name) => statuses.get(name),
     getCommand: (name) => commands.get(name),
     getDom: (name) => doms.get(name),
     getStatuses: () => statuses,
     getCommands: () => commands,
     getDoms: () => doms,
-    getBinds: () => binds,
-    reset: () => {
-      statuses.clear();
-      commands.clear();
-      doms.clear();
-    },
+    reset() { statuses.clear(); commands.clear(); doms.clear(); },
   };
 }
 
@@ -1305,7 +1220,7 @@ test("Region key event for ArrowUp sends Up key (no escape sequences)", async ()
   }
 });
 
-test("terminal focus remains a command owned by the card, not a second pointerdown binder", async () => {
+test("terminal.focus remains available as a command for the card", async () => {
   FakeResizeObserver.reset();
   const fakeAttachImage = createFakeAttachImage();
   const fakeSidecar = createFakeSidecar();
@@ -1331,8 +1246,6 @@ test("terminal focus remains a command owned by the card, not a second pointerdo
     window: fakeWindow,
   });
 
-  assert.equal(fakeExpose.getBinds().length, 0,
-    "terminal must not bind pointerdown to focus because the card owns that gesture");
   assert.equal(typeof fakeExpose.getCommand("terminal.focus"), "function",
     "terminal.focus remains available for the card focus command");
 });
@@ -1352,7 +1265,6 @@ test("terminal pointerdown prevents DOM focus and still bubbles to the card", as
   const event = view._trigger("pointerdown");
   assert.equal(event.defaultPrevented, true);
   assert.equal(view._parent.bubbleCount, 1);
-  assert.equal(expose.getBinds().length, 0);
 });
 
 test("terminal pointer drag sends one complete selection gesture to the sidecar", async () => {
@@ -2238,8 +2150,8 @@ test("screen events update terminal.cursor and move the input-method caret", asy
 
   fakeSidecar.triggerEvent("test-session", {
     event: "screen",
-    cols: 100,
-    rows: 50,
+    cols: 8,
+    rows: 4,
     cursor: { col: 7, row: 3, shape: "Block", visible: true, blinking: false, blink_visible: true, focused: true, preedit: null },
     lines: [],
   });
@@ -3983,7 +3895,33 @@ test("a closed gate of the event log computes no hash and stores no frame event"
   assert.equal(lines.filter(([name]) => name === "frame").length, 0);
 });
 
-test("a screen message that screenFromMessage refuses is the error of the source screen", async () => {
+test("malformed screen rows, columns, cells, and segment are refused with debug logging disabled", async () => {
+  const lines = [];
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
+    window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
+  });
+  openSession(sidecar);
+  const error = () => expose.getStatus("terminal.session").readFn().error;
+  const base = SCREEN_MESSAGE.message;
+  const malformed = [
+    ["rows", { ...base, rows: 0 }],
+    ["columns", { ...base, cols: 0 }],
+    ["empty cells", { ...base, cells: [] }],
+    ["invalid cell attributes", { ...base, cells: [{ ...base.cells[0], attributes: "bad" }] }],
+    ["empty segment", { ...base, segment: "" }],
+  ];
+  for (const [name, message] of malformed) {
+    const screenBefore = expose.getStatus("terminal.screen").readFn();
+    sidecar.triggerEvent("test-session", message);
+    assert.match(error() ?? "", /^terminal input failed: /, name + " was not refused");
+    assert.deepEqual(expose.getStatus("terminal.screen").readFn(), screenBefore, name + " changed the rendered screen");
+  }
+});
+
+test("a screen event without a sequence is the error of the source screen", async () => {
   const lines = [];
   const sidecar = await startScreenTerminal(lines);
   const invalid = { ...SCREEN_MESSAGE.message };

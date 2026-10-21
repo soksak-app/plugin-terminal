@@ -18,10 +18,11 @@
     "events.json",
     "ui/terminal.html",
     "ui/view.js",
+    "ui/terminal-view.js",
     "ui/terminal.js"
   ],
   "scripts": {
-    "test": "node --experimental-test-module-mocks --test test/"
+    "test": "node scripts/build-test.mjs && node --test test/"
   },
   "devDependencies": {
     "@soksak/plugin-api": "git+https://github.com/soksak-app/core.git#0f9267425370f3cb103ce2c39d2d3e7fe93ccb4d&path:/packages/plugin-api",

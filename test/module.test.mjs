@@ -1,21 +1,20 @@
-// The view page at the consumer boundary (P49): the page of the view carries the import map of the view, reads the start
-// values of the surface, and starts the terminal over the view channel. The host side of the channel is test/view-host.mjs,
-// which serves the call route of a view as core main answers it.
+// Exercises terminal view start validation, mount, registration, and command handlers at the plugin boundary.
+// Core view-bridge behavior is covered by core tests; this file never imports or runs that implementation.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { START, createViewPage } from "./view-host.mjs";
+import { mountPage as mountTerminalPage, startValues } from "../build/test/ui/terminal-view.js";
 
 const manifest = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
 const diagnostics = JSON.parse(readFileSync(new URL("../diagnostics.json", import.meta.url), "utf8"));
 
-// The import map of a view page as the core wire serves it (core D1), as a literal fake of the check of the page.
-const VIEW_IMPORTS = Object.freeze({
-  "soksak": "sok://core/modules/soksak/dist/index.js",
-  "@soksak/plugin-api": "sok://core/modules/@soksak/plugin-api/index.js",
-  "@soksak/plugin-api/view": "sok://core/modules/@soksak/plugin-api/view.js",
-  "@soksak/shared/": "sok://core/shared/",
-});
+async function mountView(host) {
+  host.page = await mountTerminalPage(host.context, host.report, host.window.document);
+  await host.settle();
+}
+
+const VIEW_IMPORTS = JSON.parse(readFileSync(new URL("../view-check.json", import.meta.url), "utf8")).viewImports;
 
 // The check of a view page: exactly one static import map whose imports equal VIEW_IMPORTS, and no other field.
 function checkViewPage(html) {
@@ -33,19 +32,16 @@ test("the view page carries the import map of the view and the page script", () 
   assert.match(html, /<script type="module" src="\.\/view\.js"><\/script>/);
 });
 
-test("the view page refuses to mount without the start values of the surface", async (t) => {
-  const host = createViewPage(t, "no-start");
-  host.window.sokSurface = null;
-  await assert.rejects(import("../ui/view.js?case=no-start"),
+test("the view start values reject a page without host injection", () => {
+  assert.throws(() => startValues({ sokSurface: null, location: { host: "terminal" } }),
     /the view of terminal has no start values: the host provides window\.sokSurface/);
-  assert.deepEqual(host.sidecar.sent, [], "a refused page sends nothing");
 });
 
 const declared = (kind) => manifest.exposes[kind].map((entry) => entry.name).sort();
 
 test("the view page opens the sidecar session of its surface and registers the declared entries", async (t) => {
   const host = createViewPage(t, "open");
-  await import("../ui/view.js?case=open");
+  await mountView(host);
   await host.settle();
   // The session of the sidecar is keyed by the surface id of the view, and it opens the declared image region.
   const open = host.sidecar.sent.find(({ body }) => body.operation === "open");
@@ -53,7 +49,7 @@ test("the view page opens the sidecar session of its surface and registers the d
   assert.equal(open.body.image, "view");
   assert.equal(open.body.shell, "/bin/sh");
   // The region of the composition is attached with the declared sidecar, and the page placed the region and the overlays.
-  assert.deepEqual(host.regionCalls[0], ["image.attach", { name: "view", sidecar: "@soksak/sidecar-vt-alacritty" }]);
+  assert.deepEqual(host.regionCalls[0], ["image.attach", { name: "view", sidecar: manifest.surface.composition.regions[0].sidecar }]);
   assert.equal(host.places.length > 0, true, "the page placed its composition");
   assert.deepEqual(host.places[0].regions.map(({ name }) => name), ["view"]);
   // Every declared status and dom name is registered through the relay, and every command through the registry.
@@ -67,15 +63,15 @@ test("the view page opens the sidecar session of its surface and registers the d
 
 test("the theme of the view reaches the session with the card colors", async (t) => {
   const host = createViewPage(t, "theme");
-  await import("../ui/view.js?case=theme");
+  await mountView(host);
   await host.settle();
   assert.deepEqual(host.sidecar.sent.find(({ body }) => body.operation === "theme")?.body,
     { operation: "theme", mode: "dark", background: "#ffffff", foreground: "#252735", cursor: "#252735", selection: "#5962e8" });
 });
 
-test("a command request of the exposure reaches the handler through the relay", async (t) => {
+test("a registered terminal command reaches its handler", async (t) => {
   const host = createViewPage(t, "command");
-  await import("../ui/view.js?case=command");
+  await mountView(host);
   await host.settle();
   host.sidecar.trigger(START.surface, { event: "state", sessionId: "s1", cols: 80, rows: 24, cellWidth: 8, cellHeight: 16 });
   await host.settle();
@@ -90,7 +86,7 @@ test("a command request of the exposure reaches the handler through the relay", 
 
 test("terminal.close detaches the image region before it ends the sidecar session", async (t) => {
   const host = createViewPage(t, "close-order");
-  await import("../ui/view.js?case=close-order");
+  await mountView(host);
   await host.settle();
   const answer = await host.exposureRequest(9002, "command.run", { name: "terminal.close", params: {} });
   await host.settle();
@@ -106,7 +102,7 @@ test("terminal.close detaches the image region before it ends the sidecar sessio
 
 test("the view page reports a failed sidecar startup and releases its composition", async (t) => {
   const host = createViewPage(t, "open-failure", { openError: "connect authenticated service: socket missing" });
-  await import("../ui/view.js?case=open-failure");
+  await mountView(host);
   await host.settle();
   assert.deepEqual(host.regionCalls.map(([command]) => command), ["image.attach", "image.detach"],
     "a failed sidecar startup releases the native image composition");
@@ -118,7 +114,7 @@ test("the view page reports a failed sidecar startup and releases its compositio
 
 test("a build without a diagnostic declaration registers the declared entries only", async (t) => {
   const host = createViewPage(t, "release", { diagnostic: false });
-  await import("../ui/view.js?case=release");
+  await mountView(host);
   await host.settle();
   assert.deepEqual([...host.commands].sort(), declared("commands"));
   const diagnosticStatuses = diagnostics.exposes.status.map((entry) => entry.name);
