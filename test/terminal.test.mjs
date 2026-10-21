@@ -10,10 +10,24 @@ const SCREEN_MESSAGES = JSON.parse(readFileSync(new URL("./fixtures/screen-messa
 const SCREEN_MESSAGE = SCREEN_MESSAGES.vectors[0];
 
 // Literal SDK fakes keep this unit test at the plugin boundary; core owns the published contract cases.
+const shellQuotePathCases = [
+  {
+    "input": "/tmp/a b.txt",
+    "output": "'/tmp/a b.txt'"
+  },
+  {
+    "input": "/tmp/quote'name.txt",
+    "output": "'/tmp/quote'\\''name.txt'"
+  },
+  {
+    "input": "/tmp/dropped file.txt",
+    "output": "'/tmp/dropped file.txt'"
+  }
+];
 const shellQuotePath = (path) => {
-  const quote = String.fromCharCode(39);
-  const escapedQuote = quote + String.fromCharCode(92) + quote + quote;
-  return quote + String(path).split(quote).join(escapedQuote) + quote;
+  const found = shellQuotePathCases.find(({ input }) => input === path);
+  if (!found) throw new Error("shellQuotePath fake has no literal case for this path");
+  return found.output;
 };
 const screenFromMessage = (message) => {
   if (message.event !== "screen") throw new Error("screen message: event must be \"screen\", found " + JSON.stringify(message.event));
@@ -36,9 +50,8 @@ const screenHash = async (screen) => {
   if (!found) throw new Error("screenHash fake has no literal case for this input");
   return found.output;
 };
-const api = "@" + "soksak/plugin-api";
-mock.module(api, { exports: { shellQuotePath } });
-mock.module(api + "/screen-hash", { exports: { screenFromMessage, screenHash } });
+mock.module("@soksak/plugin-api", { exports: { shellQuotePath } });
+mock.module("@soksak/plugin-api/screen-hash", { exports: { screenFromMessage, screenHash } });
 const { startTerminal: realStartTerminal } = await import("../ui/terminal.js?terminal-test");
 
 // Tests without explicit settings use the manifest defaults and /bin/sh.
