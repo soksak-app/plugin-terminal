@@ -8,7 +8,7 @@ import { createExpose, declarationMap } from "@soksak/plugin-api";
 import { createViewBridge } from "@soksak/plugin-api/view";
 import { mountPage, startValues } from "./terminal-view.js";
 
-const LOG_LEVELS = ["error", "warn", "info", "debug", "trace"];
+import { createViewLog } from "./view-log.js";
 
 /** The reporter of this page: each record is written to the application log through the call runtime.log (core docs/spec/logging.md). */
 function createReporter(calls) {
@@ -127,11 +127,7 @@ export function createViewContext({ bridge, start, report, diagnostics = null, s
           read: (type) => calls.request("runtime.clipboard.read", type),
           writeText: (text) => calls.request("runtime.clipboard.writeText", text),
         },
-        // The fields are built before the send, because a call carries values and not builders. The level gate of core
-        // applies at delivery. The route of a view carries no cids (P49.5), so a record that names cids stores without its
-        // chain join until core serves them.
-        log: Object.fromEntries(LOG_LEVELS.map((level) => [level,
-          (event, fields) => send("runtime.log", { level, event, fields: typeof fields === "function" ? fields() : fields })])),
+        log: createViewLog(calls, report),
       },
     },
   };

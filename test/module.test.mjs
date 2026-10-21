@@ -121,3 +121,23 @@ test("a build without a diagnostic declaration registers the declared entries on
   assert.equal(host.registrations.some(({ name }) => diagnosticStatuses.includes(name)), false,
     "a build without the diagnostic declaration registers no diagnostic entry");
 });
+
+
+test("terminal input and send records carry the sidecar correlation identifiers", async (t) => {
+  const host = createViewPage(t, "log-cids");
+  const records = [];
+  const { createViewLog } = await import("../build/test/ui/view-log.js");
+  host.context.runtime.log = createViewLog({ request: async (command, params) => { records.push({ command, params }); } }, host.report);
+  await mountView(host);
+  host.sidecar.trigger(START.surface, { event: "state", sessionId: "s1", cols: 80, rows: 24, cellWidth: 8, cellHeight: 16 });
+  await host.settle();
+  host.region.trigger("insert", { text: "ls", cids: ["native-input-49-5"] });
+  await host.settle();
+  const input = host.sidecar.sent.find(({ body }) => body.operation === "input");
+  assert.ok(input.cids.length > 0, "input has a real correlation chain");
+  for (const event of ["input", "send"]) {
+    const record = records.find(({ command, params }) => command === "runtime.log" && params.event === event && (event !== "send" || params.fields.body.operation === "input"));
+    assert.ok(record, event + " record reaches the view route");
+    assert.deepEqual(record.params.cids, input.cids, event + " retains correlation identifiers");
+  }
+});

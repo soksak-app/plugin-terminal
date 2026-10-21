@@ -149,5 +149,5 @@ export function createViewPage(_t, caseId, { scheme = "dark", start = START, dia
     if (!handler) throw new Error("terminal command is not registered: " + params.name);
     return (await handler(params.params)) ?? null;
   };
-  return { window, context, report, sidecar, registrations, commands, regionCalls, places, reports, logs, received, exposureRequest, settle };
+  return { window, context, report, sidecar, region, registrations, commands, regionCalls, places, reports, logs, received, exposureRequest, settle };
 }
