@@ -12,7 +12,8 @@ const table = fs.readFileSync(path.join(root, "scripts/test-sdk-cases.json"), "u
 function fixture(t, { testSource, uiFiles = {} }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "terminal-build-test-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  for (const name of ["scripts", "test", "ui", "build/test/ui"]) fs.mkdirSync(path.join(dir, name), { recursive: true });
+  for (const name of ["scripts", "test", "ui", "build/test/ui", "node_modules"]) fs.mkdirSync(path.join(dir, name), { recursive: true });
+  fs.cpSync(path.join(root, "node_modules/acorn"), path.join(dir, "node_modules/acorn"), { recursive: true });
   fs.writeFileSync(path.join(dir, "scripts/build-test.mjs"), buildSource);
   fs.writeFileSync(path.join(dir, "scripts/test-sdk-cases.json"), table);
   fs.writeFileSync(path.join(dir, "test/entry.test.mjs"), testSource);
@@ -54,10 +55,35 @@ test("build permits an absent peer marked optional", (t) => {
   assert.equal(result.status, 0, result.stderr);
 });
 
+test("build rewrites SDK imports with Unicode-escaped module specifiers", (t) => {
+  const dir = fixture(t, {
+    testSource: testImportEntry(),
+    uiFiles: {
+      "entry.js": "im" + "port { screenHash } from \"\\u0040soksak/plugin-api/screen-hash\";\nexport { screenHash };\n"
+    }
+  });
+  const result = runBuild(dir);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(fs.readFileSync(path.join(dir, "build/test/ui/entry.js"), "utf8"), /fakes\/sdk-\d+\.mjs/);
+});
+
+test("build rejects dynamic imports with computed specifiers", (t) => {
+  const dir = fixture(t, {
+    testSource: testImportEntry(),
+    uiFiles: { "entry.js": "const dependency = \"./helper.js\";\n" + "im" + "port(dependency);\n" }
+  });
+  const result = runBuild(dir);
+  assert.notEqual(result.status, 0, "build ignored a dynamic import with an unresolved computed specifier");
+  assert.match(result.stderr, /non-literal module specifier/);
+});
+
 test("build rejects an SDK import in a relative helper outside copied UI", (t) => {
   const dir = fixture(t, { testSource: testImportEntry(), uiFiles: { "entry.js": staticImport("../../outside/helper.js") } });
-  fs.mkdirSync(path.join(dir, "outside"), { recursive: true });
-  fs.writeFileSync(path.join(dir, "outside/helper.js"), staticImport("@soksak" + "/plugin-api/screen-hash") + "export { screenHash };\n");
+  const helper = path.join(dir, "build/outside/helper.js");
+  fs.mkdirSync(path.dirname(helper), { recursive: true });
+  const specifier = "@soksak" + "/plugin-api/screen-hash";
+  fs.writeFileSync(helper, "im" + "port { screenHash } from " + JSON.stringify(specifier) + ";\nexport { screenHash };\n");
+  assert.equal(fs.existsSync(helper), true, "escaped import target fixture was not created");
   const result = runBuild(dir);
   assert.notEqual(result.status, 0, "build accepted SDK import in helper outside copied UI");
   assert.match(result.stderr, /outside\/helper\.js/);

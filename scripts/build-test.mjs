@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { builtinModules } from "node:module";
 import { fileURLToPath } from "node:url";
+import { parse } from "acorn";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const sourceUI = path.join(root, "ui");
@@ -16,32 +17,40 @@ function walk(directory) {
   });
 }
 
-function blankComments(source) {
-  return source.replace(/\/\*[\s\S]*?\*\//g, (match) => match.replace(/[^\n]/g, " "))
-    .replace(/^\s*\/\/.*$/gm, (match) => match.replace(/[^\n]/g, " "));
-}
-
-function importedNames(clause) {
-  const named = clause.match(/\{([^}]*)\}/);
-  if (!named) return [];
-  return named[1].split(",").map((item) => item.trim().split(/\s+as\s+/)[0]).filter(Boolean);
-}
-
-function importsOf(source) {
-  const code = blankComments(source);
+function importsOf(source, file) {
+  let ast;
+  try {
+    ast = parse(source, { ecmaVersion: "latest", sourceType: "module" });
+  } catch (error) {
+    throw new Error("test build cannot parse " + path.relative(root, file) + ": " + error.message);
+  }
   const found = [];
-  const add = (specifier, clause, match, captureIndex) => {
-    const start = match.index + match[0].lastIndexOf(specifier);
-    found.push({ specifier, names: clause === null ? [] : importedNames(clause), start, end: start + specifier.length });
+  const add = (literal, names = []) => {
+    if (literal?.type !== "Literal" || typeof literal.value !== "string") {
+      throw new Error("test build cannot resolve a non-literal module specifier in " + path.relative(root, file));
+    }
+    found.push({ specifier: literal.value, names, start: literal.start + 1, end: literal.end - 1 });
   };
-  const staticPattern = /\bimport\s+([\s\S]*?)\s+from\s+(["'])([^"']+)\2\s*;?/g;
-  for (const match of code.matchAll(staticPattern)) add(match[3], match[1], match, 3);
-  const reexportPattern = /\bexport\s+([\s\S]*?)\s+from\s+(["\'])([^"\']+)\2\s*;?/g;
-  for (const match of code.matchAll(reexportPattern)) add(match[3], match[1], match, 3);
-  const sideEffectPattern = /\bimport\s+(["'])([^"']+)\1\s*;?/g;
-  for (const match of code.matchAll(sideEffectPattern)) add(match[2], null, match, 2);
-  const dynamicPattern = /\bimport\(\s*(["'])([^"']+)\1\s*\)/g;
-  for (const match of code.matchAll(dynamicPattern)) add(match[2], null, match, 2);
+  function visit(node) {
+    if (node === null || typeof node !== "object") return;
+    if (Array.isArray(node)) { for (const child of node) visit(child); return; }
+    if (node.type === "ImportDeclaration") {
+      add(node.source, node.specifiers.map((specifier) => {
+        if (specifier.type === "ImportSpecifier") return String(specifier.imported.name ?? specifier.imported.value);
+        return specifier.type === "ImportDefaultSpecifier" ? "default" : "*";
+      }));
+    } else if (node.type === "ExportNamedDeclaration" && node.source) {
+      add(node.source, node.specifiers.map((specifier) => String(specifier.local.name ?? specifier.local.value)));
+    } else if (node.type === "ExportAllDeclaration") {
+      add(node.source);
+    } else if (node.type === "ImportExpression") {
+      add(node.source);
+    } else if (node.type === "CallExpression" && node.callee.type === "Identifier" && node.callee.name === "require") {
+      add(node.arguments[0]);
+    }
+    for (const [key, value] of Object.entries(node)) if (key !== "start" && key !== "end") visit(value);
+  }
+  visit(ast);
   return found.sort((a, b) => a.start - b.start);
 }
 
@@ -152,8 +161,7 @@ for (const file of walk(testsRoot).filter((name) => /\.(?:mjs|js)$/.test(name)))
   if (source.includes("@soksak/") || /(?:from|import\()\s*[\"']soksak[\"']/.test(source)) {
     throw new Error("test source contains an SDK specifier: " + path.relative(root, file));
   }
-  const discovered = importsOf(source);
-  for (const match of source.matchAll(/\brequire\(\s*([\"'])([^\"']+)\1\s*\)/g)) discovered.push({ specifier: match[2] });
+  const discovered = importsOf(source, file);
   for (const item of discovered) {
     if (item.specifier.startsWith(".")) {
       const target = path.resolve(path.dirname(file), item.specifier.split(/[?#]/, 1)[0]);
@@ -174,7 +182,7 @@ function visit(file) {
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw new Error("test build entry is missing: " + file);
   visited.add(file);
   const source = fs.readFileSync(file, "utf8");
-  const imports = importsOf(source);
+  const imports = importsOf(source, file);
   const replacements = [];
   for (const item of imports) {
     if (isSDK(item.specifier)) {
