@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- P49: The surface moved to a view that carries its image region (core F212.10), which closes P49.3: `plugin.json` declares the composition `{kind: "view", page: "ui/terminal.html"}` with the image region and the five overlays and no `module`; the view page reads the start values `window.sokSurface`, builds the surface context over the view bridge, addresses the sidecar session with the surface identifier, registers the declared statuses, commands and dom names through the view exposure relay, and starts `ui/terminal.js` unchanged; `ui/terminal-module.js` and the page-mount context are removed. `@soksak/plugin-api` comes from a commit of core main that holds the view bridge and its composition. Red: the 8 view cases of `test/module.test.mjs` failed on the tree before the move (`ENOENT ... ui/terminal.html`, `Cannot find module ... ui/view.js`). Green: `make test` passes 161 of 161 tests with the exposure, engines, census, catalog and record checks on macOS 26.6 arm64. The route of a view serves no PNG clipboard read or persistence and carries no `cids` of a record; the waiting items P49.4 and P49.5 record both gaps.
+
 - P48: new commits are authored as `min-0-max <max@blue.tools>`; `.mailmap` maps the former name `min-median-max`, and published commits are not rewritten.
 
 ## 0.0.14 (2026-10-18)

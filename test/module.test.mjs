@@ -1,186 +1,127 @@
+// The view page at the consumer boundary (P49): the page of the view carries the import map of the view, reads the start
+// values of the surface, and starts the terminal over the view channel. The host side of the channel is test/view-host.mjs,
+// which serves the call route of a view as core main answers it.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { START, createViewPage } from "./view-host.mjs";
 
 const manifest = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
+const diagnostics = JSON.parse(readFileSync(new URL("../diagnostics.json", import.meta.url), "utf8"));
 
-// The event log of a surface context; the events are checked in terminal.test.mjs and events.test.mjs.
-const LOG = Object.fromEntries(["error", "warn", "info", "debug", "trace"].map((level) => [level, () => {}]));
-
-// 터미널은 설정 shell 이 가리키는 셸을 연다.
-// 실제 표면 문맥처럼 매니페스트의 모든 설정 기본값을 읽는다.
-const SHELL_SETTINGS = {
-  read: () => ({ ...Object.fromEntries(Object.entries(manifest.settings).map(([key, { default: value }]) => [key, value])), shell: "/bin/sh" }),
-  on: () => () => {},
-};
-test("terminal module waits for composition presentation, publishes state, and disposes the controller", async () => {
-  const listeners = new Map();
-  const view = { style: {}, addEventListener(type, fn) { if (!listeners.has(type)) listeners.set(type, []); listeners.get(type).push(fn); },
-    removeEventListener() {}, setPointerCapture() {},
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 640, height: 384 }) };
-  const element = () => ({ style: {}, hidden: true, addEventListener() {}, removeEventListener() {},
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 10, height: 300 }) });
-  const parts = { "#view": view, "#scrollbar": element(), "#thumb": element(),
-    "#padding-top": element(), "#padding-right": element(), "#padding-bottom": element(), "#padding-left": element() };
-  const root = {
-    childNodes: [],
-    set innerHTML(value) { this.childNodes = value ? [view] : []; },
-    querySelector(selector) { return parts[selector] ?? null; },
-    replaceChildren() { this.childNodes = []; },
-  };
-  globalThis.window = { TextEncoder };
-  const imageListeners = new Map();
-  const image = {
-    on(type, listener) {
-      imageListeners.set(type, listener);
-      return () => imageListeners.delete(type);
-    },
-    focus: async () => {}, setCaret: async () => {},
-  };
-  const sidecarListeners = new Map();
-  const messages = [];
-  const sidecar = {
-    async on(id, listener) { sidecarListeners.set(id, listener); return () => sidecarListeners.delete(id); },
-    async send(id, body) { messages.push({ id, body }); },
-  };
-  const statuses = new Map();
-  const context = {
-    surfaceId: "terminal-test",
-    runtime: { log: LOG, sidecar: () => sidecar, theme: (listener) => listener({ scheme: "light",
-      tokens: { "--card": "#ffffff", "--fg": "#252735", "--edge": "#d8dbe4", "--rail": "#5962e8" } }), settings: SHELL_SETTINGS },
-    composition: {
-      async create() {
-        await presentation;
-        return { region: () => image, dispose: async () => { compositionDisposed = true; } };
-      },
-    },
-    exposure: {
-      status: async (name, read, subscribe) => statuses.set(name, { read, subscribe }),
-      command: async () => {}, dom: async () => {}, bind: async () => {}, delegate: async () => {}, mark: async () => {},
-      dispose: async () => { exposureDisposed = true; },
-    },
-    status: { report: (phase) => { phases.push(phase); } },
-  };
-  let resolvePresentation;
-  const presentation = new Promise((resolve) => { resolvePresentation = resolve; });
-  let compositionDisposed = false;
-  let exposureDisposed = false;
-  const phases = [];
-  const { mount } = await import("../ui/terminal-module.js");
-  const mounting = mount(root, context);
-  await Promise.resolve();
-  assert.deepEqual(phases, [], "ready is not reported before native presentation");
-  resolvePresentation();
-  const mounted = await mounting;
-  assert.deepEqual(phases, ["ready"]);
-  sidecarListeners.get("terminal-test")({ event: "state", sessionId: "s1", cols: 80, rows: 24, cellWidth: 8, cellHeight: 16 });
-  assert.equal(statuses.get("terminal.session").read().sessionId, "s1");
-  for (const fn of listeners.get("pointerdown")) fn({ button: 0, pointerId: 1, clientX: 24, clientY: 64, preventDefault() {} });
-  await new Promise((resolve) => setImmediate(resolve));
-  const inputId = messages.find(({ body }) => body.operation === "mouse").body.inputId;
-  sidecarListeners.get("terminal-test")({ inputId, event: "mouse", phase: "down", x: 3, y: 4, pressed: true,
-    shift: false, alt: false, ctrl: false, reported: true, written: true,
-    modes: { click: true, drag: false, motion: false }, bytes: "Gg==" });
-  assert.deepEqual(statuses.get("terminal.session").read().mouse, { inputId,
-    phase: "down", x: 3, y: 4, pressed: true, shift: false, alt: false, ctrl: false,
-    reported: true, written: true, modes: { click: true, drag: false, motion: false }, bytes: "Gg==", error: null });
-  // 테마는 모드와 함께 카드 색 토큰에서 가져온 네 색을 보낸다(docs/spec/terminal-runtime.md).
-  assert.deepEqual(messages.find(({ body }) => body.operation === "theme")?.body,
-    { operation: "theme", mode: "light", background: "#ffffff", foreground: "#252735", cursor: "#252735", selection: "#5962e8" });
-  await mounted.dispose();
-  assert.equal(compositionDisposed, true);
-  assert.equal(exposureDisposed, true);
-  assert.equal(messages.at(-1).body.operation, "close");
-  assert.equal(root.childNodes.length, 0);
-  delete globalThis.window;
+// The import map of a view page as the core wire serves it (core D1), as a literal fake of the check of the page.
+const VIEW_IMPORTS = Object.freeze({
+  "soksak": "sok://core/modules/soksak/dist/index.js",
+  "@soksak/plugin-api": "sok://core/modules/@soksak/plugin-api/index.js",
+  "@soksak/plugin-api/view": "sok://core/modules/@soksak/plugin-api/view.js",
+  "@soksak/shared/": "sok://core/shared/",
 });
 
-test("terminal module disposes its native composition when sidecar open fails", async () => {
-  const view = { addEventListener() {}, removeEventListener() {} };
-  const root = {
-    set innerHTML(value) { this.childNodes = value ? [view] : []; },
-    querySelector() { return view; },
-    replaceChildren() { this.childNodes = []; },
-  };
-  globalThis.window = { TextEncoder };
-  let compositionDisposed = false;
-  const phases = [];
-  const context = {
-    surfaceId: "terminal-open-failure",
-    runtime: { log: LOG, sidecar: () => ({
-      async on() { return () => {}; },
-      async send(_id, body) {
-        if (body.operation === "open") throw new Error("connect authenticated service: socket missing");
-      },
-    }), theme: () => {}, settings: SHELL_SETTINGS },
-    composition: {
-      async create() {
-        return {
-          region: () => ({ on: () => () => {}, focus: async () => {}, setCaret: async () => {} }),
-          dispose: async () => { compositionDisposed = true; },
-        };
-      },
-    },
-    exposure: { status: async () => {}, command: async () => {}, dom: async () => {}, bind: async () => {}, delegate: async () => {}, mark: async () => {}, dispose: async () => {} },
-    status: { report: (phase, error) => { phases.push({ phase, error }); } },
-  };
-  const { mount } = await import(`../ui/terminal-module.js?open-failure=${Date.now()}`);
-  await assert.rejects(mount(root, context), /connect authenticated service: socket missing/);
-  assert.equal(compositionDisposed, true, "failed sidecar startup releases the native image composition");
-  assert.equal(phases.length, 0, "a mount failure is propagated instead of being reported as ready");
-  delete globalThis.window;
-});
-
-// 사이드카는 세션을 끝낼 때 전송 그림을 놓는다. 영역을 먼저 떼야 그 전에 보낸 프레임이 붙은 영역에서 notFound 로
-// 실패하지 않는다(core docs/spec/plugins.md#surface-module-ownership).
-async function mountOrdered(surfaceId) {
-  const element = () => ({ style: {}, hidden: true, addEventListener() {}, removeEventListener() {},
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 640, height: 384 }) });
-  const parts = new Map();
-  const root = {
-    set innerHTML(value) { this.childNodes = value ? [element()] : []; },
-    querySelector(selector) {
-      if (!parts.has(selector)) parts.set(selector, element());
-      return parts.get(selector);
-    },
-    replaceChildren() { this.childNodes = []; },
-  };
-  globalThis.window = { TextEncoder };
-  const order = [];
-  const commands = new Map();
-  const context = {
-    surfaceId,
-    runtime: { log: LOG, sidecar: () => ({
-      async on() { return () => {}; },
-      async send(_id, body) { if (body.operation === "close") order.push("session close"); },
-    }), theme: () => {}, settings: SHELL_SETTINGS },
-    composition: {
-      async create() {
-        return {
-          region: () => ({ on: () => () => {}, focus: async () => {}, setCaret: async () => {} }),
-          dispose: async () => { order.push("region detach"); },
-        };
-      },
-    },
-    exposure: { status: async () => {}, command: async (name, handler) => { commands.set(name, handler); },
-      dom: async () => {}, bind: async () => {}, delegate: async () => {}, mark: async () => {}, dispose: async () => {} },
-    status: { report: () => {} },
-  };
-  const { mount } = await import(`../ui/terminal-module.js?${surfaceId}=${Date.now()}`);
-  return { mounted: await mount(root, context), order, commands };
+// The check of a view page: exactly one static import map whose imports equal VIEW_IMPORTS, and no other field.
+function checkViewPage(html) {
+  const maps = [...html.matchAll(/<script type="importmap">([\s\S]*?)<\/script>/g)];
+  assert.equal(maps.length, 1, "expected one import map");
+  const map = JSON.parse(maps[0][1]);
+  const field = Object.keys(map).find((key) => key !== "imports");
+  assert.equal(field, undefined, "the import map has an unexpected field");
+  assert.deepEqual(map.imports, VIEW_IMPORTS);
 }
 
-test("terminal.close detaches the image region before it ends the sidecar session", async () => {
-  const { mounted, order, commands } = await mountOrdered("terminal-close-order");
-  await commands.get("terminal.close")();
-  assert.deepEqual(order, ["region detach", "session close"]);
-  await mounted.dispose();
-  delete globalThis.window;
+test("the view page carries the import map of the view and the page script", () => {
+  const html = readFileSync(new URL("../ui/terminal.html", import.meta.url), "utf8");
+  assert.equal(checkViewPage(html), undefined);
+  assert.match(html, /<script type="module" src="\.\/view\.js"><\/script>/);
 });
 
-test("module dispose detaches the image region before it ends the sidecar session", async () => {
-  const { mounted, order } = await mountOrdered("terminal-dispose-order");
-  await mounted.dispose();
-  assert.deepEqual(order, ["region detach", "session close"]);
-  delete globalThis.window;
+test("the view page refuses to mount without the start values of the surface", async (t) => {
+  const host = createViewPage(t, "no-start");
+  host.window.sokSurface = null;
+  await assert.rejects(import("../ui/view.js?case=no-start"),
+    /the view of terminal has no start values: the host provides window\.sokSurface/);
+  assert.deepEqual(host.sidecar.sent, [], "a refused page sends nothing");
+});
+
+const declared = (kind) => manifest.exposes[kind].map((entry) => entry.name).sort();
+
+test("the view page opens the sidecar session of its surface and registers the declared entries", async (t) => {
+  const host = createViewPage(t, "open");
+  await import("../ui/view.js?case=open");
+  await host.settle();
+  // The session of the sidecar is keyed by the surface id of the view, and it opens the declared image region.
+  const open = host.sidecar.sent.find(({ body }) => body.operation === "open");
+  assert.equal(open.id, START.surface);
+  assert.equal(open.body.image, "view");
+  assert.equal(open.body.shell, "/bin/sh");
+  // The region of the composition is attached with the declared sidecar, and the page placed the region and the overlays.
+  assert.deepEqual(host.regionCalls[0], ["image.attach", { name: "view", sidecar: "@soksak/sidecar-vt-alacritty" }]);
+  assert.equal(host.places.length > 0, true, "the page placed its composition");
+  assert.deepEqual(host.places[0].regions.map(({ name }) => name), ["view"]);
+  // Every declared status and dom name is registered through the relay, and every command through the registry.
+  const kinds = (group) => host.registrations.filter(({ kind }) => kind === group).map(({ name }) => name).sort();
+  // A diagnostic build adds the entries of diagnostics.json to the surface declaration, and the page registers them.
+  const diagnosticNames = (group) => diagnostics.exposes[group].map((entry) => entry.name);
+  assert.deepEqual(kinds("status"), [...declared("status"), ...diagnosticNames("status")].sort());
+  assert.deepEqual(kinds("dom"), declared("dom"));
+  assert.deepEqual([...host.commands].sort(), [...declared("commands"), ...diagnosticNames("commands")].sort());
+});
+
+test("the theme of the view reaches the session with the card colors", async (t) => {
+  const host = createViewPage(t, "theme");
+  await import("../ui/view.js?case=theme");
+  await host.settle();
+  assert.deepEqual(host.sidecar.sent.find(({ body }) => body.operation === "theme")?.body,
+    { operation: "theme", mode: "dark", background: "#ffffff", foreground: "#252735", cursor: "#252735", selection: "#5962e8" });
+});
+
+test("a command request of the exposure reaches the handler through the relay", async (t) => {
+  const host = createViewPage(t, "command");
+  await import("../ui/view.js?case=command");
+  await host.settle();
+  host.sidecar.trigger(START.surface, { event: "state", sessionId: "s1", cols: 80, rows: 24, cellWidth: 8, cellHeight: 16 });
+  await host.settle();
+  const answer = await host.exposureRequest(9001, "command.run", { name: "terminal.input", params: { bytes: "bHM=" } });
+  await host.settle();
+  assert.equal(answer, null);
+  const input = host.sidecar.sent.find(({ body }) => body.operation === "input");
+  assert.equal(input.id, START.surface, "the input travels to the session of the surface");
+  // terminal.input names the payload bytes, and the session sends the text base64 encoded as the input message carries it.
+  assert.equal(Buffer.from(input.body.bytes, "base64").toString(), "bHM=");
+});
+
+test("terminal.close detaches the image region before it ends the sidecar session", async (t) => {
+  const host = createViewPage(t, "close-order");
+  await import("../ui/view.js?case=close-order");
+  await host.settle();
+  const answer = await host.exposureRequest(9002, "command.run", { name: "terminal.close", params: {} });
+  await host.settle();
+  assert.equal(answer, null);
+  const detach = host.received.findIndex(({ command }) => command === "image.detach");
+  const closeSend = host.received.filter(({ command, params }) =>
+    command === "runtime.sidecar.send" && params?.body?.operation === "close");
+  assert.equal(closeSend.length, 1, "the session of the surface closes once");
+  const closeIndex = host.received.indexOf(closeSend[0]);
+  assert.notEqual(detach, -1, "the image region is detached");
+  assert.ok(detach < closeIndex, "the region is detached before the session closes");
+});
+
+test("the view page reports a failed sidecar startup and releases its composition", async (t) => {
+  const host = createViewPage(t, "open-failure", { openError: "connect authenticated service: socket missing" });
+  await import("../ui/view.js?case=open-failure");
+  await host.settle();
+  assert.deepEqual(host.regionCalls.map(([command]) => command), ["image.attach", "image.detach"],
+    "a failed sidecar startup releases the native image composition");
+  const report = host.logs.find(({ event }) => event === "plugin.terminal.report");
+  assert.match(report.fields.text, /mount failed: connect authenticated service: socket missing/);
+  assert.equal(host.sidecar.sent.some(({ body }) => body.operation === "close"), false,
+    "a session that never opened is not closed");
+});
+
+test("a build without a diagnostic declaration registers the declared entries only", async (t) => {
+  const host = createViewPage(t, "release", { diagnostic: false });
+  await import("../ui/view.js?case=release");
+  await host.settle();
+  assert.deepEqual([...host.commands].sort(), declared("commands"));
+  const diagnosticStatuses = diagnostics.exposes.status.map((entry) => entry.name);
+  assert.equal(host.registrations.some(({ name }) => diagnosticStatuses.includes(name)), false,
+    "a build without the diagnostic declaration registers no diagnostic entry");
 });

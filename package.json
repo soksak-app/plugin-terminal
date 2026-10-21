@@ -16,13 +16,15 @@
   "files": [
     "plugin.json",
     "events.json",
-    "ui/terminal-module.js",
+    "ui/terminal.html",
+    "ui/view.js",
     "ui/terminal.js"
   ],
   "scripts": {
     "test": "node --test test/"
   },
   "devDependencies": {
-    "@soksak/plugin-api": "git+https://github.com/soksak-app/core.git#v0.0.11&path:/packages/plugin-api"
+    "@soksak/plugin-api": "git+https://github.com/soksak-app/core.git#0f9267425370f3cb103ce2c39d2d3e7fe93ccb4d&path:/packages/plugin-api",
+    "jsdom": "^30.1.1"
   }
 }

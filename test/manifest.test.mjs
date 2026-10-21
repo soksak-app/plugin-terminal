@@ -22,22 +22,23 @@ test("plugin.json satisfies the manifest format", () => {
   assert.equal(validateManifest(manifest), manifest);
 });
 
-test("the package publishes the manifest and surface module", () => {
+test("the package publishes the manifest and the view page", () => {
   assert.ok(pkg.files.includes("plugin.json"));
-  if (manifest.surface?.module === undefined) return;
-  assert.ok(existsSync(new URL(`../${manifest.surface.module}`, import.meta.url)), manifest.surface.module);
-  assert.ok(pkg.files.some((entry) => manifest.surface.module === entry || manifest.surface.module.startsWith(`${entry}/`)));
+  const page = manifest.surface.composition.page;
+  assert.ok(existsSync(new URL(`../${page}`, import.meta.url)), page);
+  assert.ok(pkg.files.some((entry) => page === entry || page.startsWith(`${entry}/`)), `${page} is published`);
+  assert.equal(manifest.surface.module, undefined, "a view surface has no module");
 });
 
-test("the surface module delegates terminal startup", () => {
-  const source = readFileSync(new URL(`../${manifest.surface.module}`, import.meta.url), "utf8");
+test("the view page delegates terminal startup", () => {
+  const source = readFileSync(new URL(`../${manifest.surface.composition.page}`, import.meta.url).pathname.replace(/\.html$/, ".js"), "utf8");
   assert.match(source, /startTerminal/);
 });
 
 test("registered terminal exposures match manifest declarations", () => {
-  const moduleSource = readFileSync(new URL(`../${manifest.surface.module}`, import.meta.url), "utf8");
+  const viewSource = readFileSync(new URL("../ui/view.js", import.meta.url), "utf8");
   const terminalSource = readFileSync(new URL("../ui/terminal.js", import.meta.url), "utf8");
-  assert.deepEqual(registrations(`${moduleSource}\n${terminalSource}`), declarations(manifest.exposes));
+  assert.deepEqual(registrations(`${viewSource}\n${terminalSource}`), declarations(manifest.exposes));
 });
 
 test("diagnostics.json declares the entries its module registers and is not published", () => {

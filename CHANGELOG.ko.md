@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- P49: 표면이 자기 image region을 담는 view로 옮겨졌다(core F212.10, P49.3을 닫음). `plugin.json`은 image region과 다섯 overlay를 담은 composition `{kind: "view", page: "ui/terminal.html"}`을 선언하고 `module`은 없다. view page는 start values `window.sokSurface`를 읽고, view bridge 위에서 surface context를 만들고, surface identifier로 sidecar session을 주소하고, 선언된 status, command, dom 이름을 view exposure relay로 등록하고, `ui/terminal.js`를 바꾸지 않고 시작한다. `ui/terminal-module.js`와 page-mount context는 제거됐다. `@soksak/plugin-api`는 view bridge와 그 composition을 담은 core main의 commit에서 온다. Red: 이동 전 tree에서 `test/module.test.mjs`의 8개 view case가 실패했다(`ENOENT ... ui/terminal.html`, `Cannot find module ... ui/view.js`). Green: `make test`가 macOS 26.6 arm64에서 exposure, engines, census, catalog, record 검사와 함께 161/161 tests를 통과한다. view의 경로는 PNG clipboard의 읽기와 저장을 서브하지 않고 record의 `cids`를 싣지 않는다. 두 gap은 대기 항목 P49.4와 P49.5가 기록한다.
+
 - P48: 새 커밋의 작성자는 `min-0-max <max@blue.tools>`다. `.mailmap`이 이전 이름 `min-median-max`를 잇고, 게시된 커밋은 다시 쓰지 않는다.
 
 ## 0.0.14 (2026-10-18)
