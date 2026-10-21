@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- F238-c-23/P56.1: `scripts/build-test.mjs`는 필수 dependency나 peer를 해석할 수 없거나 도달한 UI import가 `build/test/ui` 밖으로 나가면 실패한다. 없는 optional dependency와 optional peer는 허용한다. Package resolution은 실제 package 경로를 따르며 package 개발 전용 dependency는 제외한다. Red: required dependency, required peer, escaped SDK helper 테스트는 변경 전 build가 status 0을 반환해 실패했다. Green: `node --test test/build-test.test.mjs` 4/4, `pnpm test` 167/167 통과. Regex import parsing은 연결된 후속 작업(P56.2)으로 남는다.
+
 - F238-c-13/c-18/c-19/c-21/c-23/c-28: `scripts/build-test.mjs`가 도달 가능한 `ui/`를 `build/test/`로 복사하고, 표에 적힌 API export만 core 계약에서 복사한 엄격한 one-call fake로 바꾼다. 테스트 devDependency 도달성을 검사하고 미등록 SDK import에서 실패한다. `shellQuotePath`, `screenFromMessage`, `screenHash`용 계약 복사본은 38개이며 debug logging이 꺼져도 잘못된 rows, columns, cells, segment를 거부한다. 테스트의 binder 알고리즘을 제거했고 local registry는 terminal이 등록한 handler만 실행한다. `test/census.test.mjs`는 제거된 상태이며 `make check`가 terminal census를 맡는다. Red: 엄격한 fake가 미등록 screen 입력을 찾아내 core가 필요한 사례를 추가했다. Green: `pnpm test` 163/163, `make check CORE_PLUGIN_API_DIR=<core plugin-api source>`에서 표 비교와 제공되는 validator가 통과한다. 기본 `make check`는 설치 API pin에 `contract/clipboard.json`이 없어 막히며 `soksak-view-check`도 설치되어 있지 않다. `docs/spec/plugins.md`의 release-tag 규칙에 따라 pin, release, 대체 도구를 변경하지 않았다. c11 view-literal 비교는 열린 상태다.
 
 - F238-c-21: SDK census CLI를 subprocess로 실행하고 일반 scanner 단언을 중복하던 `test/census.test.mjs`를 제거했다. 해당 사례는 core `packages/plugin-api/test/events-check.test.mjs`가 소유하며 `make check`가 terminal 저장소 census를 수행한다. `test/events.test.mjs`와 terminal 동작 단언은 유지했다. Green: core census tests 27/27, `make test` 163/163, core-source table override로 terminal `make check` 통과.

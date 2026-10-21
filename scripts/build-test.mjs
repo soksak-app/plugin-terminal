@@ -52,7 +52,9 @@ function isSDK(specifier) {
 function localTarget(from, specifier) {
   const clean = specifier.split(/[?#]/, 1)[0];
   const resolved = path.resolve(path.dirname(from), clean);
-  if (resolved !== outputUI && !resolved.startsWith(outputUI + path.sep)) return null;
+  if (resolved !== outputUI && !resolved.startsWith(outputUI + path.sep)) {
+    throw new Error("UI test import escapes build/test/ui: " + specifier + " from " + path.relative(root, from));
+  }
   if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) return resolved;
   if (!path.extname(resolved)) {
     for (const extension of [".js", ".mjs"]) if (fs.existsSync(resolved + extension)) return resolved + extension;
@@ -120,23 +122,28 @@ function packageRoot(name, fromDirectory) {
   let directory = fromDirectory;
   while (true) {
     const candidate = path.join(directory, "node_modules", ...name.split("/"), "package.json");
-    if (fs.existsSync(candidate)) return path.dirname(candidate);
+    if (fs.existsSync(candidate)) return fs.realpathSync(path.dirname(candidate));
     const parent = path.dirname(directory);
     if (parent === directory) return null;
     directory = parent;
   }
 }
-function scanTestDependency(name, fromDirectory, visitedPackages) {
+function scanTestDependency(name, fromDirectory, visitedPackages, optional = false) {
   if (isSDK(name)) throw new Error("test dependency graph reaches SDK package: " + name);
   const directory = packageRoot(name, fromDirectory);
-  if (!directory) return;
+  if (!directory) {
+    if (optional) return;
+    throw new Error("test dependency cannot be resolved: " + name + " from " + path.relative(root, fromDirectory));
+  }
   if (visitedPackages.has(directory)) return;
   visitedPackages.add(directory);
   const packageJson = JSON.parse(fs.readFileSync(path.join(directory, "package.json"), "utf8"));
-  for (const field of ["dependencies", "optionalDependencies", "peerDependencies", "devDependencies"]) {
+  const optionalPeers = new Set(Object.entries(packageJson.peerDependenciesMeta || {})
+    .filter(([, metadata]) => metadata?.optional === true).map(([dependency]) => dependency));
+  for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
     for (const dependency of Object.keys(packageJson[field] || {})) {
       if (isSDK(dependency)) throw new Error("test devDependency graph reaches SDK package " + dependency + " through " + name);
-      if (!builtins.has(dependency)) scanTestDependency(dependency, directory, visitedPackages);
+      if (!builtins.has(dependency)) scanTestDependency(dependency, directory, visitedPackages, field === "optionalDependencies" || (field === "peerDependencies" && optionalPeers.has(dependency)));
     }
   }
 }
