@@ -1,5 +1,5 @@
 # terminal plugin repository 의 test 와 pack(docs/features.md). pack 은 core 의 sok 를 쓴다.
-.PHONY: test pack hooks
+.PHONY: test check pack hooks
 
 SOK ?= sok
 # DIAGNOSTICS=1 이면 diagnostics.json 을 담은 진단 package 를 쓴다.
@@ -10,17 +10,19 @@ node_modules: package.json
 	pnpm install
 	touch node_modules
 
-# 페이지와 섹션 소스의 공개 이름은 core 의 soksak-exposure 로 plugin.json 과 core 의 선언에 대해 검사한다.
-# engines.soksak 은 core 의 soksak-engines 로 그 @soksak/plugin-api 의 release 를 선언하는지 검사한다.
-# soksak-events 는 core 의 census 규칙으로 event 도 사유도 없는 소스를 찾고 events.json 을 소스의 event 와 대조한다.
+# test runs only the plugin's tests.
 test: node_modules
 	pnpm test
+
+# check runs the SDK validators needed by this repository.
+# The pinned SDK commit does not provide soksak-view-check; the view-literal check remains explicitly open.
+check: node_modules
 	pnpm exec soksak-exposure
 	pnpm exec soksak-engines
 	pnpm exec soksak-events --census census.json --catalog events.json
 	pnpm exec soksak-records
 
-pack:
+pack: check
 	@test -n "$(OUT)" || { echo "make pack OUT=<folder>" >&2; exit 2; }
 	$(SOK) plugin pack . $(OUT) $(PACK_FLAGS)
 

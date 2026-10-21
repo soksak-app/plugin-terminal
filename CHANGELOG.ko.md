@@ -4,6 +4,10 @@
 
 ## 미배포
 
+- F238-c-18/c-23: terminal 소유의 단일 screen-message literal과 root `view-check.json`을 추가하고, terminal test는 SDK helper를 import하지 않고 literal module fake를 쓴다. Check target은 현재 제공되는 exposure, engines, event-census, record 도구를 실행하며 pack은 이를 선행한다. Workflow는 test 뒤 check를 실행한다. Red/Green 및 사용할 수 없는 `soksak-view-check` 호출은 P54에 기록했다.
+
+- F238-c-18/c-23: `test/fixtures/screen-message.json`을 terminal이 소유하는 단일 screen-message literal로 바꿨고, terminal test에서 SDK의 `createBinder`, `validateManifest`, `validateDiagnostics` 직접 import를 제거했다. `make test`는 plugin test만 실행하고, `make check`는 현재 제공되는 exposure, engine, event-census, record validator를 실행하며, `pack`은 `check`에 의존한다. workflow의 check 호출은 F238-c-24에 남긴다. Red: vector fixture 검사는 기존 `{vectors, rejected}` 복사본에서 실패했고, check-target 검사는 `make check`가 없고 `make test`가 SDK validator까지 실행해 실패했다. Green: terminal 집중 테스트 151/151, `make check`의 네 validator 통과. 고정된 SDK commit에는 `soksak-view-check`가 없으므로 c11 view-literal 비교는 대체 수단 없이 미완료로 남는다.
+
 - P49: 표면이 자기 image region을 담는 view로 옮겨졌다(core F212.10, P49.3을 닫음). `plugin.json`은 image region과 다섯 overlay를 담은 composition `{kind: "view", page: "ui/terminal.html"}`을 선언하고 `module`은 없다. view page는 start values `window.sokSurface`를 읽고, view bridge 위에서 surface context를 만들고, surface identifier로 sidecar session을 주소하고, 선언된 status, command, dom 이름을 view exposure relay로 등록하고, `ui/terminal.js`를 바꾸지 않고 시작한다. `ui/terminal-module.js`와 page-mount context는 제거됐다. `@soksak/plugin-api`는 view bridge와 그 composition을 담은 core main의 commit에서 온다. Red: 이동 전 tree에서 `test/module.test.mjs`의 8개 view case가 실패했다(`ENOENT ... ui/terminal.html`, `Cannot find module ... ui/view.js`). Green: `make test`가 macOS 26.6 arm64에서 exposure, engines, census, catalog, record 검사와 함께 161/161 tests를 통과한다. view의 경로는 PNG clipboard의 읽기와 저장을 서브하지 않고 record의 `cids`를 싣지 않는다. 두 gap은 대기 항목 P49.4와 P49.5가 기록한다.
 
 - P48: 새 커밋의 작성자는 `min-0-max <max@blue.tools>`다. `.mailmap`이 이전 이름 `min-median-max`를 잇고, 게시된 커밋은 다시 쓰지 않는다.

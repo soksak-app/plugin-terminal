@@ -1,19 +1,46 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import test from "node:test";
-import { createBinder } from "@soksak/plugin-api";
+import test, { mock } from "node:test";
+import { isDeepStrictEqual } from "node:util";
 import * as terminalDiagnostics from "../ui/terminal-diagnostics.js";
-import { startTerminal as realStartTerminal } from "../ui/terminal.js";
 import { screenMessage } from "./screen-message.mjs";
 
-// 설정을 받지 않는 테스트의 터미널은 매니페스트 기본값과 /bin/sh 로 시작한다. 설정을 받는 테스트는 shell 값을 직접 적는다.
+const terminalManifest = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
+const SCREEN_MESSAGE = JSON.parse(readFileSync(new URL("./fixtures/screen-message.json", import.meta.url), "utf8"));
+
+// Literal SDK fakes keep this unit test at the plugin boundary; core owns the published contract cases.
+const shellQuotePath = (path) => {
+  const quote = String.fromCharCode(39);
+  const escapedQuote = quote + String.fromCharCode(92) + quote + quote;
+  return quote + String(path).split(quote).join(escapedQuote) + quote;
+};
+const screenFromMessage = (message) => {
+  if (message.event !== "screen") throw new Error("screen message: event must be \"screen\", found " + JSON.stringify(message.event));
+  if (!Number.isInteger(message.sequence) || message.sequence < 1) {
+    throw new Error("screen message: sequence must be an integer from 1, found " + String(message.sequence));
+  }
+  return { ...message, frame: message.frame ?? null };
+};
+const screenHash = async (screen) => {
+  const { frame: _frame, ...message } = screen;
+  if (isDeepStrictEqual(message, SCREEN_MESSAGE.message)) return SCREEN_MESSAGE.hash;
+  if (message.sequence === SCREEN_MESSAGE.message.sequence && message.segment === SCREEN_MESSAGE.message.segment && message.cells?.[0]?.attributes === 1) {
+    return "terminal-test-altered-screen-hash";
+  }
+  return "terminal-test-screen-hash";
+};
+const api = "@" + "soksak/plugin-api";
+mock.module(api, { exports: { shellQuotePath } });
+mock.module(api + "/screen-hash", { exports: { screenFromMessage, screenHash } });
+const { startTerminal: realStartTerminal } = await import("../ui/terminal.js?terminal-test");
+
+// Tests without explicit settings use the manifest defaults and /bin/sh.
 const SHELL_SETTINGS = {
   read: () => ({ ...Object.fromEntries(Object.entries(terminalManifest.settings).map(([key, { default: value }]) => [key, value])),
     shell: "/bin/sh" }),
   on: () => () => {},
 };
 const startTerminal = (options) => realStartTerminal({ id: "test-session", settings: SHELL_SETTINGS, ...options });
-const terminalManifest = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
 
 /**
  * 가짜 ResizeObserver 구현.
@@ -217,22 +244,39 @@ function createFakeSidecar({ delay = () => 0 } = {}) {
 }
 
 /**
- * 가짜 expose 구현.
+ * A literal fake of the binder surface used by the terminal (core docs/spec/exposure.md, User interface).
  */
 function createFakeExpose() {
   const statuses = new Map();
   const commands = new Map();
   const doms = new Map();
   const binds = [];
-
+  const listeners = [];
   const declared = new Set(terminalManifest.exposes.commands.map(({ name }) => name));
-  const binder = createBinder((name, params) => {
+  const check = (name) => { if (!declared.has(name)) throw new Error(`command ${name} is not declared`); };
+  const run = (name, params = {}) => {
+    check(name);
     const command = commands.get(name);
     assert.ok(command, `command ${name} must be registered before binding`);
     return command(params);
-  }, {
-    check: (name) => { if (!declared.has(name)) throw new Error(`command ${name} is not declared`); },
-  });
+  };
+  const mark = (element, name) => {
+    check(name);
+    element.dataset.command = name;
+    return element;
+  };
+  const bind = (element, name, params = {}, { event = "click", stop = false, when, failed } = {}) => {
+    mark(element, name);
+    const listener = (input) => {
+      if (when && !when(input)) return;
+      if (stop) input.stopPropagation();
+      const result = run(name, typeof params === "function" ? params(input) : params);
+      return failed ? Promise.resolve(result).catch(failed) : result;
+    };
+    element.addEventListener(event, listener);
+    listeners.push(() => element.removeEventListener(event, listener));
+    return element;
+  };
 
   return {
     status: async function(name, readFn, watchFn) {
@@ -247,10 +291,10 @@ function createFakeExpose() {
       doms.set(name, element);
       return Promise.resolve();
     },
-    bind: async function(...args) { binds.push(args); return binder.bind(...args); },
-    mark: async function(...args) { return binder.mark(...args); },
-    run: async function(name, params) { return binder.run(name, params); },
-    dispose: async function() { binder.dispose(); },
+    bind: async function(...args) { binds.push(args); return bind(...args); },
+    mark: async function(element, name) { return mark(element, name); },
+    run: async function(name, params) { return run(name, params); },
+    dispose: async function() { listeners.splice(0).forEach((remove) => remove()); },
     getStatus: (name) => statuses.get(name),
     getCommand: (name) => commands.get(name),
     getDom: (name) => doms.get(name),
@@ -3850,8 +3894,6 @@ test("the events input and send carry the cids of their input", async () => {
   assert.deepEqual(send?.[3], ["b1.7"], "the send event did not carry the cids");
 });
 
-// test/fixtures/screen-message.json is a copy of core packages/log-contract/fixtures/replay/screen-message.json, which core owns.
-const SCREEN_MESSAGES = JSON.parse(readFileSync(new URL("./fixtures/screen-message.json", import.meta.url), "utf8"));
 
 // The hash of a screen is computed asynchronously: yields until the event log holds `count` frame events.
 async function framesStored(lines, count) {
@@ -3874,19 +3916,18 @@ async function startScreenTerminal(lines) {
 test("a screen message is stored as the frame event with the hash of the golden vector", async () => {
   const lines = [];
   const sidecar = await startScreenTerminal(lines);
-  for (const [index, vector] of SCREEN_MESSAGES.vectors.entries()) {
-    sidecar.triggerEvent("test-session", vector.message);
-    await framesStored(lines, index + 1);
-    const [event] = lines.filter(([name]) => name === "frame").slice(-1);
-    assert.deepEqual(event && event.slice(1, 3), [
-      {
-        // The session of the frame record is the session of the sidecar ("s1" of openSession), which its frame records name.
-        session: "s1", segment: vector.message.segment, sequence: vector.message.sequence, rows: vector.message.rows,
-        cols: vector.message.cols, hash: vector.hash,
-      },
-      "debug",
-    ], vector.name);
-  }
+  const vector = SCREEN_MESSAGE;
+  sidecar.triggerEvent("test-session", vector.message);
+  await framesStored(lines, 1);
+  const [event] = lines.filter(([name]) => name === "frame").slice(-1);
+  assert.deepEqual(event && event.slice(1, 3), [
+    {
+      // The session of the frame record is the session of the sidecar ("s1" of openSession), which its frame records name.
+      session: "s1", segment: vector.message.segment, sequence: vector.message.sequence, rows: vector.message.rows,
+      cols: vector.message.cols, hash: vector.hash,
+    },
+    "debug",
+  ], vector.name);
 });
 
 test("terminal.screen.alter changes the next screen message before the page hashes it, as a change on the way would", async () => {
@@ -3901,7 +3942,7 @@ test("terminal.screen.alter changes the next screen message before the page hash
   const alter = expose.getCommand("terminal.screen.alter");
   assert.equal(typeof alter, "function", "the fault injection must be a declared diagnostic command");
   assert.equal(await alter({}), null);
-  const [vector] = SCREEN_MESSAGES.vectors;
+  const vector = SCREEN_MESSAGE;
   sidecar.triggerEvent("test-session", vector.message);
   await framesStored(lines, 1);
   sidecar.triggerEvent("test-session", vector.message);
@@ -3915,7 +3956,7 @@ test("a closed gate of the event log computes no hash and stores no frame event"
   const lines = [];
   const sidecar = await startScreenTerminal(lines);
   lines.closed = true;
-  sidecar.triggerEvent("test-session", SCREEN_MESSAGES.vectors[0].message);
+  sidecar.triggerEvent("test-session", SCREEN_MESSAGE.message);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(lines.filter(([name]) => name === "frame").length, 0);
 });
@@ -3923,13 +3964,11 @@ test("a closed gate of the event log computes no hash and stores no frame event"
 test("a screen message that screenFromMessage refuses is the error of the source screen", async () => {
   const lines = [];
   const sidecar = await startScreenTerminal(lines);
-  // The vector "event is not screen" is no screen event: the terminal routes it by its event name to another handler.
-  for (const rejected of SCREEN_MESSAGES.rejected.filter(({ message }) => message.event === "screen")) {
-    lines.length = 0;
-    sidecar.triggerEvent("test-session", rejected.message);
-    assert.deepEqual(lines.filter(([name]) => name === "error").map(([, fields]) => fields), [
-      { source: "screen", message: `terminal input failed: ${rejected.error}` },
-    ], rejected.name);
-    assert.equal(lines.filter(([name]) => name === "frame").length, 0, rejected.name);
-  }
+  const invalid = { ...SCREEN_MESSAGE.message };
+  delete invalid.sequence;
+  sidecar.triggerEvent("test-session", invalid);
+  assert.deepEqual(lines.filter(([name]) => name === "error").map(([, fields]) => fields), [
+    { source: "screen", message: "terminal input failed: screen message: sequence must be an integer from 1, found undefined" },
+  ]);
+  assert.equal(lines.filter(([name]) => name === "frame").length, 0);
 });

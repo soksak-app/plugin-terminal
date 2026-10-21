@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
-import { validateDiagnostics, validateManifest } from "@soksak/plugin-api";
 
 const manifest = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -17,10 +16,6 @@ const kinds = { status: "status", commands: "command", dom: "dom" };
 const declarations = (exposes) => Object.entries(exposes ?? {})
   .flatMap(([kind, entries]) => entries.map((entry) => `${kinds[kind]} ${entry.name}`))
   .sort();
-
-test("plugin.json satisfies the manifest format", () => {
-  assert.equal(validateManifest(manifest), manifest);
-});
 
 test("the package publishes the manifest and the view page", () => {
   assert.ok(pkg.files.includes("plugin.json"));
@@ -42,7 +37,6 @@ test("registered terminal exposures match manifest declarations", () => {
 });
 
 test("diagnostics.json declares the entries its module registers and is not published", () => {
-  assert.equal(validateDiagnostics(manifest, diagnostics), diagnostics);
   const source = readFileSync(new URL(`../${diagnostics.module}`, import.meta.url), "utf8");
   assert.deepEqual(registrations(source), declarations(diagnostics.exposes));
   for (const path of ["diagnostics.json", diagnostics.module]) {

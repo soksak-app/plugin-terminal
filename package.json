@@ -21,7 +21,7 @@
     "ui/terminal.js"
   ],
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --experimental-test-module-mocks --test test/"
   },
   "devDependencies": {
     "@soksak/plugin-api": "git+https://github.com/soksak-app/core.git#0f9267425370f3cb103ce2c39d2d3e7fe93ccb4d&path:/packages/plugin-api",
