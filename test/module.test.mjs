@@ -127,7 +127,7 @@ test("terminal input and send records carry the sidecar correlation identifiers"
   const host = createViewPage(t, "log-cids");
   const records = [];
   const { createViewLog } = await import("../build/test/ui/view-log.js");
-  host.context.runtime.log = createViewLog({ request: async (command, params) => { records.push({ command, params }); } }, host.report);
+  host.context.runtime.log = createViewLog({ request: async (command, params) => { records.push({ command, params }); } });
   await mountView(host);
   host.sidecar.trigger(START.surface, { event: "state", sessionId: "s1", cols: 80, rows: 24, cellWidth: 8, cellHeight: 16 });
   await host.settle();

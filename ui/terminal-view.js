@@ -9,7 +9,7 @@ const isText = (value) => typeof value === "string" && value !== "";
 // exposes of the plugin.
 const START_FORM = {
   params: (value) => value !== undefined,
-  origin: (value) => value === null || (isRecord(value) && (value.directory === null || isText(value.directory))),
+  origin: (value) => isRecord(value) && (value.directory === null || isText(value.directory)),
   project: (value) => value === null || (isRecord(value) && isText(value.root)),
   declarations: isRecord,
 };

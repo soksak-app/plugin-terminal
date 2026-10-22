@@ -194,7 +194,6 @@ function normalizeCursorPolicy(value) {
   };
 }
 
-const NO_LOG = Object.fromEntries([["enabled", () => false], ...["error", "warn", "info", "debug", "trace"].map((level) => [level, () => {}])]);
 
 /**
  * 터미널 표면을 초기화하고 사이드카와 연결한다.
@@ -220,23 +219,22 @@ const ATTRIBUTE_FLAGS = [[0x01, "bold"], [0x02, "dim"], [0x04, "italic"], [0x08,
   [0x40, "hidden"], [0x80, "strikethrough"]];
 
 export async function startTerminal({ id, view, attachImage, detachRegions, sidecar, expose, theme,
-  // Aborts when the removal of the surface starts, before its regions are detached (context.closing).
-  // default: a terminal started without a surface (a test) is never removed, so its signal never aborts.
-  closing = new AbortController().signal,
+  // Aborts when the removal of the surface starts, before its regions are detached (context.closing). Required.
+  closing,
   // padding 은 변마다 view 둘레를 칠하는 overlay 요소 {top, right, bottom, left} 다. 없으면 칠하지 않는다.
   padding: paddingStrips = null,
-  settings, clipboard, scrollbar = null, reportSurfaceError = () => {}, diagnostics = null,
-  // 탭 알림(docs/spec/plugins.md#tab-reports)과 이 탭을 만든 카드의 작업 디렉터리.
-  tab = { title() {}, footer() {}, directory() {}, notify() {} }, origin = { directory: null },
+  settings, clipboard, scrollbar = null, reportSurfaceError, diagnostics = null,
+  // 탭 알림(docs/spec/plugins.md#tab-reports)과 이 탭을 만든 카드의 작업 디렉터리. Required; origin is {directory} with a path or null.
+  tab, origin,
   // 표면 창의 프로젝트. 없으면 null 이다.
   project = null,
   // 링크 열기(docs/spec/plugins.md#opening-links).
   links = null,
-  // 이 표면의 실제 글자 배율(docs/spec/text-size.md). 출처가 없으면 배율은 1 이다.
-  textSize = { read: () => 1, on: () => () => {} },
+  // 이 표면의 실제 글자 배율(docs/spec/text-size.md). Required.
+  textSize,
   // The runtime of the surface, of which the terminal uses the event log (context.runtime.log, core
-  // docs/spec/plugins.md#logging). default: a terminal started without a surface (a test) has no event log, as a log that is off.
-  runtime = { log: NO_LOG },
+  // docs/spec/plugins.md#logging). Required.
+  runtime,
   window: globalWindow = globalThis.window }) {
   // 브라우저 환경에서 필요한 객체들
   const window = globalWindow;
@@ -244,6 +242,21 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
 
   if (!id) {
     throw new Error("startTerminal requires explicit surface id");
+  }
+  // Each sink of the surface is required: a missing sink is refused by name, and no default stands in for it.
+  if (typeof reportSurfaceError !== "function") throw new TypeError("startTerminal requires reportSurfaceError");
+  if (tab === null || typeof tab !== "object") throw new TypeError("startTerminal requires tab");
+  if (textSize === null || typeof textSize !== "object" || typeof textSize.read !== "function" || typeof textSize.on !== "function") {
+    throw new TypeError("startTerminal requires textSize {read, on}");
+  }
+  if (runtime === null || typeof runtime !== "object" || runtime.log === null || typeof runtime.log !== "object") {
+    throw new TypeError("startTerminal requires runtime.log");
+  }
+  if (closing === null || typeof closing !== "object" || typeof closing.aborted !== "boolean") throw new TypeError("startTerminal requires closing, an AbortSignal");
+  // The origin is {directory} whose directory is a path or null (core docs/spec/native-surfaces.md, start values); null is refused.
+  if (origin === null || typeof origin !== "object" || !("directory" in origin) ||
+      (origin.directory !== null && (typeof origin.directory !== "string" || origin.directory === ""))) {
+    throw new TypeError(`startTerminal requires origin {directory} with a path or null, found ${JSON.stringify(origin)}`);
   }
   const encoder = new TextEncoder();
 
@@ -277,6 +290,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     pointer: "default",
     // 엔진이 거부한 프로그램 출력 시퀀스의 최근 이유. 프로그램의 출력이므로 터미널 오류가 아니다.
     rejected: [],
+    // The sequence.rejected reasons that the rejected list dropped; the list keeps the last REJECTED_KEPT reasons.
+    rejectedShed: 0,
     vendor: { directory: null, hyperlink: null, notification: null, shell: null },
     compose: { text: "", selectedRange: null, replacementRange: null, attributed: false },
     theme: "dark",
@@ -1126,6 +1141,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     if (body.event === "state") {
       // 숫자 필드의 유효성을 확인한다. 계약 위반이면 오류로 보고한다.
       const errorDetails = [];
+      if (typeof body.sessionId !== "string" || body.sessionId.length === 0) {
+        errorDetails.push(`sessionId: ${typeof body.sessionId === "string" ? "empty" : "missing or wrong type"}`);
+      }
+      if (body.cursor !== undefined && (body.cursor === null || typeof body.cursor !== "object")) {
+        errorDetails.push("cursor: must be an object when present");
+      }
       if (typeof body.cols !== "number" || body.cols <= 0) {
         errorDetails.push(`cols: ${typeof body.cols === "number" ? `invalid value ${body.cols}` : `missing or wrong type`}`);
       }
@@ -1146,7 +1167,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
 
       session = {
         ...session,
-        sessionId: typeof body.sessionId === "string" ? body.sessionId : "",
+        sessionId: body.sessionId,
         cols: body.cols,
         rows: body.rows,
         cellWidth: body.cellWidth,
@@ -1197,10 +1218,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       // 거부된 메시지는 screen 출처의 오류이고 처리하지 않는다.
       let message;
       try {
+        // The cursor is part of each screen message (docs/spec/replay.md), so a message without it is refused before any update.
         const { col, row, visible, focused, shape, blinking } = body.cursor ?? {};
-        if (body.cursor && typeof body.cursor === "object" && (!Number.isInteger(col) || !Number.isInteger(row) || typeof visible !== "boolean" ||
+        if (body.cursor === null || typeof body.cursor !== "object" || !Number.isInteger(col) || !Number.isInteger(row) || typeof visible !== "boolean" ||
           (focused !== undefined && typeof focused !== "boolean") || (blinking !== undefined && typeof blinking !== "boolean") ||
-          (shape !== undefined && !DRAWN_SHAPE_KEYS.has(shape)) || !isPreedit(body.cursor.preedit))) {
+          (shape !== undefined && !DRAWN_SHAPE_KEYS.has(shape)) || !isPreedit(body.cursor.preedit)) {
           throw new Error(`invalid screen cursor from sidecar: ${JSON.stringify(body.cursor)}`);
         }
         if (!isScreenFrame(body.frame)) {
@@ -1424,7 +1446,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         reportInputError(new Error("invalid sequence.rejected event from sidecar"));
         return;
       }
-      session = { ...session, rejected: [...session.rejected, body.reason].slice(-REJECTED_KEPT) };
+      const rejected = [...session.rejected, body.reason];
+      const shed = Math.max(0, rejected.length - REJECTED_KEPT);
+      session = { ...session, rejected: rejected.slice(-REJECTED_KEPT), rejectedShed: session.rejectedShed + shed };
+      // Each reason that the list drops is counted, and the record states the running count.
+      if (shed > 0) runtime.log.info("session.rejected.shed", { count: session.rejectedShed });
       changed("session");
     } else if (body.event === "error") {
       // error 이벤트를 session 상태에 저장한다
@@ -1441,8 +1467,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       setError("sidecar", message);
       reportSurfaceError(new Error(message));
     } else if (body.event) {
-      // 알 수 없는 이벤트 타입을 보고한다
-      console.warn(`sidecar sent unknown event type: ${body.event}`);
+      // 알 수 없는 이벤트 타입을 기록한다
+      runtime.log.warn("sidecar.unknown", { event: String(body.event) });
       if (!session.unsupported.includes(body.event)) {
         session = { ...session, unsupported: [...session.unsupported, body.event] };
         changed("session");

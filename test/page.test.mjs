@@ -17,7 +17,7 @@ test("the view page delegates through the terminal-view module", () => {
   assert.match(view, /await mountPage\(context, report\)/);
   assert.match(view, /createViewBridge/);
   assert.match(view, /sokSurface/);
-  assert.match(view, /log: createViewLog\(calls, report\)/);
+  assert.match(view, /log: createViewLog\(calls\)/);
   const terminalView = readFileSync(new URL("../ui/terminal-view.js", import.meta.url), "utf8");
   assert.match(terminalView, /export async function mount/);
   assert.match(terminalView, /export async function mountPage/);

@@ -8,16 +8,10 @@ import { createExpose, declarationMap } from "@soksak/plugin-api";
 import { createViewBridge } from "@soksak/plugin-api/view";
 import { mountPage, startValues } from "./terminal-view.js";
 
-import { createViewLog } from "./view-log.js";
+import { createReporter, createViewLog } from "./view-log.js";
+import { loadDiagnostics } from "./view-diagnostics.js";
 import { viewClipboard } from "./view-clipboard.js";
 import { SIDECAR, viewSidecar } from "./view-sidecar.js";
-
-/** The reporter of this page: each record is written to the application log through the call runtime.log (core docs/spec/logging.md). */
-function createReporter(calls) {
-  return (text) => calls.request("runtime.log", { level: "error", event: "plugin.terminal.report", fields: { text } })
-    .then(undefined, (error) => Promise.reject(new Error(`report of a page record failed: ${error?.message ?? error}`)))
-    .catch((error) => console.error(error.message));
-}
 
 /** The release of a subscription that the route registers asynchronously: the release runs once the subscription is registered. */
 function releaseOf(pending) {
@@ -26,24 +20,6 @@ function releaseOf(pending) {
   // default: a refused subscription is recorded by the bridge, which forgets it, so the release of a refusal ends nothing.
   pending.then((end) => { stop = end; if (released) stop(); }, () => {});
   return () => { released = true; stop?.(); };
-}
-
-/**
- * The diagnostics module of this plugin, which is staged only in a diagnostic build: the declaration file decides, as the
- * workbench reads the declaration of diagnostics.json for each plugin. In a build without it the route serves no file, and
- * the page registers no diagnostic entry. Returns {declaration, attach}, or null without a diagnostic declaration.
- */
-export async function loadDiagnostics() {
-  let response;
-  try {
-    response = await fetch(new URL("../diagnostics.json", window.location.href).href);
-  } catch (error) {
-    throw new Error(`the diagnostics declaration of the terminal view cannot be read: ${error?.message ?? error}`);
-  }
-  // default: a build that stages no diagnostics.json serves the request as not found, so the page has no diagnostic entry.
-  if (!response.ok) return null;
-  const declaration = await response.json();
-  return { declaration, attach: (await import("./terminal-diagnostics.js")).attach };
 }
 
 /**
@@ -125,7 +101,7 @@ export function createViewContext({ bridge, start, report, diagnostics = null, s
         },
         links: { open: (url) => calls.request("runtime.links.open", url) },
         clipboard: viewClipboard(calls),
-        log: createViewLog(calls, report),
+        log: createViewLog(calls),
       },
     },
   };

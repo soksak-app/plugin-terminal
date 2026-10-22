@@ -16,7 +16,18 @@ const SHELL_SETTINGS = {
     shell: "/bin/sh" }),
   on: () => () => {},
 };
-const startTerminal = (options) => realStartTerminal({ id: "test-session", settings: SHELL_SETTINGS, ...options });
+// The sinks of a surface, which startTerminal requires: a tab that records nothing, a text scale of 1, a log that drops its records,
+// a signal that never aborts, a report that drops its text, and the origin of a tab with no directory.
+const NO_LOG = Object.fromEntries([["enabled", () => false], ...["error", "warn", "info", "debug", "trace"].map((level) => [level, () => {}])]);
+const sinks = () => ({
+  reportSurfaceError: () => {},
+  tab: { title() {}, footer() {}, directory() {}, notify() {} },
+  textSize: { read: () => 1, on: () => () => {} },
+  runtime: { log: NO_LOG },
+  closing: new AbortController().signal,
+  origin: { directory: null },
+});
+const startTerminal = (options) => realStartTerminal({ id: "test-session", settings: SHELL_SETTINGS, ...sinks(), ...options });
 
 /**
  * 가짜 ResizeObserver 구현.
@@ -212,6 +223,10 @@ function createFakeSidecar({ delay = () => 0 } = {}) {
         }
       }
     },
+    // Delivers the message as the sidecar sent it, without the compact form of screenMessage.
+    triggerRaw: function(id, message) {
+      for (const handler of listeners.get(id) ?? []) handler(message);
+    },
     reset: () => {
       messages.length = 0;
       listeners.clear();
@@ -328,7 +343,7 @@ for (const [name, raise, message] of PERSISTENT_ERRORS) {
 }
 
 const RESOLVED_ERRORS = [
-  ["state", { event: "state", cols: 0, rows: 50, cellWidth: 8, cellHeight: 16 },
+  ["state", { event: "state", sessionId: "s1", cols: 0, rows: 50, cellWidth: 8, cellHeight: 16 },
     "invalid state from sidecar: cols: invalid value 0"],
   ["session", { event: "session", sessionId: "" }, "terminal input failed: invalid persistent session event"],
   ["theme", { event: "theme", mode: "sepia" }, "terminal input failed: invalid theme acknowledgement from sidecar"],
@@ -3931,4 +3946,67 @@ test("a screen event without a sequence is the error of the source screen", asyn
     { source: "screen", message: "terminal input failed: screen message: sequence must be an integer from 1, found undefined" },
   ]);
   assert.equal(lines.filter(([name]) => name === "frame").length, 0);
+});
+
+/** The event log that keeps each record as [event, fields, level], with the fields copied as JSON. */
+function capturedLog() {
+  const records = [];
+  const log = Object.fromEntries(["error", "warn", "info", "debug", "trace"].map((level) => [level,
+    (event, fields) => records.push([event, JSON.parse(JSON.stringify(typeof fields === "function" ? fields() : fields)), level])]));
+  return { records, runtime: { log: { ...log, enabled: () => true } } };
+}
+
+const pageOptions = (sidecar = createFakeSidecar()) => ({
+  view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+  sidecar, expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder },
+});
+
+test("a state event without a string sessionId is refused with an error, and opens no session", async () => {
+  const log = capturedLog();
+  const sidecar = createFakeSidecar();
+  await startTerminal({ ...pageOptions(sidecar), runtime: log.runtime });
+  sidecar.triggerEvent("test-session", { event: "state", cols: 100, rows: 50, cellWidth: 8, cellHeight: 16 });
+  assert.ok(log.records.some(([event, fields, level]) => event === "error" && level === "error" && /sessionId: missing or wrong type/.test(fields.message)),
+    JSON.stringify(log.records));
+  assert.equal(log.records.some(([event]) => event === "session.gate"), false);
+});
+
+test("an origin that is not {directory} with a path or null is refused, and null is refused too", async () => {
+  for (const origin of [null, undefined, {}, { directory: 1 }, { directory: "" }]) {
+    await assert.rejects(startTerminal({ ...pageOptions(), origin }), /startTerminal requires origin \{directory\}/, JSON.stringify(origin));
+  }
+});
+
+test("each sink of a surface is required, and a missing one is refused by its name", async () => {
+  for (const name of ["reportSurfaceError", "tab", "textSize", "runtime", "closing", "origin"]) {
+    const options = { ...pageOptions(), ...sinks(), [name]: undefined };
+    await assert.rejects(realStartTerminal({ id: "test-session", settings: SHELL_SETTINGS, ...options }), /startTerminal requires/, name);
+  }
+});
+
+test("a sequence rejected beyond the kept reasons is counted, and each drop is logged with the running count", async () => {
+  const log = capturedLog();
+  const sidecar = createFakeSidecar();
+  await startTerminal({ ...pageOptions(sidecar), runtime: log.runtime });
+  for (let index = 0; index < 10; index += 1) sidecar.triggerEvent("test-session", { event: "sequence.rejected", reason: `reason ${index}` });
+  assert.deepEqual(log.records.filter(([event]) => event === "session.rejected.shed").map(([, fields]) => fields), [{ count: 1 }, { count: 2 }]);
+});
+
+test("an unknown sidecar event is written to the event log, not only to the console", async () => {
+  const log = capturedLog();
+  const sidecar = createFakeSidecar();
+  await startTerminal({ ...pageOptions(sidecar), runtime: log.runtime });
+  sidecar.triggerEvent("test-session", { event: "mystery" });
+  assert.deepEqual(log.records.filter(([event]) => event === "sidecar.unknown"), [["sidecar.unknown", { event: "mystery" }, "warn"]]);
+});
+
+test("a screen message without a cursor is refused as an error before it changes the screen", async () => {
+  const log = capturedLog();
+  const sidecar = createFakeSidecar();
+  await startTerminal({ ...pageOptions(sidecar), runtime: log.runtime });
+  openSession(sidecar);
+  const { cursor: _omitted, ...withoutCursor } = SCREEN_MESSAGE.message;
+  sidecar.triggerRaw("test-session", withoutCursor);
+  assert.ok(log.records.some(([event, fields, level]) => event === "error" && level === "error" && /invalid screen cursor from sidecar/.test(fields.message)),
+    JSON.stringify(log.records));
 });

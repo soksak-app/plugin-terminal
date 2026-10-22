@@ -52,6 +52,16 @@
       "fields": { "operation": "string|null", "ok": "boolean", "micros": "number", "error?": "string" },
       "description": "The result of a message to the sidecar; error is <code>: <text> when ok is false."
     },
+    "plugin.terminal.session.rejected.shed": {
+      "layer": "plugin", "class": "io", "level": "info",
+      "fields": { "count": "number" },
+      "description": "A rejected sequence reason was dropped from the list of the kept reasons; count is the running count of the dropped reasons of the session."
+    },
+    "plugin.terminal.sidecar.unknown": {
+      "layer": "plugin", "class": "io", "level": "warn",
+      "fields": { "event": "string" },
+      "description": "The sidecar sent an event that the terminal does not handle; event is its name."
+    },
     "plugin.terminal.sidecar.event": {
       "layer": "plugin", "class": "io", "level": "trace",
       "fields": { "body": "object" },
