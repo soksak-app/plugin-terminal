@@ -3347,7 +3347,7 @@ test("a link that the host rejects is an input session error", async () => {
 });
 
 test("a session without an origin directory opens in the project root, and without a project in the home directory", async () => {
-  for (const [project, expected] of [[{ root: "/work/app" }, { directory: "/work/app" }], [null, {}]]) {
+  for (const [project, expected] of [[{ id: "prj-app", root: "/work/app" }, { directory: "/work/app" }], [null, {}]]) {
     FakeResizeObserver.reset();
     const fakeSidecar = createFakeSidecar();
     await startTerminal({

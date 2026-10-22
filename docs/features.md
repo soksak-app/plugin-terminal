@@ -2,6 +2,7 @@
 
 [한국어](features.ko.md)
 
+- [o] P64 — P0: Product defect follow-up for core F212.12-1-13-1: the start values of a view refused the `project` of a window that carries `{id, root}` with an id, because the validator accepted only `{root}`; the project is `{id, root}` in the core start values. The validator requires `id` and `root` text. Red: the refusal test for a project without an id failed against the committed validator. Green: the same test passes with the validator that requires the id.
 - [o] P1 — P1: Test and pack this plugin as its own repository. Moved on 2026-10-02 from the soksak core repository (checklist item R1-5-3 there), whose history holds the earlier changes. `make test` and `make pack` pass.
 - [o] P2 — P1: Release version 0.0.2 for soksak core 0.0.2. Done on 2026-10-02: `package.json` declares 0.0.2 and `engines.soksak` `^0.0.2`, and the tests resolve `@soksak/plugin-api` from the core tag `v0.0.2`; `make test` passes on macOS arm64.
 - [o] P3 — P1: Check the exposure names of the pages and sections. Done on 2026-10-02 for the core checklist item R1-5-5: `make test` runs `soksak-exposure` of `@soksak/plugin-api` at the core tag `v0.0.2`, which compares every name in `ui/` with `plugin.json` and the core declarations; it passes on macOS arm64.
