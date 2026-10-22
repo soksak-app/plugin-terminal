@@ -11,13 +11,17 @@ test("the view page delegates through the terminal-view module", () => {
   assert.ok(pkg.files.includes("ui/view.js"));
   assert.ok(pkg.files.includes("ui/view-clipboard.js"));
   assert.ok(pkg.files.includes("ui/view-log.js"));
+  assert.ok(pkg.files.includes("ui/view-context.js"));
+  assert.ok(pkg.files.includes("ui/view-exposes.js"));
   assert.ok(pkg.files.includes("ui/terminal-view.js"));
   const view = readFileSync(new URL("../ui/view.js", import.meta.url), "utf8");
   assert.doesNotMatch(view, /export async function mount/);
   assert.match(view, /await mountPage\(context, report\)/);
   assert.match(view, /createViewBridge/);
   assert.match(view, /sokSurface/);
-  assert.match(view, /log: createViewLog\(calls\)/);
+  const context = readFileSync(new URL("../ui/view-context.js", import.meta.url), "utf8");
+  assert.match(context, /log: createViewLog\(calls\)/);
+  assert.match(context, /viewExposes\(start\)/);
   const terminalView = readFileSync(new URL("../ui/terminal-view.js", import.meta.url), "utf8");
   assert.match(terminalView, /export async function mount/);
   assert.match(terminalView, /export async function mountPage/);

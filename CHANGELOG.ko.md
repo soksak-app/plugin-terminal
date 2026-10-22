@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- P63: view는 노출 항목을 한 번만 선언한다. 진단 빌드에서 start values가 이미 diagnostics.json 항목을 담으므로 page가 다시 더하지 않아, mount가 `is declared twice`로 실패하지 않는다.
 - P60: pre-push 훅이 `make push-check`를 실행한다. 이것은 ci workflow와 같이 `make test`, `make check`, push 범위의 commit message 검사를 실행한다. Red: `.githooks/pre-push`가 없었다. Green: 훅이 검사를 실행한다. `make test`는 시험 191개 중 191개를 통과하고, `make check`는 고정 SDK의 clipboard contract 파일에서 실패하며 이것은 P61이 기록한다.
 
 - F252-terminal-1: view의 exposure port는 core createExpose가 요구하는 대로 host가 거부한 reply를 보고한다.

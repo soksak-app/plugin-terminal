@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P63: The view declares its exposure entries once: in a diagnostic build the start values already hold the diagnostics.json entries, and the page no longer adds them again, so the mount no longer fails with `is declared twice`.
 - P60: The pre-push hook runs `make push-check`, which runs `make test`, `make check` and the commit message check of the pushed range, as the ci workflow does. Red: `.githooks/pre-push` did not exist. Green: the hook runs the checks; `make test` passes 191 of 191 tests, and `make check` fails at the pinned SDK on the clipboard contract file, which P61 records.
 
 - F252-terminal-1: The exposure port of the view reports a reply that the host refuses, as core createExpose requires.
