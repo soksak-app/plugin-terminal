@@ -6,6 +6,8 @@
 
 - P54.1: The CI and release workflows run `make check` after `make test`. `ci.yml` had no `make check` step, and `release.yml` ran `make check` only as the prerequisite of `make pack`. Red: `test/workflows.test.mjs` failed on the unchanged workflows (`ci.yml` targets `test`; `release.yml` targets `pack`). Green: both cases pass. On the pinned release, `make check` fails at its first step until P58 moves the pin.
 
+- P54.2: `test/test-script.test.mjs` checks that the test command of package.json selects every test file under `test/`, including its subdirectories. The unchanged command `node --test test/` already selects nested files, so no command changed. Red: a fault-injected flat glob command failed the case with the nested probe file `test/nested/probe.test.mjs`. Green: the unchanged command passes the case with the same probe file.
+
 - F238-b-12: the page no longer calls `runtime.log.enabled`. It hashes each accepted `screen` message and passes the `frame` record to `runtime.log.debug`, and the writer of the event log decides whether the class `frame` is stored. The page reads no log level, so the cost of the hash of each screen message is not gated by the level.
 - P59: The release lists `ui/view-sidecar.js`, which the view page imports, so the installed release serves it. `test/release-files.test.mjs` checks that every relative import of `ui/*.js` and every relative script `src` of `ui/*.html` resolves to a listed file, except the declared diagnostic module. Red: on the unchanged `package.json`, the test failed with `ui/terminal-view.js -> ui/view-sidecar.js` and `ui/view.js -> ui/view-sidecar.js`. Green: `make test` passes 177/177 and `make check` with the core plugin-api source passes all four tools.
 

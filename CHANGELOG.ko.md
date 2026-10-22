@@ -6,6 +6,8 @@
 
 - P54.1: CI와 release workflow가 `make test` 뒤에 `make check`를 실행한다. `ci.yml`에는 `make check` 단계가 없었고, `release.yml`은 `make pack`의 선행 단계로만 `make check`를 실행했다. Red: 변경 전 workflow에서 `test/workflows.test.mjs`가 실패했다(`ci.yml`의 target은 `test`, `release.yml`의 target은 `pack`). Green: 두 case가 통과한다. 고정된 release에서는 P58이 pin을 옮길 때까지 `make check`가 첫 단계에서 실패한다.
 
+- P54.2: `test/test-script.test.mjs`가 package.json의 test command가 `test/`의 모든 test file을 하위 디렉터리까지 선택하는지 검사한다. 변경하지 않은 command `node --test test/`가 이미 중첩 test file을 선택하므로 command는 바꾸지 않았다. Red: fault injection으로 바꾼 flat glob command는 중첩 probe file `test/nested/probe.test.mjs`에서 case를 실패시켰다. Green: 변경하지 않은 command는 같은 probe file에서 case를 통과한다.
+
 - F238-b-12: page는 더 이상 `runtime.log.enabled`를 부르지 않는다. 받아들인 `screen` message마다 hash를 계산해 `frame` 기록을 `runtime.log.debug`로 넘기며, class `frame`의 저장 여부는 event log의 writer가 정한다. page는 log level을 읽지 않으므로 screen message마다의 hash 비용은 level로 막히지 않는다.
 - P59: release가 view page가 import하는 `ui/view-sidecar.js`를 나열하므로 설치된 release가 이를 제공한다. `test/release-files.test.mjs`는 `ui/*.js`의 모든 상대 import와 `ui/*.html`의 모든 상대 script `src`가 나열된 파일로 해석되는지 검사하며, 선언된 진단 모듈만 예외다. Red: 변경 전 `package.json`에서 테스트가 `ui/terminal-view.js -> ui/view-sidecar.js`와 `ui/view.js -> ui/view-sidecar.js`로 실패했다. Green: `make test`가 177/177 통과하고, core plugin-api 소스를 지정한 `make check`가 네 도구를 모두 통과한다.
 
