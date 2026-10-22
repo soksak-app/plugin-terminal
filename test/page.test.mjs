@@ -9,6 +9,7 @@ test("the view page delegates through the terminal-view module", () => {
   assert.equal(existsSync(new URL("../ui/terminal-module.js", import.meta.url)), false, "the page-mount module is removed");
   assert.ok(pkg.files.includes(manifest.surface.composition.page));
   assert.ok(pkg.files.includes("ui/view.js"));
+  assert.ok(pkg.files.includes("ui/view-clipboard.js"));
   assert.ok(pkg.files.includes("ui/view-log.js"));
   assert.ok(pkg.files.includes("ui/terminal-view.js"));
   const view = readFileSync(new URL("../ui/view.js", import.meta.url), "utf8");
