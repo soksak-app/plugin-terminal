@@ -14,19 +14,14 @@ async function mountView(host) {
   await host.settle();
 }
 
-const VIEW_IMPORTS = JSON.parse(readFileSync(new URL("../view-check.json", import.meta.url), "utf8")).viewImports;
-
-// The check of a view page: exactly one static import map whose imports equal VIEW_IMPORTS, and no other field.
+// The check of a view page (core docs/spec/plugin-processes.md, rule 4): the page begins with its doctype and holds no import map,
+// because the host inserts the view import map after the doctype of each view page.
 function checkViewPage(html) {
-  const maps = [...html.matchAll(/<script type="importmap">([\s\S]*?)<\/script>/g)];
-  assert.equal(maps.length, 1, "expected one import map");
-  const map = JSON.parse(maps[0][1]);
-  const field = Object.keys(map).find((key) => key !== "imports");
-  assert.equal(field, undefined, "the import map has an unexpected field");
-  assert.deepEqual(map.imports, VIEW_IMPORTS);
+  assert.match(html, /^<!doctype html>/i, "the view page begins with its doctype");
+  assert.doesNotMatch(html, /<script\b[^>]*\btype\s*=\s*["']?importmap\b/i, "the view page holds no import map of its own");
 }
 
-test("the view page carries the import map of the view and the page script", () => {
+test("the view page begins with its doctype, holds no import map, and carries the page script", () => {
   const html = readFileSync(new URL("../ui/terminal.html", import.meta.url), "utf8");
   assert.equal(checkViewPage(html), undefined);
   assert.match(html, /<script type="module" src="\.\/view\.js"><\/script>/);

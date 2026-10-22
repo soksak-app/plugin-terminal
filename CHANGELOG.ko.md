@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- P65: view 페이지는 doctype으로 시작하고 import map을 갖지 않으며, view literal은 `viewImports`를 갖지 않는다. host가 doctype 뒤에 view import map을 넣는다(core F212.12-1-10-6). Red: module 시험이 map을 가진 page에서 실패했고, core의 `checkViewPage`와 `checkViewLiteral`이 map과 `viewImports` 항목을 보고했다. Green: `make test`가 194개 중 194개를 통과하고, core의 검사가 두 파일을 받아들인다.
 - P63: view는 노출 항목을 한 번만 선언한다. 진단 빌드에서 start values가 이미 diagnostics.json 항목을 담으므로 page가 다시 더하지 않아, mount가 `is declared twice`로 실패하지 않는다.
 - P60: pre-push 훅이 `make push-check`를 실행한다. 이것은 ci workflow와 같이 `make test`, `make check`, push 범위의 commit message 검사를 실행한다. Red: `.githooks/pre-push`가 없었다. Green: 훅이 검사를 실행한다. `make test`는 시험 191개 중 191개를 통과하고, `make check`는 고정 SDK의 clipboard contract 파일에서 실패하며 이것은 P61이 기록한다.
 
