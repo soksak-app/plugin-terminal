@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- P59: The release lists `ui/view-sidecar.js`, which the view page imports, so the installed release serves it. `test/release-files.test.mjs` checks that every relative import of `ui/*.js` and every relative script `src` of `ui/*.html` resolves to a listed file, except the declared diagnostic module. Red: on the unchanged `package.json`, the test failed with `ui/terminal-view.js -> ui/view-sidecar.js` and `ui/view.js -> ui/view-sidecar.js`. Green: `make test` passes 177/177 and `make check` with the core plugin-api source passes all four tools.
+
 - P57: The view page names its sidecar `@soksak/sidecar-vt-alacritty` in each sidecar call and subscription. The sidecar port moved to `ui/view-sidecar.js` (P57.1). Red: `test/view-sidecar.test.mjs` failed on the unchanged port with the sidecar missing from the `runtime.sidecar.send` params and with undefined sidecar names for `on` and `onFailure`; `test/module.test.mjs` failed 7 of 9 cases once the view fixture refused a nameless sidecar. Green: `make test` passes 175 of 175. `make check` stops at its first step, which needs `contract/clipboard.json` in the pinned release (P58); its four SDK validators pass when run directly.
 
 - P49.4: The view clipboard serves a PNG payload. A PNG read returns the bytes of the payload, and `persistPNG` persists bytes through the call route of the view and returns the persisted path with its shell-quoted form (core F241). The clipboard entries of the view moved to `ui/view-clipboard.js`.
