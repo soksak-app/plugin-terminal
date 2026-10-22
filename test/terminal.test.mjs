@@ -168,7 +168,7 @@ function createFakeAttachImage() {
  */
 function recorder(lines) {
   lines.builders = new Set();
-  return Object.fromEntries([["enabled", (level) => !lines.closed && (level !== "debug" || lines.screenHashEnabled === true)], ...["error", "warn", "info", "debug", "trace"].map((level) => [level, (name, fields, options = {}) => {
+  return Object.fromEntries([...["error", "warn", "info", "debug", "trace"].map((level) => [level, (name, fields, options = {}) => {
     assert.ok(!name.startsWith("plugin."), `the log adds the prefix plugin.terminal., got ${name}`);
     if (typeof fields === "function") lines.builders.add(name);
     lines.push([name, JSON.parse(JSON.stringify(typeof fields === "function" ? fields() : fields)), level, options.cids]);
@@ -1602,9 +1602,12 @@ for (const [name, frame] of INVALID_FRAMES) {
     const pending = expose.getCommand("terminal.screen.read")();
     sidecar.triggerEvent("test-session", { event: "screen", lines: ["bad"], frame });
     assert.equal(expose.getStatus("terminal.session").readFn().error, message, `${name} was not refused`);
-    sidecar.triggerEvent("test-session", { event: "screen", lines: ["good"], frame: SCREEN_FRAME });
+    // The valid screen is the published case screen.message.empty-one-cell.frame-null: the page hashes each accepted message, and the
+    // model of the hash accepts only the published screens, whose hash cases have that screen.
+    sidecar.triggerEvent("test-session", { ...SCREEN_MESSAGE.message, frame: null });
     const result = await pending;
-    assert.deepEqual(result.rows.map((row) => row.map((cell) => cell.ch).join("")), ["good"], `${name} was passed on to the read`);
+    assert.deepEqual(result.rows.map((row) => row.length), [1], `${name} was passed on to the read`);
+    assert.equal(result.frame, null, `${name} did not pass the null frame of the valid screen`);
     assert.equal(expose.getStatus("terminal.session").readFn().error, undefined, "a valid screen event did not resolve the error");
   });
 }
@@ -3836,7 +3839,6 @@ async function framesStored(lines, count) {
 }
 
 async function startScreenTerminal(lines) {
-  lines.screenHashEnabled = true;
   const sidecar = createFakeSidecar();
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar,
@@ -3865,7 +3867,6 @@ test("a screen message is stored as the frame event with the hash of the golden 
 
 test("terminal.screen.alter changes the next screen message before the page hashes it, as a change on the way would", async () => {
   const lines = [];
-  lines.screenHashEnabled = true;
   const sidecar = createFakeSidecar();
   const expose = createFakeExpose();
   await startTerminal({
@@ -3886,13 +3887,12 @@ test("terminal.screen.alter changes the next screen message before the page hash
   assert.equal(hashes[1], vector.hash, "only the next message is altered");
 });
 
-test("a closed gate of the event log computes no hash and stores no frame event", async () => {
+test("a screen message reaches the event log as a frame record without a level gate in the page", async () => {
+  // The writer of the event log decides whether the record is stored by its class; the page reads no level.
   const lines = [];
   const sidecar = await startScreenTerminal(lines);
-  lines.closed = true;
   sidecar.triggerEvent("test-session", SCREEN_MESSAGE.message);
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(lines.filter(([name]) => name === "frame").length, 0);
+  await framesStored(lines, 1);
 });
 
 test("malformed screen rows, columns, cells, and segment are refused with debug logging disabled", async () => {

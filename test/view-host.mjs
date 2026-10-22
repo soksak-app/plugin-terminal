@@ -143,8 +143,8 @@ export function createViewPage(_t, caseId, { scheme = "dark", start = START, dia
       textSize: { read: () => 1, on: () => () => {} },
       links: { open: async (url) => reports.push(["runtime.links.open", url]) },
       clipboard: { read: async () => null, writeText: async () => {} },
-      log: Object.assign({ enabled: () => false }, Object.fromEntries(["error", "warn", "info", "debug", "trace"].map((level) => [level,
-        (event, fields) => logs.push({ event: "plugin.terminal." + event, fields: typeof fields === "function" ? fields() : fields })]))),
+      log: Object.fromEntries(["error", "warn", "info", "debug", "trace"].map((level) => [level,
+        (event, fields) => logs.push({ event: "plugin.terminal." + event, fields: typeof fields === "function" ? fields() : fields })])),
     },
   };
   const report = (text) => logs.push({ event: "plugin.terminal.report", fields: { text } });

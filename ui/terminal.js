@@ -1194,7 +1194,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       // screen 이벤트를 처리한다. screen.read 응답이나 화면 변화 알림.
       // 메시지가 화면을 모두 담으므로(docs/spec/terminal-runtime.md in core) 메시지는 항상 검사하고, frame 이벤트의 hash 는
       // 메시지만으로 계산한다. screenHash 는 SHA-256 이라 비동기이므로 fields 는 builder 가 아니라 hash 가 나온 뒤의 객체다.
-      // gate 가 닫히면 hash 를 계산하지 않는다. 거부된 메시지는 screen 출처의 오류이고 처리하지 않는다.
+      // 거부된 메시지는 screen 출처의 오류이고 처리하지 않는다.
       let message;
       try {
         const { col, row, visible, focused, shape, blinking } = body.cursor ?? {};
@@ -1211,15 +1211,15 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         reportInputError(error, "screen");
         return;
       }
-      if (runtime.log.enabled("debug")) {
-        // The session of the sidecar, which its frame records name (docs/spec/replay.md#records in core).
-        const { sequence, segment } = body;
-        const { sessionId } = session;
-        screenHash(message).then(
-          (hash) => runtime.log.debug("frame", { session: sessionId, segment, sequence, rows: message.rows, cols: message.cols, hash }),
-          (error) => reportInputError(error, "screen"),
-        );
-      }
+      // frame 기록은 gate 없이 runtime.log.debug 로 넘기며, 저장 여부는 event log 의 writer 가 class 로 정한다(docs/spec/logging.md).
+      // 페이지는 log level 을 읽지 않는다. screenHash 는 비동기이므로 fields 는 hash 가 나온 뒤의 객체다.
+      // The session of the sidecar, which its frame records name (docs/spec/replay.md#records in core).
+      const { sequence, segment } = body;
+      const { sessionId } = session;
+      screenHash(message).then(
+        (hash) => runtime.log.debug("frame", { session: sessionId, segment, sequence, rows: message.rows, cols: message.cols, hash }),
+        (error) => reportInputError(error, "screen"),
+      );
       // 링크와 screen.read 는 글자, 폭, 링크만 쓴다. 색과 속성은 래스터가 그린다.
       screen = body.cells.reduce((rows, cell, index) => {
         if (index % body.cols === 0) rows.push([]);
