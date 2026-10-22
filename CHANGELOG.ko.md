@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- P49.4: view clipboard가 PNG payload를 서브한다. PNG 읽기는 payload의 bytes를 돌려주고, `persistPNG`는 bytes를 view의 call route로 저장하고 저장된 경로와 shell-quote된 형태를 돌려준다(core F241). view의 clipboard 항목은 `ui/view-clipboard.js`로 옮겼다.
+
 - P49.5: terminal 소유 view-log adapter로 log correlation options를 view 경로에 전달한다. Red: input record가 native insert chain을 잃었다. Green: plugin test 170/170과 core-source 검사 통과. SDK pin과 release gate는 바꾸지 않았다.
 
 - F238-c-23/P56.1/P56.2: `scripts/build-test.mjs`는 필수 dependency/peer를 해석할 수 없거나 도달한 UI import가 `build/test/ui` 밖으로 나가면 실패한다. 없는 optional dependency와 optional peer는 허용한다. Package resolution은 실제 경로를 따르고 package 개발 전용 dependency는 제외한다. Import regex는 Acorn으로 대체했으며 SDK fake 검사 전에 module specifier를 decode하고, non-literal dynamic import와 `require`는 fail closed한다. Red: 변경 전 build는 required graph edge와 escaped helper에 status 0을 반환했고 Unicode-escaped SDK import를 rewrite하지 않았으며 computed dynamic import도 허용했다. Green: `node --test test/build-test.test.mjs` 6/6, `pnpm test` 169/169 통과. escaped helper fixture는 실제 해석 경로에 파일이 있음을 assert한다. SDK release pin은 바꾸지 않았다.

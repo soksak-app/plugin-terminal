@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- P49.4: The view clipboard serves a PNG payload. A PNG read returns the bytes of the payload, and `persistPNG` persists bytes through the call route of the view and returns the persisted path with its shell-quoted form (core F241). The clipboard entries of the view moved to `ui/view-clipboard.js`.
+
 - P49.5: Forward log correlation options through the terminal view route using the terminal-owned view-log adapter. Red: the input record lost the native insert chain. Green: 170/170 plugin tests and the core-source check pass. SDK pins and release gates are unchanged.
 
 - F238-c-23/P56.1/P56.2: `scripts/build-test.mjs` fails when required dependencies or peers are unresolved, or a reachable UI import escapes `build/test/ui`; absent optional dependencies and optional peers remain allowed. Package resolution follows real package paths and excludes package development-only dependencies. Acorn replaces import regexes, decodes module specifiers before SDK fake checks, and makes non-literal dynamic imports and `require` fail closed. Red: the original build returned status 0 for missing required edges and the escaped helper; it left a Unicode-escaped SDK import unreplaced and accepted a computed dynamic import. Green: `node --test test/build-test.test.mjs` passes 6/6; `pnpm test` passes 169/169. The escaped helper fixture asserts the actual resolved path exists. SDK release pins are unchanged.
