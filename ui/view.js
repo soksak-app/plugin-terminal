@@ -9,6 +9,7 @@ import { createViewBridge } from "@soksak/plugin-api/view";
 import { mountPage, startValues } from "./terminal-view.js";
 
 import { createViewLog } from "./view-log.js";
+import { viewClipboard } from "./view-clipboard.js";
 
 /** The reporter of this page: each record is written to the application log through the call runtime.log (core docs/spec/logging.md). */
 function createReporter(calls) {
@@ -123,10 +124,7 @@ export function createViewContext({ bridge, start, report, diagnostics = null, s
           },
         },
         links: { open: (url) => calls.request("runtime.links.open", url) },
-        clipboard: {
-          read: (type) => calls.request("runtime.clipboard.read", type),
-          writeText: (text) => calls.request("runtime.clipboard.writeText", text),
-        },
+        clipboard: viewClipboard(calls),
         log: createViewLog(calls, report),
       },
     },

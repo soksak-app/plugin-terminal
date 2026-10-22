@@ -18,6 +18,7 @@
     "events.json",
     "ui/terminal.html",
     "ui/view.js",
+    "ui/view-clipboard.js",
     "ui/view-log.js",
     "ui/terminal-view.js",
     "ui/terminal.js"
