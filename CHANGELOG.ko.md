@@ -8,6 +8,8 @@
 
 - P54.2: `test/test-script.test.mjs`가 package.json의 test command가 `test/`의 모든 test file을 하위 디렉터리까지 선택하는지 검사한다. 변경하지 않은 command `node --test test/`가 이미 중첩 test file을 선택하므로 command는 바꾸지 않았다. Red: fault injection으로 바꾼 flat glob command는 중첩 probe file `test/nested/probe.test.mjs`에서 case를 실패시켰다. Green: 변경하지 않은 command는 같은 probe file에서 case를 통과한다.
 
+- P54.3: 복사한 core 계약 case와 view literal이 core main과 같다. `scripts/test-sdk-cases.json`의 복사 case 38개와 view-start digest는 게시된 core main 값과 같고, core main의 `checkViewLiteral`은 `view-check.json`에 차이를 내지 않는다. 파일은 바꾸지 않았다. 대조는 `CORE_PLUGIN_API_DIR`를 지정한 `make check`가 맡고, view literal의 고정된 pin에 대한 실행은 P58을 기다린다.
+
 - F238-b-12: page는 더 이상 `runtime.log.enabled`를 부르지 않는다. 받아들인 `screen` message마다 hash를 계산해 `frame` 기록을 `runtime.log.debug`로 넘기며, class `frame`의 저장 여부는 event log의 writer가 정한다. page는 log level을 읽지 않으므로 screen message마다의 hash 비용은 level로 막히지 않는다.
 - P59: release가 view page가 import하는 `ui/view-sidecar.js`를 나열하므로 설치된 release가 이를 제공한다. `test/release-files.test.mjs`는 `ui/*.js`의 모든 상대 import와 `ui/*.html`의 모든 상대 script `src`가 나열된 파일로 해석되는지 검사하며, 선언된 진단 모듈만 예외다. Red: 변경 전 `package.json`에서 테스트가 `ui/terminal-view.js -> ui/view-sidecar.js`와 `ui/view.js -> ui/view-sidecar.js`로 실패했다. Green: `make test`가 177/177 통과하고, core plugin-api 소스를 지정한 `make check`가 네 도구를 모두 통과한다.
 

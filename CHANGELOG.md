@@ -8,6 +8,8 @@
 
 - P54.2: `test/test-script.test.mjs` checks that the test command of package.json selects every test file under `test/`, including its subdirectories. The unchanged command `node --test test/` already selects nested files, so no command changed. Red: a fault-injected flat glob command failed the case with the nested probe file `test/nested/probe.test.mjs`. Green: the unchanged command passes the case with the same probe file.
 
+- P54.3: The copied core contract cases and the view literal match core main. The 38 copied cases of `scripts/test-sdk-cases.json` and the view-start digest equal the published core main values, and `checkViewLiteral` of core main reports no difference for `view-check.json`. No file changed; the conformance check remains `make check` with `CORE_PLUGIN_API_DIR`, and the pinned run of the view literal waits on P58.
+
 - F238-b-12: the page no longer calls `runtime.log.enabled`. It hashes each accepted `screen` message and passes the `frame` record to `runtime.log.debug`, and the writer of the event log decides whether the class `frame` is stored. The page reads no log level, so the cost of the hash of each screen message is not gated by the level.
 - P59: The release lists `ui/view-sidecar.js`, which the view page imports, so the installed release serves it. `test/release-files.test.mjs` checks that every relative import of `ui/*.js` and every relative script `src` of `ui/*.html` resolves to a listed file, except the declared diagnostic module. Red: on the unchanged `package.json`, the test failed with `ui/terminal-view.js -> ui/view-sidecar.js` and `ui/view.js -> ui/view-sidecar.js`. Green: `make test` passes 177/177 and `make check` with the core plugin-api source passes all four tools.
 
