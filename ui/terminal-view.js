@@ -1,4 +1,5 @@
 import { startTerminal } from "./terminal.js";
+import { SIDECAR } from "./view-sidecar.js";
 
 const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 const isText = (value) => typeof value === "string" && value !== "";
@@ -45,7 +46,7 @@ export async function mount(root, context) {
   const composition = await context.composition.create({ regions: { view }, overlays: { scrollbar: scrollbar.track,
     "padding-top": padding.top, "padding-right": padding.right, "padding-bottom": padding.bottom, "padding-left": padding.left } });
   const image = composition.region("view");
-  const sidecar = context.runtime.sidecar();
+  const sidecar = context.runtime.sidecar(SIDECAR);
   let controller;
   try {
     controller = await startTerminal({ id: context.surfaceId, closing: context.closing, view, padding, attachImage: () => image,

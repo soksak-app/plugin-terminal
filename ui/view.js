@@ -10,7 +10,7 @@ import { mountPage, startValues } from "./terminal-view.js";
 
 import { createViewLog } from "./view-log.js";
 import { viewClipboard } from "./view-clipboard.js";
-import { viewSidecar } from "./view-sidecar.js";
+import { SIDECAR, viewSidecar } from "./view-sidecar.js";
 
 /** The reporter of this page: each record is written to the application log through the call runtime.log (core docs/spec/logging.md). */
 function createReporter(calls) {
@@ -100,7 +100,10 @@ export function createViewContext({ bridge, start, report, diagnostics = null, s
       origin: start.origin,
       project: start.project,
       runtime: {
-        sidecar: () => viewSidecar(calls, runtime),
+        sidecar: (name) => {
+          if (name !== SIDECAR) throw new Error(`runtime.sidecar of the terminal view takes ${SIDECAR}, got ${String(name)}`);
+          return viewSidecar(calls, runtime);
+        },
         theme: runtime.theme,
         // The terminal reads the values and the scale synchronously when it starts, so the page reads both from the route
         // before it starts, and each change arrives through the subscription of the view.

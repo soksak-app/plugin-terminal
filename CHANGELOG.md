@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- P57: The view page names its sidecar `@soksak/sidecar-vt-alacritty` in each sidecar call and subscription. The sidecar port moved to `ui/view-sidecar.js` (P57.1). Red: `test/view-sidecar.test.mjs` failed on the unchanged port with the sidecar missing from the `runtime.sidecar.send` params and with undefined sidecar names for `on` and `onFailure`; `test/module.test.mjs` failed 7 of 9 cases once the view fixture refused a nameless sidecar. Green: `make test` passes 175 of 175. `make check` stops at its first step, which needs `contract/clipboard.json` in the pinned release (P58); its four SDK validators pass when run directly.
+
 - P49.4: The view clipboard serves a PNG payload. A PNG read returns the bytes of the payload, and `persistPNG` persists bytes through the call route of the view and returns the persisted path with its shell-quoted form (core F241). The clipboard entries of the view moved to `ui/view-clipboard.js`.
 
 - P49.5: Forward log correlation options through the terminal view route using the terminal-owned view-log adapter. Red: the input record lost the native insert chain. Green: 170/170 plugin tests and the core-source check pass. SDK pins and release gates are unchanged.

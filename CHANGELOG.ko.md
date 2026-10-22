@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- P57: view page가 sidecar call과 구독마다 sidecar `@soksak/sidecar-vt-alacritty`를 명시한다. sidecar port는 `ui/view-sidecar.js`로 옮겼다(P57.1). Red: 변경 전 port에서 `test/view-sidecar.test.mjs`가 `runtime.sidecar.send` params에 sidecar가 없어, `on`과 `onFailure`의 sidecar 이름이 undefined여서 실패했다. view fixture가 이름 없는 sidecar 호출을 거부하자 `test/module.test.mjs`가 9개 중 7개 case에서 실패했다. Green: `make test`가 175/175 통과한다. `make check`는 첫 단계에서 멈추는데, 고정된 release가 `contract/clipboard.json`을 게시하지 않기 때문이다(P58). 네 SDK validator는 직접 실행하면 통과한다.
+
 - P49.4: view clipboard가 PNG payload를 서브한다. PNG 읽기는 payload의 bytes를 돌려주고, `persistPNG`는 bytes를 view의 call route로 저장하고 저장된 경로와 shell-quote된 형태를 돌려준다(core F241). view의 clipboard 항목은 `ui/view-clipboard.js`로 옮겼다.
 
 - P49.5: terminal 소유 view-log adapter로 log correlation options를 view 경로에 전달한다. Red: input record가 native insert chain을 잃었다. Green: plugin test 170/170과 core-source 검사 통과. SDK pin과 release gate는 바꾸지 않았다.

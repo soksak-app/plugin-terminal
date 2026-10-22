@@ -5,6 +5,7 @@ import * as terminalDiagnostics from "../build/test/ui/terminal-diagnostics.js";
 
 const manifest = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
 const diagnosticManifest = JSON.parse(readFileSync(new URL("../diagnostics.json", import.meta.url), "utf8"));
+const SIDECAR = Object.keys(manifest.dependencies)[0];
 
 export const START = Object.freeze({
   surface: "terminal-1",
@@ -121,15 +122,19 @@ export function createViewPage(_t, caseId, { scheme = "dark", start = START, dia
     origin: start.origin,
     project: start.project,
     runtime: {
-      sidecar: () => ({
-        send: async (id, body, cids) => {
-          const params = { id, body, cids };
-          received.push({ command: "runtime.sidecar.send", params });
-          return sidecar.send(id, body, cids);
-        },
-        on: (id, fn) => sidecar.on(id, fn),
-        onFailure: (id, fn) => sidecar.onFailure(id, fn),
-      }),
+      // The page names its sidecar, which plugin.json lists as its only dependency.
+      sidecar: (name) => {
+        if (name !== SIDECAR) throw new Error(`runtime.sidecar requires the declared sidecar ${SIDECAR}, got ${String(name)}`);
+        return {
+          send: async (id, body, cids) => {
+            const params = { id, sidecar: name, body, cids };
+            received.push({ command: "runtime.sidecar.send", params });
+            return sidecar.send(id, body, cids);
+          },
+          on: (id, fn) => sidecar.on(id, fn),
+          onFailure: (id, fn) => sidecar.onFailure(id, fn),
+        };
+      },
       theme: (listener) => {
         const value = { scheme, tokens: { "--card": "#ffffff", "--fg": "#252735", "--edge": "#d8dbe4", "--rail": "#5962e8" } };
         return { ready: Promise.resolve().then(() => listener(value)), dispose() {} };
