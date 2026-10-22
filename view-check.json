@@ -1,9 +1,10 @@
 {
-  "viewStartSha256": "aa1abb18bed83828bf9a14e7ade439ef5ae19528321feca8b846193e833775d5",
+  "viewStartSha256": "d96923ada1f03a2af97f8e09ee32bc323ec72f235fffc1d4519f6f641db1dffc",
   "viewImports": {
     "soksak": "sok://core/modules/soksak/dist/index.js",
     "@soksak/plugin-api": "sok://core/modules/@soksak/plugin-api/index.js",
     "@soksak/plugin-api/view": "sok://core/modules/@soksak/plugin-api/view.js",
+    "@soksak/plugin-api/screen-hash": "sok://core/modules/@soksak/plugin-api/screen-hash.js",
     "@soksak/shared/": "sok://core/shared/"
   },
   "screenMessage": {
