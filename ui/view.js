@@ -5,6 +5,7 @@
 // the start values {surface, params, origin, project, declarations} from window.sokSurface, addresses the sidecar session of
 // the surface with the surface identifier, and writes its records and its errors as the call runtime.log.
 import { createExpose, declarationMap } from "@soksak/plugin-api";
+import { createExposurePort } from "./view-exposure-port.js";
 import { createViewBridge } from "@soksak/plugin-api/view";
 import { mountPage, startValues } from "./terminal-view.js";
 
@@ -47,15 +48,7 @@ export function createViewContext({ bridge, start, report, diagnostics = null, s
       // The view of a surface ends with it, so the page has no signal of the removal; the default of the terminal never aborts.
       closing: new AbortController().signal,
       composition: { create: (elements) => bridge.composition.create(elements) },
-      exposure: createExpose({
-        // A view declares its commands by the call runtime.command.register, and its statuses and dom names by the
-        // registered call of the exposure relay (core docs/spec/native-surfaces.md#view-surfaces, view exposure).
-        register: (kind, name) => kind === "command"
-          ? calls.request("runtime.command.register", { name })
-          : bridge.exposure.register(kind, name),
-        onRequest: (fn) => { releaseOf(runtime.native.on("exposure-request", (data) => fn(data))); },
-        reply: (id, payload) => bridge.exposure.reply(id, payload),
-      }, () => diagnostics
+      exposure: createExpose(createExposurePort({ bridge, runtime, releaseOf, report }), () => diagnostics
         ? declarationMap(diagnostics.declaration.exposes, declarationMap(start.declarations))
         : start.declarations),
       diagnostics,
