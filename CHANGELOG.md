@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- P60: The pre-push hook runs `make push-check`, which runs `make test`, `make check` and the commit message check of the pushed range, as the ci workflow does. Red: `.githooks/pre-push` did not exist. Green: the hook runs the checks; `make test` passes 191 of 191 tests, and `make check` fails at the pinned SDK on the clipboard contract file, which P61 records.
+
 - F252-terminal-1: The exposure port of the view reports a reply that the host refuses, as core createExpose requires.
 - F252-contract-terminal: The copied screen-hash cases follow core origin/main. Three single-call cases are added to the table; the other five screen-hash cases are not covered because they have several calls or no page export.
 - F252-terminal: The terminal page refuses a state event without a string `sessionId`, a null or non-object `cursor`, and an origin that is not `{directory}` with a path or null (`null` included). Each surface sink is required. A screen message without a cursor is refused before the screen changes. Dropped `sequence.rejected` reasons are counted (`session.rejectedShed`), and an unknown sidecar event is logged as `sidecar.unknown`. A diagnostics status other than not-found is refused. A refused `runtime.log` record is reported through `runtime.error` with `where` `log`. Red and Green: `test/terminal.test.mjs`, `test/terminal-view.test.mjs`, `test/view-log.test.mjs` (see docs/features.md F252-terminal).

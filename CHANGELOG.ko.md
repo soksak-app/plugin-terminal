@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- P60: pre-push 훅이 `make push-check`를 실행한다. 이것은 ci workflow와 같이 `make test`, `make check`, push 범위의 commit message 검사를 실행한다. Red: `.githooks/pre-push`가 없었다. Green: 훅이 검사를 실행한다. `make test`는 시험 191개 중 191개를 통과하고, `make check`는 고정 SDK의 clipboard contract 파일에서 실패하며 이것은 P61이 기록한다.
+
 - F252-terminal-1: view의 exposure port는 core createExpose가 요구하는 대로 host가 거부한 reply를 보고한다.
 - F252-contract-terminal: 복사한 screen-hash 사례를 core origin/main에 맞췄다. 한 호출 사례 세 개를 table에 추가했으며, 나머지 다섯 개는 여러 호출이거나 page export가 아니어서 포괄하지 않는다.
 - F252-terminal: terminal page는 문자열 `sessionId`가 없는 state event, `null`이거나 object가 아닌 `cursor`, `null`을 포함해 `{directory}`(경로 또는 null)가 아닌 origin을 거부한다. 표면의 sink는 모두 필수다. cursor가 없는 screen message는 화면을 바꾸기 전에 거부한다. 버린 `sequence.rejected` 이유는 `session.rejectedShed`에 세고, 알 수 없는 sidecar event는 `sidecar.unknown`으로 기록한다. not-found가 아닌 diagnostics 상태는 거부한다. 거부된 `runtime.log` 기록은 `where`가 `log`인 `runtime.error`로 보고한다. Red와 Green: `test/terminal.test.mjs`, `test/terminal-view.test.mjs`, `test/view-log.test.mjs`(docs/features.ko.md의 F252-terminal 참조).
