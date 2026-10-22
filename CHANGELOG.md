@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- F252-contract-terminal: The copied screen-hash cases follow core origin/main. Three single-call cases are added to the table; the other five screen-hash cases are not covered because they have several calls or no page export.
 - F252-terminal: The terminal page refuses a state event without a string `sessionId`, a null or non-object `cursor`, and an origin that is not `{directory}` with a path or null (`null` included). Each surface sink is required. A screen message without a cursor is refused before the screen changes. Dropped `sequence.rejected` reasons are counted (`session.rejectedShed`), and an unknown sidecar event is logged as `sidecar.unknown`. A diagnostics status other than not-found is refused. A refused `runtime.log` record is reported through `runtime.error` with `where` `log`. Red and Green: `test/terminal.test.mjs`, `test/terminal-view.test.mjs`, `test/view-log.test.mjs` (see docs/features.md F252-terminal).
 - P54.1: The CI and release workflows run `make check` after `make test`. `ci.yml` had no `make check` step, and `release.yml` ran `make check` only as the prerequisite of `make pack`. Red: `test/workflows.test.mjs` failed on the unchanged workflows (`ci.yml` targets `test`; `release.yml` targets `pack`). Green: both cases pass. On the pinned release, `make check` fails at its first step until P58 moves the pin.
 

@@ -2977,6 +2977,136 @@
               }
             }
           ]
+        },
+        {
+          "id": "screen.hash.sha256",
+          "steps": [
+            {
+              "hash": {
+                "screen": {
+                  "rows": 1,
+                  "cols": 1,
+                  "cursor": {
+                    "row": 0,
+                    "col": 0,
+                    "visible": true
+                  },
+                  "cells": [
+                    {
+                      "grapheme": "A",
+                      "width": 1,
+                      "fg": null,
+                      "bg": null,
+                      "attributes": 0
+                    }
+                  ]
+                }
+              },
+              "output": {
+                "hash": "6eedce8be3fb57666d3dba35f49a4e29f48b61959a8013ca625631c30f821c28"
+              }
+            }
+          ]
+        },
+        {
+          "id": "screen.message.empty-one-cell.projects",
+          "steps": [
+            {
+              "message": {
+                "value": {
+                  "event": "screen",
+                  "sequence": 2,
+                  "segment": "b1",
+                  "rows": 1,
+                  "cols": 1,
+                  "cursor": {
+                    "row": 0,
+                    "col": 0,
+                    "visible": true
+                  },
+                  "cells": [
+                    {
+                      "grapheme": "",
+                      "width": 1,
+                      "fg": null,
+                      "bg": null,
+                      "attributes": 0
+                    }
+                  ]
+                }
+              },
+              "output": {
+                "screen": {
+                  "rows": 1,
+                  "cols": 1,
+                  "cursor": {
+                    "row": 0,
+                    "col": 0,
+                    "visible": true
+                  },
+                  "cells": [
+                    {
+                      "grapheme": "",
+                      "width": 1,
+                      "fg": null,
+                      "bg": null,
+                      "attributes": 0
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "screen.message.empty-one-cell-attributes-change.projects",
+          "steps": [
+            {
+              "message": {
+                "value": {
+                  "event": "screen",
+                  "sequence": 2,
+                  "segment": "b1",
+                  "rows": 1,
+                  "cols": 1,
+                  "cursor": {
+                    "row": 0,
+                    "col": 0,
+                    "visible": true
+                  },
+                  "cells": [
+                    {
+                      "grapheme": "",
+                      "width": 1,
+                      "fg": null,
+                      "bg": null,
+                      "attributes": 1
+                    }
+                  ]
+                }
+              },
+              "output": {
+                "screen": {
+                  "rows": 1,
+                  "cols": 1,
+                  "cursor": {
+                    "row": 0,
+                    "col": 0,
+                    "visible": true
+                  },
+                  "cells": [
+                    {
+                      "grapheme": "",
+                      "width": 1,
+                      "fg": null,
+                      "bg": null,
+                      "attributes": 1
+                    }
+                  ]
+                }
+              }
+            }
+          ]
         }
       ]
     }
