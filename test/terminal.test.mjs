@@ -1265,7 +1265,7 @@ test("terminal.focus remains available as a command for the card", async () => {
     "terminal.focus remains available for the card focus command");
 });
 
-test("terminal pointerdown prevents DOM focus and still bubbles to the card", async () => {
+test("terminal pointerdown prevents DOM focus and preserves propagation", async () => {
   FakeResizeObserver.reset();
   const attach = createFakeAttachImage();
   const expose = createFakeExpose();

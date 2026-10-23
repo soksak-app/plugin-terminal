@@ -136,3 +136,65 @@ test("terminal input and send records carry the sidecar correlation identifiers"
     assert.deepEqual(record.params.cids, input.cids, event + " retains correlation identifiers");
   }
 });
+
+
+function terminalPointer(host, button = 0) {
+  const view = host.context.exposure.getDom("terminal.view");
+  view.getBoundingClientRect = () => ({ left: 0, top: 0, width: 640, height: 400 });
+  view.setPointerCapture = () => {};
+  view.hasPointerCapture = () => true;
+  view.releasePointerCapture = () => {};
+  const event = new host.window.MouseEvent("pointerdown", { bubbles: true, cancelable: true, button, clientX: 80, clientY: 32 });
+  Object.defineProperty(event, "pointerId", { value: 1 });
+  view.dispatchEvent(event);
+  return event;
+}
+
+test("a primary press in the separate view runs terminal.focus and requests native keyboard focus", { timeout: 10000 }, async (t) => {
+  const host = createViewPage(t, "pointer-focus");
+  await mountView(host);
+  const event = terminalPointer(host);
+  await host.settle();
+  assert.deepEqual(host.commandRuns, [{ name: "terminal.focus", params: {} }], "the view press did not run its declared focus command");
+  assert.deepEqual(host.regionCalls.filter(([name]) => name === "image.focus"), [["image.focus", { name: "view" }]],
+    "the focus command did not transfer keyboard ownership to the native region");
+  assert.equal(host.context.exposure.getDom("terminal.view").dataset.command, "terminal.focus");
+  assert.equal(event.defaultPrevented, true, "the DOM must not retake focus after the native focus command");
+  await host.page.dispose();
+});
+
+test("the view focus binding ignores another button and is removed when the page is disposed", { timeout: 10000 }, async (t) => {
+  const host = createViewPage(t, "pointer-focus-dispose");
+  await mountView(host);
+  assert.equal(host.bindings.length, 1, "the view has no focus binding to dispose");
+  terminalPointer(host, 2);
+  await host.settle();
+  assert.deepEqual(host.commandRuns, []);
+  const view = host.context.exposure.getDom("terminal.view");
+  await host.page.dispose();
+  view.dispatchEvent(new host.window.MouseEvent("pointerdown", { button: 0 }));
+  await host.settle();
+  assert.deepEqual(host.commandRuns, [], "a disposed page still runs its focus command");
+});
+
+test("a rejected focus from a view press reaches the session and the surface error path", { timeout: 10000 }, async (t) => {
+  const host = createViewPage(t, "pointer-focus-failure");
+  await mountView(host);
+  const failure = new Error("native focus refused");
+  host.region.focus = async () => { throw failure; };
+  terminalPointer(host);
+  await host.settle();
+  assert.match(host.context.exposure.getStatus("terminal.session").read().error ?? "", /native focus refused/);
+  assert.deepEqual(host.reports.filter(([kind, phase]) => kind === "status" && phase === "error"), [["status", "error", failure]]);
+  await host.page.dispose();
+});
+
+
+test("a refused view focus binding releases the terminal session and composition", { timeout: 10000 }, async (t) => {
+  const host = createViewPage(t, "pointer-focus-bind-failure", { bindError: new Error("focus binding refused") });
+  await mountView(host);
+  assert.equal(host.page, null, "a page without its required focus binding must not remain mounted");
+  assert.equal(host.regionCalls.filter(([command]) => command === "image.detach").length, 1);
+  assert.equal(host.sidecar.sent.filter(({ body }) => body.operation === "close").length, 1);
+  assert.match(host.logs.find(({ event }) => event === "plugin.terminal.report").fields.text, /mount failed: focus binding refused/);
+});

@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- P66: terminal view의 primary pointer 누름은 shared exposure binder를 통해 선언된 `terminal.focus` command를 실행하여 native image region의 keyboard focus를 요청한다. 별도 view는 main document card로 pointer가 bubble되는 데 의존하지 않는다. focus 실패는 session과 surface 오류 경로에 전달하고, dispose 시 binding을 제거하며, binding 거부 시 terminal session과 composition을 해제한다. owning test 4개가 수정 전에 실패하고 수정 후 통과한다. darwin arm64와 Node 26.11.1에서 owning page test 16개와 pointer 전파 case가 통과하며, 현재 core API source를 사용한 선언된 plugin 검사가 통과한다. 수정은 미배포 상태이며(P66-1), 기존 문서 차이는 P67로 추적한다.
+
 - P65: view 페이지는 doctype으로 시작하고 import map을 갖지 않으며, view literal은 `viewImports`를 갖지 않는다. host가 doctype 뒤에 view import map을 넣는다(core F212.12-1-10-6). Red: module 시험이 map을 가진 page에서 실패했고, core의 `checkViewPage`와 `checkViewLiteral`이 map과 `viewImports` 항목을 보고했다. Green: `make test`가 194개 중 194개를 통과하고, core의 검사가 두 파일을 받아들인다.
 - P63: view는 노출 항목을 한 번만 선언한다. 진단 빌드에서 start values가 이미 diagnostics.json 항목을 담으므로 page가 다시 더하지 않아, mount가 `is declared twice`로 실패하지 않는다.
 - P60: pre-push 훅이 `make push-check`를 실행한다. 이것은 ci workflow와 같이 `make test`, `make check`, push 범위의 commit message 검사를 실행한다. Red: `.githooks/pre-push`가 없었다. Green: 훅이 검사를 실행한다. `make test`는 시험 191개 중 191개를 통과하고, `make check`는 고정 SDK의 clipboard contract 파일에서 실패하며 이것은 P61이 기록한다.

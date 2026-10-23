@@ -61,7 +61,7 @@ const settle = (rounds = 6) => {
   return done;
 };
 
-export function createViewPage(_t, caseId, { scheme = "dark", start = START, diagnostic = true, openError = null } = {}) {
+export function createViewPage(_t, caseId, { scheme = "dark", start = START, diagnostic = true, openError = null, bindError = null } = {}) {
   const { window } = createWindow("sok://terminal/ui/terminal.html?case=" + caseId);
   useWindow(window);
   window.sokSurface = start;
@@ -78,24 +78,48 @@ export function createViewPage(_t, caseId, { scheme = "dark", start = START, dia
   const reports = [];
   const logs = [];
   const received = [];
+  const commandRuns = [];
+  const bindings = [];
+  const releaseBindings = [];
 
   const exposure = {
     async status(name, read, watch) { registrations.push({ kind: "status", name }); statuses.set(name, { read, watch }); },
     async command(name, handler) { commands.add(name); commandHandlers.set(name, handler); },
     async dom(name, element) { registrations.push({ kind: "dom", name }); doms.set(name, element); },
     async run(name, params = {}) {
+      commandRuns.push({ name, params });
       const handler = commandHandlers.get(name);
       if (!handler) throw new Error("terminal command is not registered: " + name);
       return handler(params);
     },
     async mark(element, name) { element.dataset.command = name; return element; },
-    async dispose() {},
+    async bind(element, name, params, options) {
+      if (bindError) throw bindError;
+      if (!commandHandlers.has(name)) throw new Error("binding command is not registered: " + name);
+      bindings.push({ element, name, params, options });
+      element.dataset.command = name;
+      const listener = (event) => {
+        if (options.when && !options.when(event)) return;
+        Promise.resolve(exposure.run(name, params)).catch((error) => {
+          if (!options.failed) throw error;
+          options.failed(error);
+        });
+      };
+      element.addEventListener(options.event, listener);
+      releaseBindings.push(() => element.removeEventListener(options.event, listener));
+      return element;
+    },
+    async dispose() { for (const release of releaseBindings.splice(0)) release(); },
     getCommand: (name) => commandHandlers.get(name),
     getStatus: (name) => statuses.get(name),
     getDom: (name) => doms.get(name),
   };
 
   const region = fakeRegion();
+  region.focus = async () => {
+    regionCalls.push(["image.focus", { name: "view" }]);
+    region.trigger("focus", { focused: true });
+  };
   const context = {
     surfaceId: start.surface,
     closing: new AbortController().signal,
@@ -154,5 +178,5 @@ export function createViewPage(_t, caseId, { scheme = "dark", start = START, dia
     if (!handler) throw new Error("terminal command is not registered: " + params.name);
     return (await handler(params.params)) ?? null;
   };
-  return { window, context, report, sidecar, region, registrations, commands, regionCalls, places, reports, logs, received, exposureRequest, settle };
+  return { window, context, report, sidecar, region, registrations, commands, regionCalls, places, reports, logs, received, commandRuns, bindings, exposureRequest, settle };
 }

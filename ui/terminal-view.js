@@ -61,12 +61,18 @@ export async function mount(root, context) {
     if (!controller || typeof controller.dispose !== "function") {
       throw new TypeError("startTerminal must return { dispose() }");
     }
+    // A view is a separate document, so its press cannot reach the main document card's focus handler.
+    await context.exposure.bind(view, "terminal.focus", {}, {
+      event: "pointerdown", when: (event) => event.button === 0,
+      failed: (error) => context.status.report("error", error),
+    });
   } catch (error) {
-    try {
-      await composition.dispose();
-    } catch (cleanupError) {
-      throw new AggregateError([error, cleanupError], "terminal mount and composition cleanup failed");
-    }
+    const cleanup = await Promise.allSettled([
+      controller ? controller.dispose() : composition.dispose(),
+      context.exposure.dispose(),
+    ]);
+    const failed = cleanup.filter((result) => result.status === "rejected").map((result) => result.reason);
+    if (failed.length) throw new AggregateError([error, ...failed], "terminal mount and cleanup failed");
     throw error;
   }
   context.status.report("ready");
