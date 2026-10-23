@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- P68: Require VT sidecar 0.0.12 or later, which declares the required process display identity, and bump the terminal plugin to 0.0.15. Red: the manifest test rejected `^0.0.11`; Green: it passes with `^0.0.12`.
+
 - P66: A primary pointer press in the terminal view runs the declared `terminal.focus` command through the shared exposure binder, so it requests keyboard focus for the native image region. The separate view no longer depends on pointer bubbling to the main document card. Focus failures reach the session and the surface error path; disposal removes the binding, and a refused binding releases the terminal session and composition. Four owning tests fail before the correction and pass after it. The 16 owning page tests and the pointer propagation case pass on darwin arm64 with Node 26.11.1, and the declared plugin checks pass with the current core API source. The correction is unreleased (P66-1); pre-existing documentation differences are tracked by P67.
 
 - P65: The view page begins with its doctype and holds no import map, and the view literal holds no `viewImports`. The host inserts the view import map after the doctype, for the core checklist item F212.12-1-10-6. Red: the module test failed on the page with the map, and the core `checkViewPage` and `checkViewLiteral` reported the map and the `viewImports` member. Green: `make test` passes 194 of 194, and the core checks accept both files.

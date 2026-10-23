@@ -25,6 +25,11 @@ test("the package publishes the manifest and the view page", () => {
   assert.equal(manifest.surface.module, undefined, "a view surface has no module");
 });
 
+test("the plugin requires the VT sidecar process identity release", () => {
+  assert.equal(manifest.dependencies["@soksak/sidecar-vt-alacritty"], "^0.0.12");
+  assert.equal(pkg.version, "0.0.15");
+});
+
 test("the view page delegates terminal startup", () => {
   const source = readFileSync(new URL(`../${manifest.surface.composition.page}`, import.meta.url).pathname.replace(/\.html$/, ".js"), "utf8");
   assert.match(source, /startTerminal/);
