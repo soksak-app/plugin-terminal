@@ -3,6 +3,7 @@
 [English](features.md)
 
 - [o] P68 — P1: 현재 sidecar manifest가 process display identity를 필수로 요구하므로 VT sidecar 0.0.12 이상을 사용한다. terminal plugin을 0.0.15로 올린다. Red: manifest test가 기존 `^0.0.11` 범위에서 실패했다. Green: `^0.0.12`와 새 plugin version으로 통과한다.
+- [ ] P68-1 — P1: VT sidecar 최소 버전 0.0.12를 선언한 terminal plugin 0.0.15를 게시하고 설치된 plugin registry를 갱신한다. local archive는 준비됐지만 version이 게시될 때까지 이 dependency correction은 미배포 상태다.
 
 - [o] P1 — P1: 이 plugin을 자기 repository로 test하고 pack한다. 2026-10-02에 soksak core repository(그곳의 checklist 항목 R1-5-3)에서 옮겼으며, 이전 변경 이력은 core에 있다. `make test`와 `make pack`이 통과한다.
 - [o] P2 — P1: soksak core 0.0.2용 version 0.0.2를 release한다. 2026-10-02 완료: `package.json`이 0.0.2와 `engines.soksak` `^0.0.2`를 선언하고, test는 core tag `v0.0.2`의 `@soksak/plugin-api`를 쓴다. macOS arm64에서 `make test`가 통과한다.

@@ -3,6 +3,7 @@
 [한국어](features.ko.md)
 
 - [o] P68 — P1: Require VT sidecar 0.0.12 or later because the current sidecar manifest requires the process display identity. Bump the terminal plugin to 0.0.15. Red: the manifest test failed against the previous `^0.0.11` range. Green: the test passes with `^0.0.12` and the new plugin version.
+- [ ] P68-1 — P1: Publish terminal plugin version 0.0.15 with the VT sidecar minimum of 0.0.12, and update the installed plugin registry. The local archive exists; this dependency correction remains unreleased until the version is published.
 
 - [o] P64 — P0: Product defect follow-up for core F212.12-1-13-1: the start values of a view refused the `project` of a window that carries `{id, root}` with an id, because the validator accepted only `{root}`; the project is `{id, root}` in the core start values. The validator requires `id` and `root` text. Red: the refusal test for a project without an id failed against the committed validator. Green: the same test passes with the validator that requires the id.
 - [o] P1 — P1: Test and pack this plugin as its own repository. Moved on 2026-10-02 from the soksak core repository (checklist item R1-5-3 there), whose history holds the earlier changes. `make test` and `make pack` pass.
