@@ -10,8 +10,24 @@
   engines, events, and records checks using core candidate 0.0.21. The archive
   SHA-256 is
   `bc1b53178497000aa97055f25be3c1ee24dee6851f787f5afdd5770709aea322`.
-  The existing 0.0.15 archive is unchanged. Final local registry assembly
-  waits for the reviewed VT 0.0.14 candidate; no public tag or release is made.
+  The official installer selected VT 0.0.13 from a registry containing both
+  0.0.13 and 0.0.14 because the 0.0.16 range allowed either. Linked P81
+  prepares the final 0.0.17 candidate with the narrower range. The final local
+  registry uses terminal 0.0.17 and VT 0.0.14; its index SHA-256 is
+  `93fbc06fee0721d74d6582ce7fce7e165e5dd51937acd2e4f22b5dba9bcde1ae`.
+  The existing 0.0.15 release and frozen source registry are unchanged. No
+  public tag or release is made.
+
+- P81: Require VT `^0.0.14` in terminal 0.0.17. Red: the tracked official
+  installer check installed terminal 0.0.16 with VT 0.0.13 from the same
+  registry containing both sidecar versions, failing its assertion for 0.0.14.
+  Green: terminal 0.0.17 installs with VT 0.0.14; the focused manifest case
+  passes, the registry build reports five plugins, two sidecars, and two
+  packs, and official `make pack` checks pass. Terminal package SHA-256 is
+  `6db6e6b537cbadfe8e4f7e1db4d631cf7f4a744c7294a36d374514b97a2e8b26` and VT
+  0.0.14 SHA-256 is
+  `c95054417477a6a80e111265b1e84d3f514b1e7128ae46a4499287b22a80feda`. The
+  candidate remains local; no public release or application run occurred.
 
 - P80: Validate and enqueue a native insert's snapshot synchronously in region
   callback order. A same-turn Backspace can no longer overtake the combined

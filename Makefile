@@ -1,5 +1,5 @@
 # terminal plugin repository 의 test 와 pack(docs/features.md). pack 은 core 의 sok 를 쓴다.
-.PHONY: test check pack push-check hooks
+.PHONY: test check pack candidate-install-check push-check hooks
 
 SOK ?= sok
 # DIAGNOSTICS=1 이면 diagnostics.json 을 담은 진단 package 를 쓴다.
@@ -34,6 +34,13 @@ check: node_modules
 pack: check
 	@test -n "$(OUT)" || { echo "make pack OUT=<folder>" >&2; exit 2; }
 	$(SOK) plugin pack . $(OUT) $(PACK_FLAGS)
+
+# Checks the sidecar version selected by the official installer for a local candidate registry.
+candidate-install-check:
+	@test -n "$(SOK)" || { echo "make candidate-install-check SOK=<sok> REGISTRY=<folder> EXPECTED_TERMINAL_VERSION=<version>" >&2; exit 2; }
+	@test -n "$(REGISTRY)" || { echo "make candidate-install-check SOK=<sok> REGISTRY=<folder> EXPECTED_TERMINAL_VERSION=<version>" >&2; exit 2; }
+	@test -n "$(EXPECTED_TERMINAL_VERSION)" || { echo "make candidate-install-check SOK=<sok> REGISTRY=<folder> EXPECTED_TERMINAL_VERSION=<version>" >&2; exit 2; }
+	SOK="$(SOK)" CANDIDATE_REGISTRY="$(REGISTRY)" EXPECTED_TERMINAL_VERSION="$(EXPECTED_TERMINAL_VERSION)" node scripts/candidate-install-check.mjs
 
 # The checks of the ci workflow that a push needs: make test, make check, and the commit messages of the pushed range.
 # RANGE holds the commits of the pushed refs; the pre-push hook sets it, and it defaults to origin/main..HEAD.

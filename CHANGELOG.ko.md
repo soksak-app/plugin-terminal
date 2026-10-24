@@ -9,8 +9,24 @@
   `make pack`은 core candidate 0.0.21을 사용해 copied contract, view, exposure,
   engines, events, records 검사를 통과했다. Archive SHA-256은
   `bc1b53178497000aa97055f25be3c1ee24dee6851f787f5afdd5770709aea322`이다.
-  기존 0.0.15 archive는 변경하지 않았다. 최종 local registry 구성은 검토된 VT
-  0.0.14 candidate를 기다리며 public tag/release는 만들지 않는다.
+  공식 installer는 0.0.13과 0.0.14가 모두 있는 registry에서 0.0.16 범위가
+  둘 다 허용하므로 VT 0.0.13을 선택했다. 연결된 P81은 더 좁은 범위의 최종
+  0.0.17 candidate를 준비한다. 최종 local registry는 terminal 0.0.17과 VT
+  0.0.14를 사용하며 index SHA-256은
+  `93fbc06fee0721d74d6582ce7fce7e165e5dd51937acd2e4f22b5dba9bcde1ae`이다.
+  기존 0.0.15 release와 frozen source registry는 변경하지 않았다. Public
+  tag/release는 만들지 않는다.
+
+- P81: Terminal 0.0.17에서 VT `^0.0.14`를 요구한다. Red: 추적 official
+  installer check는 두 sidecar version이 있는 같은 registry에서 terminal
+  0.0.16과 VT 0.0.13을 설치해 0.0.14 assertion을 실패했다. Green: terminal
+  0.0.17은 VT 0.0.14로 설치된다. Focused manifest case가 통과하고 registry
+  build는 plugin 5개, sidecar 2개, pack 2개를 보고했으며 공식 `make pack`
+  검사도 통과했다. Terminal package SHA-256은
+  `6db6e6b537cbadfe8e4f7e1db4d631cf7f4a744c7294a36d374514b97a2e8b26`, VT
+  0.0.14 SHA-256은
+  `c95054417477a6a80e111265b1e84d3f514b1e7128ae46a4499287b22a80feda`이다.
+  Candidate는 local이며 application 실행이나 public release는 없었다.
 
 - P80: Native insert snapshot을 동기적으로 검증하고 region callback 순서로 queue한다.
   같은 turn의 Backspace가 bytes-plus-compose request보다 앞서지 않는다. Red:
