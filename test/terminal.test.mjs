@@ -10,6 +10,25 @@ const SCREEN_MESSAGE = SCREEN_MESSAGES.vectors[0];
 const SCREEN_FRAME_PREEDIT = JSON.parse(readFileSync(new URL("../scripts/test-sdk-cases.json", import.meta.url), "utf8"))
   .modules.find(({ specifier }) => specifier === "@soksak/plugin-api/screen-hash")
   .caseCopies.find(({ id }) => id === "screen.message.frame-preedit").steps[0].message.value;
+const SCREEN_HASH_CASES = JSON.parse(readFileSync(new URL("../scripts/test-sdk-cases.json", import.meta.url), "utf8"))
+  .modules.find(({ specifier }) => specifier === "@soksak/plugin-api/screen-hash").caseCopies;
+const P74_SCREEN_MESSAGE_IDS = [
+  "screen.message.letter-x-cursor-hidden",
+  "screen.message.scrollback-offset-3",
+  "screen.message.scrollback-offset-25",
+  "screen.message.blank-hidden-cursor",
+  "screen.message.scrollback-background-offset-25",
+  "screen.message.scrollback-offset-zero-hidden-cursor",
+  "screen.message.attribute-flags",
+  "screen.message.wide-cell-continuation",
+  "screen.message.multiline-rows",
+  "screen.message.frame-screen-read",
+  "screen.message.null-frame-screen-read",
+  "screen.message.caret-8x4",
+  "screen.message.blank-underlined-cursor",
+  "screen.message.hollow-block-cursor",
+  "screen.message.linked-word",
+];
 
 const { startTerminal: realStartTerminal } = await import("../build/test/ui/terminal.js?terminal-test");
 
@@ -4139,6 +4158,28 @@ test("a screen message is stored as the frame event with the hash of the golden 
     },
     "debug",
   ], vector.name);
+});
+
+test("valid copied screen messages do not leave a screen hash error in terminal.session", async () => {
+  const lines = [];
+  const expose = createFakeExpose();
+  const sidecar = createFakeSidecar();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
+    window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
+  });
+  openSession(sidecar);
+  for (const id of P74_SCREEN_MESSAGE_IDS) {
+    const testCase = SCREEN_HASH_CASES.find(({ id: candidate }) => candidate === id);
+    assert.ok(testCase, `missing copied public message case ${id}`);
+    const message = testCase.steps[0].message.value;
+    sidecar.triggerRaw("test-session", message);
+  }
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const screenErrors = lines.filter(([name, fields]) => name === "error" && fields.source === "screen");
+  assert.equal(screenErrors.length, 0, JSON.stringify(screenErrors));
+  assert.equal(expose.getStatus("terminal.session").readFn().error, undefined);
 });
 
 test("terminal.screen.alter changes the next screen message before the page hashes it, as a change on the way would", async () => {
