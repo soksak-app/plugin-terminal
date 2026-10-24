@@ -109,23 +109,62 @@ function normalizeRange(range) {
   return { location: range.location, length: range.length };
 }
 
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+function markedRangeError(range, text) {
+  if (range === undefined) return "IME markedRange is required";
+  if (range === null) return null;
+  if (!range || typeof range !== "object" || Array.isArray(range) || Object.keys(range).length !== 2 ||
+      !Object.hasOwn(range, "location") || !Object.hasOwn(range, "length") ||
+      !Number.isSafeInteger(range.location) || !Number.isSafeInteger(range.length) ||
+      range.location < 0 || range.length < 0) {
+    return "IME markedRange must contain nonnegative integer location and length";
+  }
+  const end = range.location + range.length;
+  if (!Number.isSafeInteger(end) || end > text.length) {
+    return "IME markedRange must fit text in UTF-16 units";
+  }
+  const boundaries = new Set([0, text.length]);
+  for (const { index } of graphemeSegmenter.segment(text)) boundaries.add(index);
+  if (!boundaries.has(range.location) || !boundaries.has(end)) {
+    return "IME markedRange must align with grapheme boundaries";
+  }
+  return null;
+}
+
+function normalizeMarkedRange(range, text) {
+  const error = markedRangeError(range, text);
+  if (error !== null) throw new Error(error);
+  if (range === null) return null;
+  return { location: range.location, length: range.length };
+}
+
 // The preedit that the service drew in the cursor of a screen event (docs/spec/terminal-runtime.md in core): the composition
 // text, its ranges and the attributed flag, the shape of the compose state. The service omits the key when it draws no preedit.
-function isPreedit(value) {
-  if (value === null || value === undefined) return true;
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+function preeditError(value) {
+  if (value === null || value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "must be an object or null";
   const isRange = (range) => range === null || range === undefined || (typeof range === "object" && !Array.isArray(range) &&
     Number.isInteger(range.location) && Number.isInteger(range.length) && range.location >= 0 && range.length >= 0);
-  return typeof value.text === "string" && typeof value.attributed === "boolean" &&
-    isRange(value.selectedRange) && isRange(value.replacementRange);
+  if (typeof value.text !== "string") return "text must be a string";
+  if (typeof value.attributed !== "boolean") return "attributed must be a boolean";
+  if (!isRange(value.selectedRange)) return "selectedRange is invalid";
+  if (!isRange(value.replacementRange)) return "replacementRange is invalid";
+  return markedRangeError(value.markedRange, value.text);
+}
+
+function isPreedit(value) {
+  return preeditError(value) === null;
 }
 
 function normalizePreedit(value) {
   if (value === null || value === undefined) return null;
-  if (!isPreedit(value)) throw new Error(`cursor.preedit is invalid: ${JSON.stringify(value)}`);
+  const error = preeditError(value);
+  if (error !== null) throw new Error(`cursor.preedit is invalid: ${error}`);
   return {
     text: value.text, selectedRange: normalizeRange(value.selectedRange),
-    replacementRange: normalizeRange(value.replacementRange), attributed: value.attributed,
+    replacementRange: normalizeRange(value.replacementRange), markedRange: normalizeMarkedRange(value.markedRange, value.text),
+    attributed: value.attributed,
   };
 }
 
@@ -293,7 +332,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     // The sequence.rejected reasons that the rejected list dropped; the list keeps the last REJECTED_KEPT reasons.
     rejectedShed: 0,
     vendor: { directory: null, hyperlink: null, notification: null, shell: null },
-    compose: { text: "", selectedRange: null, replacementRange: null, attributed: false },
+    compose: { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false },
     theme: "dark",
   };
   let screen = [];
@@ -391,6 +430,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     }
     const nextCompose = {
       text: event.text,
+      markedRange: normalizeMarkedRange(event.markedRange, event.text),
       selectedRange: normalizeRange(event.selectedRange),
       replacementRange: normalizeRange(event.replacementRange),
       attributed: event.attributed === true,
@@ -615,6 +655,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     } else if (entry.type === "compose") {
       await terminal.send(id, { operation: "input", compose: {
         text: entry.text,
+        markedRange: entry.markedRange,
         selectedRange: entry.selectedRange,
         replacementRange: entry.replacementRange,
         attributed: entry.attributed === true,
@@ -1148,6 +1189,13 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       if (typeof body.cellHeight !== "number" || body.cellHeight <= 0) {
         errorDetails.push(`cellHeight: ${typeof body.cellHeight === "number" ? `invalid value ${body.cellHeight}` : `missing or wrong type`}`);
       }
+      if (body.cursor && typeof body.cursor === "object" && !Array.isArray(body.cursor)) {
+        try {
+          normalizeCursor({ ...cursor, ...body.cursor, preedit: body.cursor.preedit ?? null });
+        } catch (error) {
+          errorDetails.push(`invalid cursor: ${error.message}`);
+        }
+      }
 
       if (errorDetails.length > 0) {
         setError("state", `invalid state from sidecar: ${errorDetails.join("; ")}`);
@@ -1209,9 +1257,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       try {
         // The cursor is part of each screen message (docs/spec/replay.md), so a message without it is refused before any update.
         const { col, row, visible, focused, shape, blinking } = body.cursor ?? {};
+        const cursorIsObject = body.cursor !== null && typeof body.cursor === "object" && !Array.isArray(body.cursor);
+        const preeditFailure = cursorIsObject ? preeditError(body.cursor.preedit) : null;
         if (body.cursor === null || typeof body.cursor !== "object" || !Number.isInteger(col) || !Number.isInteger(row) || typeof visible !== "boolean" ||
           (focused !== undefined && typeof focused !== "boolean") || (blinking !== undefined && typeof blinking !== "boolean") ||
-          (shape !== undefined && !DRAWN_SHAPE_KEYS.has(shape)) || !isPreedit(body.cursor.preedit)) {
+          (shape !== undefined && !DRAWN_SHAPE_KEYS.has(shape) || !cursorIsObject || preeditFailure !== null)) {
+          if (preeditFailure !== null) throw new Error(`invalid screen cursor preedit from sidecar: ${preeditFailure}`);
           throw new Error(`invalid screen cursor from sidecar: ${JSON.stringify(body.cursor)}`);
         }
         if (!isScreenFrame(body.frame)) {

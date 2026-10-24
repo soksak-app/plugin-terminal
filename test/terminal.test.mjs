@@ -2024,23 +2024,24 @@ test("compose events are sent with ranges and published as preedit state", async
   const sessionStatus = fakeExpose.getStatus("terminal.session");
   const composeStatus = fakeExpose.getStatus("terminal.compose");
   assert.deepEqual(composeStatus.readFn(), {
-    text: "", selectedRange: null, replacementRange: null, attributed: false,
+    text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false,
   });
 
   regionReference._trigger("compose", {
-    text: "한글", selectedRange: { location: 2, length: 0 },
+    text: "한글", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 },
     replacementRange: { location: 0, length: 1 }, attributed: true,
   });
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.deepEqual(composeStatus.readFn(), {
-    text: "한글", selectedRange: { location: 2, length: 0 },
+    text: "한글", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 },
     replacementRange: { location: 0, length: 1 }, attributed: true,
   });
   const message = fakeSidecar.getMessages().at(-1).body;
   assert.deepEqual(message, {
     operation: "input", compose: {
       text: "한글",
+      markedRange: { location: 0, length: 2 },
       selectedRange: { location: 2, length: 0 },
       replacementRange: { location: 0, length: 1 }, attributed: true,
     },
@@ -2098,12 +2099,12 @@ test("a cleared Korean preedit commits insertText and keeps later typing live", 
   openSession(fakeSidecar);
 
   regionReference._trigger("compose", {
-    text: "한", selectedRange: { location: 1, length: 0 }, replacementRange: null, attributed: true,
+    text: "한", markedRange: { location: 0, length: 1 }, selectedRange: { location: 1, length: 0 }, replacementRange: null, attributed: true,
   });
   regionReference._trigger("insert", { text: "한" });
   // Korean partial commits are reported before the region reports the changed empty preedit.
   regionReference._trigger("compose", {
-    text: "", selectedRange: null, replacementRange: null, attributed: false,
+    text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false,
   });
   regionReference._trigger("insert", { text: "글" });
   await new Promise((resolve) => setImmediate(resolve));
@@ -2136,10 +2137,10 @@ test("clearing a native preedit cancels it without writing the uncommitted text 
   openSession(fakeSidecar);
 
   regionReference._trigger("compose", {
-    text: "한글", selectedRange: { location: 2, length: 0 }, replacementRange: null, attributed: true,
+    text: "한글", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 }, replacementRange: null, attributed: true,
   });
   regionReference._trigger("compose", {
-    text: "", selectedRange: null, replacementRange: null, attributed: false,
+    text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false,
   });
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
@@ -2213,7 +2214,8 @@ test("an input method's edited syllables reach the PTY once and in order before 
   openSession(fakeSidecar);
 
   // macOS 한국어 입력기로 ddd 뒤 한글, Space, Enter 를 쳤을 때 네이티브 영역이 보고한 순서.
-  const compose = (text) => ({ type: "compose", text, selectedRange: { location: text.length, length: 0 }, replacementRange: null, attributed: false });
+  const compose = (text) => ({ type: "compose", text, markedRange: text ? { location: 0, length: text.length } : null,
+    selectedRange: { location: text.length, length: 0 }, replacementRange: null, attributed: false });
   const insert = (text) => ({ type: "insert", text, replacementRange: null, attributed: false });
   const sequence = [
     insert("d"), insert("d"), insert("d"),
@@ -2252,7 +2254,7 @@ test("a partial native insert preserves the remaining input-method preedit", asy
   FakeResizeObserver.triggerAll();
   openSession(fakeSidecar);
 
-  await fakeAttachImage.trigger("compose", { text: "ㅏㅏ", selectedRange: { location: 2, length: 0 }, cids: ["ime.1"] });
+  await fakeAttachImage.trigger("compose", { text: "ㅏㅏ", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 }, cids: ["ime.1"] });
   await fakeAttachImage.trigger("insert", { text: "ㅏ", replacementRange: null, attributed: false, cids: ["ime.2"] });
   await new Promise((resolve) => setImmediate(resolve));
 
@@ -2262,12 +2264,154 @@ test("a partial native insert preserves the remaining input-method preedit", asy
   assert.deepEqual(inputs.map(({ body }) => body.compose?.text ?? (body.bytes ? Buffer.from(body.bytes, "base64").toString("utf8") : null)),
     ["ㅏㅏ", "ㅏ"], "a partial insert does not send an empty compose or duplicate the preedit");
 
-  await fakeAttachImage.trigger("compose", { text: "", selectedRange: null, replacementRange: null, cids: ["ime.3"] });
+  await fakeAttachImage.trigger("compose", { text: "", markedRange: null, selectedRange: null, replacementRange: null, cids: ["ime.3"] });
   assert.equal(expose.getStatus("terminal.compose").readFn().text, "",
     "an empty compose clears the preedit after the committed prefix is sent");
   const afterCommit = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input");
   assert.deepEqual(afterCommit.map(({ body }) => body.compose?.text ?? (body.bytes ? Buffer.from(body.bytes, "base64").toString("utf8") : null)),
     ["ㅏㅏ", "ㅏ", ""], "the native insert arrives before its changed empty preedit");
+});
+
+test("native compose forwards the exact UTF-16 markedRange and explicit null", { timeout: 10000 }, async () => {
+  FakeResizeObserver.reset();
+  const fakeAttachImage = createFakeAttachImage();
+  const fakeSidecar = createFakeSidecar();
+  let regionReference;
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
+      regionReference = fakeAttachImage.function(view, name, sidecar);
+      return regionReference;
+    },
+    sidecar: fakeSidecar,
+    expose,
+    scale: 1,
+    window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  FakeResizeObserver.triggerAll();
+  openSession(fakeSidecar);
+
+  const markedRange = { location: 1, length: 2 };
+  await fakeAttachImage.trigger("compose", {
+    text: "A😀B", markedRange, selectedRange: { location: 3, length: 0 }, replacementRange: null, attributed: true,
+  });
+  const expected = {
+    text: "A😀B", markedRange, selectedRange: { location: 3, length: 0 }, replacementRange: null, attributed: true,
+  };
+  assert.deepEqual(expose.getStatus("terminal.compose").readFn(), expected,
+    "terminal.compose keeps the text-relative UTF-16 markedRange independently of the selected range");
+  assert.deepEqual(fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.compose).at(-1).body.compose,
+    expected, "the exact native markedRange reaches the VT compose input");
+
+  await fakeAttachImage.trigger("compose", {
+    text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false,
+  });
+  const empty = { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false };
+  assert.deepEqual(expose.getStatus("terminal.compose").readFn(), empty,
+    "an empty native compose explicitly clears the marked range");
+  assert.deepEqual(fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.compose).at(-1).body.compose,
+    empty, "the explicit null reaches the VT compose input");
+});
+
+test("native compose rejects missing and out-of-text markedRanges before status or queue changes", { timeout: 20000 }, async (t) => {
+  const cases = [
+    ["missing", undefined, /markedRange is required/],
+    ["negative", { location: -1, length: 1 }, /markedRange must contain nonnegative integer location and length/],
+    ["outside text", { location: 1, length: 2 }, /markedRange must fit text in UTF-16 units/],
+    ["grapheme split", { location: 1, length: 1 }, /markedRange must align with grapheme boundaries/],
+  ];
+  for (const [name, markedRange, expectedError] of cases) {
+    await t.test(name, { timeout: 5000 }, async () => {
+      FakeResizeObserver.reset();
+      const fakeAttachImage = createFakeAttachImage();
+      const fakeSidecar = createFakeSidecar();
+      let regionReference;
+      const expose = createFakeExpose();
+      await startTerminal({
+        view: createFakeView(),
+        detachRegions: async () => {}, attachImage: (view, regionName, sidecar) => {
+          regionReference = fakeAttachImage.function(view, regionName, sidecar);
+          return regionReference;
+        },
+        sidecar: fakeSidecar,
+        expose,
+        scale: 1,
+        window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+      });
+      FakeResizeObserver.triggerAll();
+      openSession(fakeSidecar);
+      const before = expose.getStatus("terminal.compose").readFn();
+      const event = { text: name === "grapheme split" ? "á" : "ab", selectedRange: null, replacementRange: null, attributed: false };
+      if (markedRange !== undefined) event.markedRange = markedRange;
+
+      await fakeAttachImage.trigger("compose", event);
+
+      assert.match(expose.getStatus("terminal.session").readFn().error, expectedError,
+        "the malformed native markedRange is reported");
+      assert.deepEqual(expose.getStatus("terminal.compose").readFn(), before,
+        "the malformed native markedRange does not update status");
+      assert.equal(fakeSidecar.getMessages().some(({ body }) => body.operation === "input"), false,
+        "the malformed native markedRange is rejected before input is queued");
+    });
+  }
+});
+
+test("a sidecar state with an invalid markedRange does not open the session or flush queued input", { timeout: 10000 }, async () => {
+  FakeResizeObserver.reset();
+  const fakeAttachImage = createFakeAttachImage();
+  const fakeSidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: fakeAttachImage.function,
+    sidecar: fakeSidecar, expose,
+    window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  FakeResizeObserver.triggerAll();
+
+  const queued = expose.getCommand("terminal.input")({ bytes: "x" });
+  const invalidRanges = [
+    ["missing", { text: "한", selectedRange: null, replacementRange: null, attributed: true }, /IME markedRange is required/],
+    ["outside text", { text: "한", markedRange: { location: 1, length: 1 }, selectedRange: null, replacementRange: null, attributed: true }, /IME markedRange must fit text in UTF-16 units/],
+    ["grapheme split", { text: "á", markedRange: { location: 1, length: 1 }, selectedRange: null, replacementRange: null, attributed: true }, /IME markedRange must align with grapheme boundaries/],
+  ];
+  const initialCursor = expose.getStatus("terminal.cursor").readFn();
+  for (const [name, preedit, expectedError] of invalidRanges) {
+    fakeSidecar.triggerEvent("test-session", {
+      event: "state", sessionId: `invalid-${name}`, cols: 10, rows: 4, cellWidth: 9, cellHeight: 18,
+      cursor: { row: 0, col: 0, shape: "Block", visible: true, blinking: false, preedit },
+    });
+    const state = expose.getStatus("terminal.session").readFn();
+    assert.equal(state.sessionId, "", `${name} markedRange does not accept the session state`);
+    assert.match(state.error, new RegExp(`invalid state from sidecar: invalid cursor: cursor\\.preedit is invalid: ${expectedError.source}`),
+      `${name} markedRange error is reported`);
+    assert.deepEqual(expose.getStatus("terminal.cursor").readFn(), initialCursor,
+      `${name} markedRange does not mutate cursor state`);
+    assert.equal(fakeSidecar.getMessages().some(({ body }) => body.operation === "input"), false,
+      `${name} markedRange does not flush queued input`);
+  }
+
+  fakeSidecar.triggerEvent("test-session", {
+    event: "state", sessionId: "valid", cols: 10, rows: 4, cellWidth: 9, cellHeight: 18,
+    cursor: { row: 1, col: 2, visible: true, focused: true, shape: "Block", blinking: false,
+      preedit: { text: "A😀B", markedRange: { location: 1, length: 2 }, selectedRange: { location: 3, length: 0 },
+        replacementRange: null, attributed: false } },
+  });
+  await queued;
+  assert.equal(fakeSidecar.getMessages().filter(({ body }) => body.operation === "input").length, 1,
+    "the queued input is sent after a valid state opens the session");
+  assert.deepEqual(expose.getStatus("terminal.cursor").readFn().preedit, {
+    text: "A😀B", markedRange: { location: 1, length: 2 }, selectedRange: { location: 3, length: 0 },
+    replacementRange: null, attributed: false,
+  }, "the sidecar's exact UTF-16 markedRange reaches terminal.cursor.preedit");
+
+  fakeSidecar.triggerEvent("test-session", {
+    event: "state", sessionId: "valid", cols: 10, rows: 4, cellWidth: 9, cellHeight: 18,
+    cursor: { row: 1, col: 2, visible: true, focused: true, shape: "Block", blinking: false,
+      preedit: { text: "A😀B", markedRange: null, selectedRange: null, replacementRange: null, attributed: false } },
+  });
+  assert.equal(expose.getStatus("terminal.cursor").readFn().preedit.markedRange, null,
+    "an explicit null markedRange remains null");
 });
 
 test("accepting native marked text writes it to the PTY exactly once", async () => {
@@ -2292,10 +2436,10 @@ test("accepting native marked text writes it to the PTY exactly once", async () 
 
   // macOS unmarkText 가 보고하는 순서: 조합 해제 뒤 확정 insert 하나.
   regionReference._trigger("compose", {
-    text: "한글", selectedRange: { location: 2, length: 0 }, replacementRange: null, attributed: true,
+    text: "한글", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 }, replacementRange: null, attributed: true,
   });
   regionReference._trigger("compose", {
-    text: "", selectedRange: { location: 0, length: 0 }, replacementRange: { location: 0, length: 2 }, attributed: false,
+    text: "", markedRange: null, selectedRange: { location: 0, length: 0 }, replacementRange: { location: 0, length: 2 }, attributed: false,
   });
   regionReference._trigger("insert", { text: "한글", replacementRange: { location: 0, length: 0 }, attributed: false });
   await new Promise((resolve) => setImmediate(resolve));
@@ -2343,7 +2487,7 @@ test("terminal.compose.update exposes ordered preedit changes without writing pa
   const update = expose.getCommand("terminal.compose.update");
   assert.equal(typeof update, "function", "preedit must have a declared command entry point");
   for (const text of ["ㅎ", "하", "한"]) {
-    await update({ text, selectedRange: { location: text.length, length: 0 }, attributed: true });
+    await update({ text, markedRange: { location: 0, length: text.length }, selectedRange: { location: text.length, length: 0 }, attributed: true });
     assert.equal(expose.getStatus("terminal.compose").readFn().text, text);
   }
   const inputMessages = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input");
@@ -2369,7 +2513,7 @@ test("terminal.compose.update rejects malformed ranges instead of replacing them
   FakeResizeObserver.triggerAll();
 
   await assert.rejects(expose.getCommand("terminal.compose.update")({
-    text: "한", selectedRange: { location: -1, length: 0 },
+    text: "한", markedRange: { location: 0, length: 1 }, selectedRange: { location: -1, length: 0 },
   }), /IME range must contain nonnegative integer location and length/);
   assert.equal(fakeSidecar.getMessages().some(({ body }) => body.operation === "input"), false,
     "invalid compose input must not be sent");
@@ -2399,7 +2543,7 @@ test("terminal.ime.trace records native callbacks and ordered terminal input, an
   await expose.getCommand("terminal.ime.trace")({ action: "start" });
   regionReference._trigger("key", { key: "Char", text: "d", shift: false, alt: false, ctrl: false });
   regionReference._trigger("insert", { text: "d" });
-  regionReference._trigger("compose", { text: "ㅎ" });
+  regionReference._trigger("compose", { text: "ㅎ", markedRange: { location: 0, length: 1 } });
   regionReference._trigger("insert", { text: "한" });
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
@@ -2506,46 +2650,6 @@ test("the drawn cursor follows the screen event while the policy shape stays", a
     cursor: { col: 1, row: 0, visible: true, focused: false, shape: "HollowBlock", blinking: false },
   });
   assert.deepEqual(fakeExpose.getStatus("terminal.cursor").readFn().drawn, { shape: "hollowBlock", blinking: false });
-});
-
-test("the preedit drawn by the service is exposed in terminal.cursor", async () => {
-  FakeResizeObserver.reset();
-  const fakeSidecar = createFakeSidecar();
-  const fakeExpose = createFakeExpose();
-  await startTerminal({
-    view: createFakeView(),
-    detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
-    sidecar: fakeSidecar, expose: fakeExpose,
-    window: { TextEncoder: FakeTextEncoder },
-  });
-  openSession(fakeSidecar);
-  const cursor = { col: 2, row: 1, visible: true, focused: true, shape: "Block", blinking: false };
-  const preedit = { text: "한", selectedRange: { location: 0, length: 1 }, replacementRange: null, attributed: false };
-  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], cursor: { ...cursor, preedit } });
-  assert.deepEqual(fakeExpose.getStatus("terminal.cursor").readFn().preedit, preedit,
-    "terminal.cursor holds the preedit that the service drew");
-
-  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], cursor: { ...cursor, preedit: null } });
-  assert.equal(fakeExpose.getStatus("terminal.cursor").readFn().preedit, null, "a null preedit is null");
-
-  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], cursor });
-  assert.equal(fakeExpose.getStatus("terminal.cursor").readFn().preedit, null, "a cursor without a preedit key is null");
-
-  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], cursor: { ...cursor, preedit } });
-  const before = fakeExpose.getStatus("terminal.cursor").readFn();
-  const invalid = [
-    ["a string", "한"],
-    ["an array", [preedit]],
-    ["a text that is not a string", { text: 1, selectedRange: null, replacementRange: null, attributed: false }],
-    ["a missing attributed flag", { text: "한", selectedRange: null, replacementRange: null }],
-    ["a negative range location", { text: "한", selectedRange: { location: -1, length: 0 }, replacementRange: null, attributed: false }],
-  ];
-  for (const [name, value] of invalid) {
-    fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], cursor: { ...cursor, preedit: value } });
-    assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "",
-      /^terminal input failed: invalid screen cursor from sidecar: /, `${name} was not refused`);
-    assert.deepEqual(fakeExpose.getStatus("terminal.cursor").readFn(), before, `${name} changed terminal.cursor`);
-  }
 });
 
 test("an OSC 22 pointer event sets the view cursor and the session pointer", async () => {
@@ -3632,14 +3736,14 @@ test("the trace records each native input callback of the input method with its 
   openSession(sidecar);
   region._trigger("key", { key: "Char", text: "s", shift: false, alt: false, ctrl: false });
   region._trigger("key", { key: "Enter", text: "\r", shift: false, alt: false, ctrl: false });
-  region._trigger("compose", { text: "비밀", selectedRange: { location: 2, length: 0 }, replacementRange: { location: 4, length: 1 } });
+  region._trigger("compose", { text: "비밀", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 }, replacementRange: { location: 4, length: 1 } });
   region._trigger("insert", { text: "secret", replacementRange: { location: 28, length: 1 } });
   await new Promise((resolve) => setImmediate(resolve));
   const ime = lines.filter(([event]) => event === "ime").map(([, fields]) => JSON.parse(JSON.stringify(fields)));
   assert.deepEqual(ime, [
     { kind: "native-key", key: "Char", text: "s", shift: false, alt: false, ctrl: false },
     { kind: "native-key", key: "Enter", text: "\r", shift: false, alt: false, ctrl: false },
-    { kind: "native-compose", text: "비밀", selectedRange: { location: 2, length: 0 }, replacementRange: { location: 4, length: 1 } },
+    { kind: "native-compose", text: "비밀", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 }, replacementRange: { location: 4, length: 1 } },
     { kind: "native-insert", text: "secret", replacementRange: { location: 28, length: 1 } },
   ]);
 });

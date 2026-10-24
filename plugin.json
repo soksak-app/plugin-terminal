@@ -162,7 +162,7 @@
     }
   },
   "dependencies": {
-    "@soksak/sidecar-vt-alacritty": "^0.0.12"
+    "@soksak/sidecar-vt-alacritty": "^0.0.13"
   },
   "background": {
     "sidecar": "@soksak/sidecar-vt-alacritty",
@@ -303,10 +303,13 @@
             },
             "preedit": {
               "type": ["object", "null"],
+              "required": ["markedRange"],
               "properties": {
                 "text": { "type": "string" },
                 "selectedRange": { "type": ["object", "null"] },
                 "replacementRange": { "type": ["object", "null"] },
+                "markedRange": { "type": ["object", "null"], "required": ["location", "length"],
+                  "properties": { "location": { "type": "integer" }, "length": { "type": "integer" } } },
                 "attributed": { "type": "boolean" }
               }
             }
@@ -318,8 +321,11 @@
         "description": "The current terminal composition state.",
         "schema": {
           "type": "object",
+          "required": ["markedRange"],
           "properties": {
             "text": { "type": "string" },
+            "markedRange": { "type": ["object", "null"], "required": ["location", "length"],
+              "properties": { "location": { "type": "integer" }, "length": { "type": "integer" } } },
             "selectedRange": { "type": ["object", "null"] },
             "replacementRange": { "type": ["object", "null"] },
             "attributed": { "type": "boolean" }

@@ -160,7 +160,11 @@
                         "length": 1
                       },
                       "replacementRange": null,
-                      "attributed": false
+                      "attributed": false,
+                      "markedRange": {
+                        "location": 0,
+                        "length": 1
+                      }
                     }
                   },
                   "frame": null,

@@ -26,8 +26,18 @@ test("the package publishes the manifest and the view page", () => {
 });
 
 test("the plugin requires the VT sidecar process identity release", () => {
-  assert.equal(manifest.dependencies["@soksak/sidecar-vt-alacritty"], "^0.0.12");
+  assert.equal(manifest.dependencies["@soksak/sidecar-vt-alacritty"], "^0.0.13");
   assert.equal(pkg.version, "0.0.15");
+});
+
+test("the compose and cursor preedit schemas require markedRange and its UTF-16 fields", () => {
+  const statuses = manifest.exposes.status;
+  const compose = statuses.find(({ name }) => name === "terminal.compose").schema;
+  const cursor = statuses.find(({ name }) => name === "terminal.cursor").schema.properties.preedit;
+  for (const schema of [compose, cursor]) {
+    assert.deepEqual(schema.required, ["markedRange"]);
+    assert.deepEqual(schema.properties.markedRange.required, ["location", "length"]);
+  }
 });
 
 test("the view page delegates terminal startup", () => {
