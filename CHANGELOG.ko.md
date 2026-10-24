@@ -4,6 +4,14 @@
 
 ## 미배포
 
+- P79: Terminal candidate version을 0.0.16으로 설정하고 P78 committed-input
+  snapshot 및 P80 input ordering을 포함한 local archive를 생성한다. 공식
+  `make pack`은 core candidate 0.0.21을 사용해 copied contract, view, exposure,
+  engines, events, records 검사를 통과했다. Archive SHA-256은
+  `bc1b53178497000aa97055f25be3c1ee24dee6851f787f5afdd5770709aea322`이다.
+  기존 0.0.15 archive는 변경하지 않았다. 최종 local registry 구성은 검토된 VT
+  0.0.14 candidate를 기다리며 public tag/release는 만들지 않는다.
+
 - P80: Native insert snapshot을 동기적으로 검증하고 region callback 순서로 queue한다.
   같은 turn의 Backspace가 bytes-plus-compose request보다 앞서지 않는다. Red:
   변경 전 handler는 Backspace를 먼저 보냈다. Green: ordering, 빈 snapshot, 동일

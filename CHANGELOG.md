@@ -4,6 +4,15 @@
 
 ## Unreleased
 
+- P79: Set the terminal candidate version to 0.0.16 and build a local archive
+  containing P78 committed-input snapshots and P80 input ordering. The
+  official `make pack` path passes its copied contract, view, exposure,
+  engines, events, and records checks using core candidate 0.0.21. The archive
+  SHA-256 is
+  `bc1b53178497000aa97055f25be3c1ee24dee6851f787f5afdd5770709aea322`.
+  The existing 0.0.15 archive is unchanged. Final local registry assembly
+  waits for the reviewed VT 0.0.14 candidate; no public tag or release is made.
+
 - P80: Validate and enqueue a native insert's snapshot synchronously in region
   callback order. A same-turn Backspace can no longer overtake the combined
   bytes-plus-compose request. Red: the unchanged handler sent Backspace first.
