@@ -48,6 +48,24 @@ const P74_SCREEN_MESSAGE_IDS = [
 
 const { startTerminal: realStartTerminal } = await import("../build/test/ui/terminal.js?terminal-test");
 
+let nativeInputSequence = 0;
+const inputPreedit = (text = "", fields = {}) => ({
+  text,
+  markedRange: text ? { location: 0, length: text.length } : null,
+  selectedRange: { location: text.length, length: 0 },
+  replacementRange: null,
+  attributed: false,
+  ...fields,
+});
+const inputInsert = (text, fields = {}) => ({ type: "insert", text, replacementRange: null, attributed: false, ...fields });
+const inputKey = (key, text, fields = {}) => ({
+  type: "key", key, ...(text === undefined ? {} : { text }), shift: false, alt: false, ctrl: false, ...fields,
+});
+const inputCommand = (selector) => ({ type: "command", selector });
+const inputEvent = (actions = [], preedit = inputPreedit(), fields = {}) => ({
+  type: "input", actions, preedit, errors: [], cids: [`terminal.input.${++nativeInputSequence}`], ...fields,
+});
+
 // Tests without explicit settings use the manifest defaults and /bin/sh.
 const SHELL_SETTINGS = {
   read: () => ({ ...Object.fromEntries(Object.entries(terminalManifest.settings).map(([key, { default: value }]) => [key, value])),
@@ -313,13 +331,13 @@ test("modified native character keys preserve their text before and after sessio
     sidecar, expose: createFakeExpose(),
     window: { TextEncoder: FakeTextEncoder },
   });
-  const event = { key: "Char", text: "c", shift: false, alt: false, ctrl: true };
-  region._trigger("key", event);
+  const action = inputKey("Char", "c", { ctrl: true });
+  region._trigger("input", inputEvent([action]));
   openSession(sidecar);
-  region._trigger("key", event);
+  region._trigger("input", inputEvent([action]));
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(sidecar.getMessages().filter(({ body }) => body.operation === "input").map(({ body }) => body.keys[0]),
-    [event, event]);
+  assert.deepEqual(sidecar.getMessages().filter(({ body }) => body.operation === "input").map(({ body }) => body.actions[0]),
+    [action, action]);
 });
 
 test("native image errors remain visible after later session state updates", async () => {
@@ -369,8 +387,9 @@ const PERSISTENT_ERRORS = [
   ["a sidecar error event", ({ emit }) => emit({ event: "error", reason: "pty failed" }), "pty failed"],
   ["a sidecar error reply", ({ emit }) => emit({ error: "invalidParams", reason: "bad size" }), "invalidParams: bad size"],
   ["a native image error", ({ region }) => region._trigger("error", { reason: "size" }), "native image: size"],
-  ["an invalid native key event", ({ region }) => region._trigger("key", { key: "Char", text: "c", shift: 1, alt: false, ctrl: false }),
-    "invalid key event from region: modifiers must be boolean, got shift:number alt:boolean ctrl:boolean"],
+  ["an invalid native key event", ({ region }) => region._trigger("input", inputEvent([
+    { type: "key", key: "Char", text: "c", shift: 1, alt: false, ctrl: false },
+  ])), "terminal input failed: native input action 0 modifiers must be booleans"],
   ["an invalid clipboard rejection", ({ emit }) => emit({ event: "clipboard.rejected", reason: "denied" }), "terminal input failed: denied"],
 ];
 
@@ -535,22 +554,19 @@ test("Region insert event sends base64-encoded bytes to sidecar", async () => {
   // ResizeObserver 콜백으로 open 을 보내고 state 이벤트로 세션을 연다
   openSession(fakeSidecar);
 
-  // 이제 region에 insert 이벤트를 trigger한다
-  regionReference._trigger("insert", { text: "ls\r" });
+  // 이제 region에 input transaction을 trigger한다
+  regionReference._trigger("input", inputEvent([inputInsert("ls\r")]));
   await new Promise((resolve) => setImmediate(resolve));
 
   // sidecar 메시지를 확인한다
   const messages = fakeSidecar.getMessages();
-  const inputMessage = messages.find((m) => m.body.operation === "input" && m.body.bytes);
-  assert(inputMessage, "input message with bytes sent");
-
-  // base64 디코딩하여 확인한다
-  const decodedBytes = Buffer.from(inputMessage.body.bytes, "base64").toString("utf8");
-  assert.equal(decodedBytes, "ls\r", "bytes correctly encode 'ls\\r'");
+  const inputMessage = messages.find((m) => m.body.operation === "input");
+  assert(inputMessage, "input transaction sent");
+  assert.deepEqual(inputMessage.body.actions, [inputInsert("ls\r")]);
 });
 
-// 테스트 3: terminal.input 명령으로 {bytes:"ls\r"}를 보내면 테스트 2와 같은 본문이 간다
-test("terminal.input command sends same body as region insert", async () => {
+// terminal.input inserts text through the same action and preedit contract as a region transaction.
+test("terminal.input command sends an insert action with current preedit", async () => {
   FakeResizeObserver.reset();
   const fakeAttachImage = createFakeAttachImage();
   const fakeSidecar = createFakeSidecar();
@@ -583,14 +599,13 @@ test("terminal.input command sends same body as region insert", async () => {
 
   // sidecar 메시지를 확인한다
   const messages = fakeSidecar.getMessages();
-  const inputMessage = messages.find((m) => m.body.operation === "input" && m.body.bytes);
-  assert(inputMessage, "input message with bytes sent");
-
-  const decodedBytes = Buffer.from(inputMessage.body.bytes, "base64").toString("utf8");
-  assert.equal(decodedBytes, "ls\r", "command sends same encoding as region insert");
+  const inputMessage = messages.find((m) => m.body.operation === "input");
+  assert(inputMessage, "input transaction sent");
+  assert.deepEqual(inputMessage.body.actions, [inputInsert("ls\r")]);
+  assert.deepEqual(inputMessage.body.preedit, { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false });
 });
 
-test("terminal.paste reads explicit user text once and sends one paste operation", async () => {
+test("terminal.paste reads explicit user text once and sends one insert transaction", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
   const fakeExpose = createFakeExpose();
@@ -614,8 +629,8 @@ test("terminal.paste reads explicit user text once and sends one paste operation
   await paste();
 
   assert.deepEqual(clipboardCalls, ["text"]);
-  assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body.operation), ["paste"]);
-  assert.equal(fakeSidecar.getMessages()[0].body.text, "printf 'user paste'\n");
+  assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body.operation), ["input"]);
+  assert.deepEqual(fakeSidecar.getMessages()[0].body.actions, [inputInsert("printf 'user paste'\n")]);
 });
 
 test("a session opens the shell that the shell setting names", async () => {
@@ -661,8 +676,8 @@ test("the region's paste action runs terminal.paste once", async () => {
   await attach.trigger("action", { type: "action", name: "paste" });
 
   assert.deepEqual(clipboardCalls, ["text"]);
-  assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body.operation), ["paste"]);
-  assert.equal(fakeSidecar.getMessages()[0].body.text, "echo pasted");
+  assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body.operation), ["input"]);
+  assert.deepEqual(fakeSidecar.getMessages()[0].body.actions, [inputInsert("echo pasted")]);
 });
 
 test("terminal.paste waits for the copy of the released selection", async () => {
@@ -693,7 +708,7 @@ test("terminal.paste waits for the copy of the released selection", async () => 
 
   const paste = fakeExpose.getCommand("terminal.paste");
   let pasted = null;
-  const pasting = paste().then(() => { pasted = fakeSidecar.getMessages().at(-1).body.text; });
+  const pasting = paste().then(() => { pasted = fakeSidecar.getMessages().at(-1).body.actions[0].text; });
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(pasted, null, "the paste read the clipboard before the copy of the released selection arrived");
@@ -960,7 +975,7 @@ test("terminal.paste quotes file URLs without adding an executable newline", asy
 
   assert.deepEqual(clipboardCalls, ["text", "fileURLs"]);
   assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body), [
-    { operation: "paste", text: "'/tmp/a b.txt' '/tmp/quote'\\''name.txt'" },
+    { operation: "input", actions: [inputInsert("'/tmp/a b.txt' '/tmp/quote'\\''name.txt'")], preedit: { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false } },
   ]);
 });
 
@@ -993,7 +1008,7 @@ test("terminal.paste persists a PNG and sends its owned shell path once", async 
   assert.deepEqual(clipboardCalls, ["text", "fileURLs", "png"]);
   assert.deepEqual(persisted, [[0, 255, 1]]);
   assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body), [
-    { operation: "paste", text: "'/config/clipboard/pasted-image.png'" },
+    { operation: "input", actions: [inputInsert("'/config/clipboard/pasted-image.png'")], preedit: { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false } },
   ]);
 });
 
@@ -1033,7 +1048,7 @@ test("terminal file drop quotes local URLs and sends one non-executing paste", a
   await fakeExpose.getCommand("terminal.drop")({ urls: ["file:///tmp/dropped%20file.txt", "file:///tmp/quote%27name.txt"] });
 
   assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body), [
-    { operation: "paste", text: "'/tmp/dropped file.txt' '/tmp/quote'\\''name.txt'" },
+    { operation: "input", actions: [inputInsert("'/tmp/dropped file.txt' '/tmp/quote'\\''name.txt'")], preedit: inputPreedit() },
   ]);
 });
 
@@ -1214,19 +1229,13 @@ test("Region key event for Enter sends correct message format", async () => {
   openSession(fakeSidecar);
 
   fakeSidecar.reset();
-  regionReference._trigger("key", { key: "Enter", shift: false, alt: false, ctrl: false });
+  regionReference._trigger("input", inputEvent([inputKey("Enter")]));
   await new Promise((resolve) => setImmediate(resolve));
 
   const messages = fakeSidecar.getMessages();
-  const keyMessage = messages.find((m) => m.body.operation === "input" && m.body.keys);
+  const keyMessage = messages.find((m) => m.body.operation === "input");
   assert(keyMessage, "key message sent");
-  assert.deepEqual(keyMessage.body.keys[0], {
-    key: "Enter",
-    text: "",
-    shift: false,
-    alt: false,
-    ctrl: false,
-  }, "Enter key formatted correctly");
+  assert.deepEqual(keyMessage.body.actions, [inputKey("Enter")], "Enter key formatted correctly");
 });
 
 // 테스트 4b: 영역 key(ArrowUp) → {operation:"input", keys:[{key:"Up"}]}
@@ -1262,19 +1271,18 @@ test("Region key event for ArrowUp sends Up key (no escape sequences)", async ()
   openSession(fakeSidecar);
 
   fakeSidecar.reset();
-  regionReference._trigger("key", { key: "Up", shift: false, alt: false, ctrl: false });
+  regionReference._trigger("input", inputEvent([inputKey("Up")]));
   await new Promise((resolve) => setImmediate(resolve));
 
   const messages = fakeSidecar.getMessages();
-  const keyMessage = messages.find((m) => m.body.operation === "input" && m.body.keys);
+  const keyMessage = messages.find((m) => m.body.operation === "input");
   assert(keyMessage, "key message sent");
-  assert.deepEqual(keyMessage.body.keys[0].key, "Up", "Up key sent");
+  assert.deepEqual(keyMessage.body.actions[0].key, "Up", "Up key sent");
   // 중요: 이스케이프 시퀀스가 없어야 한다
   const allMessages = messages.map((m) => m.body);
   for (const body of allMessages) {
-    if (body.bytes) {
-      const decoded = Buffer.from(body.bytes, "base64").toString("utf8");
-      assert.notMatch(decoded, /\x1b\[/, "no escape sequences in messages");
+    for (const action of body.actions ?? []) {
+      if (action.type === "insert") assert.notMatch(action.text, /\x1b\[/, "no escape sequences in inserted text");
     }
   }
 });
@@ -1964,8 +1972,8 @@ test("input_before_open: terminal.input is buffered until open", async () => {
   assert.equal(settled, false, "pre-open command remains pending");
   openSession(fakeSidecar);
   await pending;
-  const input = fakeSidecar.getMessages().find(({ body }) => body.operation === "input" && body.bytes);
-  assert.equal(Buffer.from(input.body.bytes, "base64").toString(), "test");
+  const input = fakeSidecar.getMessages().find(({ body }) => body.operation === "input");
+  assert.deepEqual(input.body.actions, [inputInsert("test")]);
 });
 
 // 새로운 테스트 4: sidecar_error_reaches_session_status
@@ -2071,24 +2079,17 @@ test("compose events are sent with ranges and published as preedit state", async
     text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false,
   });
 
-  regionReference._trigger("compose", {
-    text: "한글", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 },
+  const expectedCompose = inputPreedit("한글", {
+    markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 },
     replacementRange: { location: 0, length: 1 }, attributed: true,
   });
+  regionReference._trigger("input", inputEvent([], expectedCompose));
   await new Promise((resolve) => setImmediate(resolve));
 
-  assert.deepEqual(composeStatus.readFn(), {
-    text: "한글", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 },
-    replacementRange: { location: 0, length: 1 }, attributed: true,
-  });
+  assert.deepEqual(composeStatus.readFn(), expectedCompose);
   const message = fakeSidecar.getMessages().at(-1).body;
   assert.deepEqual(message, {
-    operation: "input", compose: {
-      text: "한글",
-      markedRange: { location: 0, length: 2 },
-      selectedRange: { location: 2, length: 0 },
-      replacementRange: { location: 0, length: 1 }, attributed: true,
-    },
+    operation: "input", actions: [], preedit: expectedCompose,
   });
 });
 
@@ -2112,13 +2113,13 @@ test("native insert callbacks preserve compatibility jamo instead of discarding 
   FakeResizeObserver.triggerAll();
   openSession(fakeSidecar);
 
-  regionReference._trigger("insert", { text: "ㅎ" });
-  regionReference._trigger("insert", { text: "ㄴ" });
+  regionReference._trigger("input", inputEvent([inputInsert("ㅎ")]));
+  regionReference._trigger("input", inputEvent([inputInsert("ㄴ")]));
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
 
-  const byteInputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.bytes);
-  assert.deepEqual(byteInputs.map(({ body }) => Buffer.from(body.bytes, "base64").toString("utf8")), ["ㅎ", "ㄴ"],
+  const byteInputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.actions.some(({ type }) => type === "insert"));
+  assert.deepEqual(byteInputs.map(({ body }) => body.actions[0].text), ["ㅎ", "ㄴ"],
     "every native insert must be preserved exactly unless the native input client identifies it as preedit");
 });
 
@@ -2142,21 +2143,16 @@ test("a cleared Korean preedit commits insertText and keeps later typing live", 
   FakeResizeObserver.triggerAll();
   openSession(fakeSidecar);
 
-  regionReference._trigger("compose", {
-    text: "한", markedRange: { location: 0, length: 1 }, selectedRange: { location: 1, length: 0 }, replacementRange: null, attributed: true,
-  });
-  regionReference._trigger("insert", { text: "한" });
-  // Korean partial commits are reported before the region reports the changed empty preedit.
-  regionReference._trigger("compose", {
-    text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false,
-  });
-  regionReference._trigger("insert", { text: "글" });
+  regionReference._trigger("input", inputEvent([], inputPreedit("한", { attributed: true })));
+  regionReference._trigger("input", inputEvent([inputInsert("한")], inputPreedit("한", { attributed: true })));
+  regionReference._trigger("input", inputEvent([], inputPreedit()));
+  regionReference._trigger("input", inputEvent([inputInsert("글")]));
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
 
-  const byteInputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.bytes);
+  const byteInputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.actions.some(({ type }) => type === "insert"));
   assert.equal(byteInputs.length, 2, "the committed syllable and following character must reach the PTY");
-  assert.deepEqual(byteInputs.map(({ body }) => Buffer.from(body.bytes, "base64").toString("utf8")), ["한", "글"]);
+  assert.deepEqual(byteInputs.map(({ body }) => body.actions[0].text), ["한", "글"]);
   assert.equal(expose.getStatus("terminal.compose").readFn().text, "", "insertText must end the stale preedit");
 });
 
@@ -2180,17 +2176,13 @@ test("clearing a native preedit cancels it without writing the uncommitted text 
   FakeResizeObserver.triggerAll();
   openSession(fakeSidecar);
 
-  regionReference._trigger("compose", {
-    text: "한글", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 }, replacementRange: null, attributed: true,
-  });
-  regionReference._trigger("compose", {
-    text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false,
-  });
+  regionReference._trigger("input", inputEvent([], inputPreedit("한글", { attributed: true })));
+  regionReference._trigger("input", inputEvent([], inputPreedit()));
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(expose.getStatus("terminal.compose").readFn().text, "", "the cancelled preedit must clear");
-  const byteInputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.bytes);
+  const byteInputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.actions.some(({ type }) => type === "insert"));
   assert.deepEqual(byteInputs, [], "a cleared marked string is not committed input");
 });
 
@@ -2325,22 +2317,22 @@ test("an input method's edited syllables reach the PTY once and in order before 
   FakeResizeObserver.triggerAll();
   openSession(fakeSidecar);
 
-  // macOS 한국어 입력기로 ddd 뒤 한글, Space, Enter 를 쳤을 때 네이티브 영역이 보고한 순서.
-  const compose = (text) => ({ type: "compose", text, markedRange: text ? { location: 0, length: text.length } : null,
-    selectedRange: { location: text.length, length: 0 }, replacementRange: null, attributed: false });
-  const insert = (text) => ({ type: "insert", text, replacementRange: null, attributed: false });
-  const sequence = [
-    insert("d"), insert("d"), insert("d"),
-    compose("ㅎ"), compose("하"), compose("한"), insert("한"), compose(""),
-    compose("ㄱ"), compose("그"), compose("글"), insert("글"), compose(""),
-    compose(" "), insert(" "), compose(""),
-    { type: "key", key: "Enter", shift: false, alt: false, ctrl: false },
-  ];
-  for (const event of sequence) regionReference._trigger(event.type, event);
+  // The fixture models separate report-bearing scopes and keeps the committed actions ordered.
+  const send = (actions, preedit) => regionReference._trigger("input", inputEvent(actions, preedit));
+  send([inputInsert("d")], inputPreedit());
+  send([inputInsert("d")], inputPreedit());
+  send([inputInsert("d")], inputPreedit());
+  for (const text of ["ㅎ", "하", "한"]) send([], inputPreedit(text));
+  send([inputInsert("한")], inputPreedit());
+  for (const text of ["ㄱ", "그", "글"]) send([], inputPreedit(text));
+  send([inputInsert("글")], inputPreedit());
+  send([], inputPreedit(" "));
+  send([inputInsert(" ")], inputPreedit());
+  send([inputKey("Enter")], inputPreedit());
   for (let i = 0; i < 4; i++) await new Promise((resolve) => setImmediate(resolve));
 
-  const inputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && (body.bytes || body.keys));
-  const written = inputs.map(({ body }) => body.bytes ? Buffer.from(body.bytes, "base64").toString("utf8") : `<${body.keys[0].key}>`);
+  const inputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.actions.length > 0);
+  const written = inputs.flatMap(({ body }) => body.actions.map((action) => action.type === "insert" ? action.text : `<${action.key}>`));
   assert.deepEqual(written, ["d", "d", "d", "한", "글", " ", "<Enter>"],
     "only committed text reaches the PTY, once and in order, before the Enter key");
   assert.equal(expose.getStatus("terminal.compose").readFn().text, "", "no preedit remains after the commit");
@@ -2366,23 +2358,180 @@ test("a partial native insert carries its remaining preedit snapshot", async () 
   FakeResizeObserver.triggerAll();
   openSession(fakeSidecar);
 
-  await fakeAttachImage.trigger("compose", { text: "ㅏㅏ", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 }, cids: ["ime.1"] });
-  const remaining = { text: "ㅏ", markedRange: { location: 0, length: 1 }, selectedRange: { location: 1, length: 0 }, replacementRange: null, attributed: false };
-  await fakeAttachImage.trigger("insert", { text: "ㅏ", preedit: remaining, replacementRange: null, attributed: false, cids: ["ime.2"] });
+  const initial = inputPreedit("ㅏㅏ");
+  const remaining = inputPreedit("ㅏ");
+  await fakeAttachImage.triggerRaw("input", inputEvent([], initial, { cids: ["ime.1"] }));
+  await fakeAttachImage.triggerRaw("input", inputEvent([inputInsert("ㅏ")], remaining, { cids: ["ime.2"] }));
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(expose.getStatus("terminal.compose").readFn().text, "ㅏ",
     "the resulting snapshot contains only the remaining preedit");
   const inputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input");
-  assert.deepEqual(inputs.map(({ body }) => body.compose?.text ?? (body.bytes ? Buffer.from(body.bytes, "base64").toString("utf8") : null)),
-    ["ㅏㅏ", "ㅏ"], "the native insert carries its remaining preedit with committed bytes");
+  assert.deepEqual(inputs.map(({ body }) => [body.actions[0]?.text ?? null, body.preedit.text]),
+    [[null, "ㅏㅏ"], ["ㅏ", "ㅏ"]], "the transaction carries its final snapshot with committed actions");
 
-  await fakeAttachImage.trigger("compose", { text: "", markedRange: null, selectedRange: null, replacementRange: null, cids: ["ime.3"] });
+  await fakeAttachImage.triggerRaw("input", inputEvent([], inputPreedit(), { cids: ["ime.3"] }));
   assert.equal(expose.getStatus("terminal.compose").readFn().text, "",
     "an empty compose clears the preedit after the committed prefix is sent");
   const afterCommit = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input");
-  assert.deepEqual(afterCommit.map(({ body }) => body.compose?.text ?? (body.bytes ? Buffer.from(body.bytes, "base64").toString("utf8") : null)),
+  assert.deepEqual(afterCommit.map(({ body }) => body.preedit.text),
     ["ㅏㅏ", "ㅏ", ""], "the next native compose clear remains a distinct valid update");
+});
+
+test("native input transaction submits ordered actions and final preedit once", async () => {
+  FakeResizeObserver.reset();
+  const fakeAttachImage = createFakeAttachImage();
+  const fakeSidecar = createFakeSidecar();
+  const requests = [];
+  const send = fakeSidecar.send;
+  fakeSidecar.send = async (id, body, cids) => {
+    requests.push({ id, body, cids });
+    return send(id, body);
+  };
+  let regionReference;
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
+      regionReference = fakeAttachImage.function(view, name, sidecar);
+      return regionReference;
+    },
+    sidecar: fakeSidecar,
+    expose,
+    scale: 1,
+    window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  FakeResizeObserver.triggerAll();
+  openSession(fakeSidecar);
+
+  const preedit = {
+    text: "", markedRange: null,
+    selectedRange: { location: 0, length: 0 }, replacementRange: null, attributed: false,
+  };
+  const event = {
+    type: "input",
+    actions: [
+      { type: "insert", text: "ㅏ", replacementRange: null, attributed: false },
+      { type: "insert", text: "ㅏㅏ", replacementRange: null, attributed: false },
+      { type: "command", selector: "deleteBackward" },
+    ],
+    preedit,
+    errors: [],
+    cids: ["ime.key.4"],
+  };
+  await fakeAttachImage.triggerRaw("input", event);
+
+  const inputs = requests.filter(({ body }) => body.operation === "input");
+  assert.equal(inputs.length, 1, "one native input scope sends one VT request");
+  assert.deepEqual(inputs[0].body, { operation: "input", actions: event.actions, preedit },
+    "the VT request preserves ordered actions and the final strict snapshot");
+  assert.deepEqual(inputs[0].id, "test-session");
+  assert.deepEqual(expose.getStatus("terminal.compose").readFn(), preedit,
+    "the final snapshot is applied once to compose status");
+  assert.deepEqual(inputs[0].cids, event.cids,
+    "the native scope correlation identifiers reach the VT request");
+});
+
+test("native input validates every action before changing compose or sending", async () => {
+  FakeResizeObserver.reset();
+  const fakeAttachImage = createFakeAttachImage();
+  const fakeSidecar = createFakeSidecar();
+  let regionReference;
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
+      regionReference = fakeAttachImage.function(view, name, sidecar);
+      return regionReference;
+    },
+    sidecar: fakeSidecar,
+    expose,
+    scale: 1,
+    window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  FakeResizeObserver.triggerAll();
+  openSession(fakeSidecar);
+  const before = expose.getStatus("terminal.compose").readFn();
+  const event = inputEvent([
+    inputInsert("committed"),
+    { type: "key", key: "Backspace", shift: false, alt: false, ctrl: "invalid" },
+  ], inputPreedit("new preedit"));
+
+  await fakeAttachImage.triggerRaw("input", event);
+
+  assert.deepEqual(expose.getStatus("terminal.compose").readFn(), before,
+    "a malformed later action cannot apply the final preedit");
+  assert.equal(fakeSidecar.getMessages().some(({ body }) => body.operation === "input"), false,
+    "a malformed later action cannot send a valid action prefix");
+  assert.match(expose.getStatus("terminal.session").readFn().error, /modifiers must be booleans/);
+});
+
+test("native input sends valid actions once before reporting ordered errors", async () => {
+  FakeResizeObserver.reset();
+  const fakeAttachImage = createFakeAttachImage();
+  const fakeSidecar = createFakeSidecar();
+  let regionReference;
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
+      regionReference = fakeAttachImage.function(view, name, sidecar);
+      return regionReference;
+    },
+    sidecar: fakeSidecar,
+    expose,
+    scale: 1,
+    window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  FakeResizeObserver.triggerAll();
+  openSession(fakeSidecar);
+  const session = expose.getStatus("terminal.session");
+  const errors = [];
+  session.watchFn((value) => { if (value.error) errors.push(value.error); });
+
+  await fakeAttachImage.triggerRaw("input", inputEvent([], inputPreedit("marked"), {
+    errors: [{ reason: "first native error" }, { reason: "second native error" }],
+  }));
+
+  const inputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input");
+  assert.equal(inputs.length, 1, "a compose-only transaction still sends once");
+  assert.deepEqual(inputs[0].body, { operation: "input", actions: [], preedit: inputPreedit("marked") });
+  assert.deepEqual(errors.slice(-2), ["terminal input failed: first native error", "terminal input failed: second native error"],
+    "valid transaction errors are reported in source order after the request");
+});
+
+test("native input reports callback errors when its VT request fails", async () => {
+  FakeResizeObserver.reset();
+  const fakeAttachImage = createFakeAttachImage();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  const log = capturedLog();
+  let regionReference;
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
+      regionReference = fakeAttachImage.function(view, name, sidecar);
+      return regionReference;
+    },
+    sidecar: fakeSidecar,
+    expose: fakeExpose,
+    runtime: log.runtime,
+    window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  FakeResizeObserver.triggerAll();
+  openSession(fakeSidecar);
+  fakeSidecar.failNext(new Error("input unavailable"));
+
+  await fakeAttachImage.triggerRaw("input", inputEvent([], inputPreedit(), {
+    errors: [{ reason: "native callback failed" }],
+  }));
+
+  const messages = log.records.filter(([event, , level]) => event === "error" && level === "error")
+    .map(([, fields]) => fields.message);
+  assert.ok(messages.includes("terminal input failed: input unavailable"), JSON.stringify(messages));
+  assert.ok(messages.includes("terminal input failed: native callback failed"), JSON.stringify(messages));
+  assert.equal(fakeSidecar.getMessages().filter(({ body }) => body.operation === "input").length, 0,
+    "a failed transaction send is not reported as delivered");
 });
 
 test("a native insert sends committed bytes with its resulting preedit in one sidecar request", async () => {
@@ -2409,12 +2558,12 @@ test("a native insert sends committed bytes with its resulting preedit in one si
     text: "ㅏㅏ", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 },
     replacementRange: null, attributed: false,
   };
-  await fakeAttachImage.trigger("insert", { text: "ㅏㅏ", preedit, cids: ["ime.commit"] });
+  await fakeAttachImage.triggerRaw("input", inputEvent([inputInsert("ㅏㅏ")], preedit, { cids: ["ime.commit"] }));
 
-  const inputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.bytes);
+  const inputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.actions.some(({ type }) => type === "insert"));
   assert.equal(inputs.length, 1, "the native insert is one VT input operation");
-  assert.equal(Buffer.from(inputs[0].body.bytes, "base64").toString("utf8"), "ㅏㅏ");
-  assert.deepEqual(inputs[0].body.compose, preedit,
+  assert.equal(inputs[0].body.actions[0].text, "ㅏㅏ");
+  assert.deepEqual(inputs[0].body.preedit, preedit,
     "the same request carries the resulting preedit before PTY echo can race its clear");
   assert.deepEqual(expose.getStatus("terminal.compose").readFn(), preedit,
     "the public compose status reflects the insert's resulting input-document snapshot");
@@ -2441,11 +2590,13 @@ test("a native insert without a resulting preedit snapshot is rejected before se
   openSession(fakeSidecar);
   const priorCompose = expose.getStatus("terminal.compose").readFn();
 
-  await fakeAttachImage.triggerRaw("insert", { text: "ㅏㅏ", cids: ["ime.missing-snapshot"] });
+  await fakeAttachImage.triggerRaw("input", {
+    type: "input", actions: [inputInsert("ㅏㅏ")], errors: [], cids: ["ime.missing-snapshot"],
+  });
   await new Promise((resolve) => setImmediate(resolve));
 
-  assert.equal(fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.bytes).length, 0,
-    "missing resulting state cannot be sent as a committed insert");
+  assert.equal(fakeSidecar.getMessages().filter(({ body }) => body.operation === "input").length, 0,
+    "missing final state cannot be sent as a committed insert");
   assert.deepEqual(expose.getStatus("terminal.compose").readFn(), priorCompose,
     "invalid insert leaves the prior compose state unchanged");
 });
@@ -2473,22 +2624,17 @@ test("a native insert and same-turn Backspace reach the sidecar in callback orde
   const emptyPreedit = {
     text: "", markedRange: null, selectedRange: { location: 0, length: 0 }, replacementRange: null, attributed: false,
   };
-  regionReference._trigger("insert", { text: "a", preedit: emptyPreedit, cids: ["ime.same-turn-insert"] });
-  regionReference._trigger("key", {
-    key: "Backspace", text: "", shift: false, alt: false, ctrl: false, cids: ["ime.same-turn-backspace"],
-  });
+  regionReference._trigger("input", inputEvent([inputInsert("a")], emptyPreedit, { cids: ["ime.same-turn-insert"] }));
+  regionReference._trigger("input", inputEvent([inputKey("Backspace")], emptyPreedit, { cids: ["ime.same-turn-backspace"] }));
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
 
   const inputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input");
   assert.equal(inputs.length, 2, "both native callbacks reach the sidecar");
-  assert.deepEqual(inputs[0].body.compose, emptyPreedit,
-    `the first request carries the empty preedit snapshot (got ${JSON.stringify(inputs.map(({ body }) => body))})`);
-  assert.equal(Buffer.from(inputs[0].body.bytes, "base64").toString("utf8"), "a",
-    "committed bytes remain attached to that snapshot");
-  assert.deepEqual(inputs[1].body.keys, [{
-    key: "Backspace", text: "", shift: false, alt: false, ctrl: false,
-  }], "the following Backspace remains the second sidecar input");
+  assert.deepEqual(inputs[0].body, { operation: "input", actions: [inputInsert("a")], preedit: emptyPreedit },
+    `the first request carries its action and empty preedit (got ${JSON.stringify(inputs.map(({ body }) => body))})`);
+  assert.deepEqual(inputs[1].body, { operation: "input", actions: [inputKey("Backspace")], preedit: emptyPreedit },
+    "the following Backspace remains the second sidecar input");
 });
 
 test("native inserts send empty and unchanged preedit snapshots with each commit", async () => {
@@ -2514,19 +2660,19 @@ test("native inserts send empty and unchanged preedit snapshots with each commit
   const emptyPreedit = {
     text: "", markedRange: null, selectedRange: { location: 0, length: 0 }, replacementRange: null, attributed: false,
   };
-  await fakeAttachImage.trigger("insert", { text: "a", preedit: emptyPreedit, cids: ["ime.empty"] });
+  await fakeAttachImage.triggerRaw("input", inputEvent([inputInsert("a")], emptyPreedit, { cids: ["ime.empty"] }));
   const unchangedPreedit = {
     text: "same", markedRange: { location: 0, length: 4 }, selectedRange: { location: 4, length: 0 },
     replacementRange: null, attributed: false,
   };
-  await fakeAttachImage.trigger("insert", { text: "b", preedit: unchangedPreedit, cids: ["ime.unchanged"] });
-  await fakeAttachImage.trigger("insert", { text: "c", preedit: unchangedPreedit, cids: ["ime.unchanged-again"] });
+  await fakeAttachImage.triggerRaw("input", inputEvent([inputInsert("b")], unchangedPreedit, { cids: ["ime.unchanged"] }));
+  await fakeAttachImage.triggerRaw("input", inputEvent([inputInsert("c")], unchangedPreedit, { cids: ["ime.unchanged-again"] }));
 
-  const inputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.bytes);
+  const inputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.actions.some(({ type }) => type === "insert"));
   assert.equal(inputs.length, 3, "each native commit sends one input request");
-  assert.deepEqual(inputs.map(({ body }) => body.compose), [emptyPreedit, unchangedPreedit, unchangedPreedit],
+  assert.deepEqual(inputs.map(({ body }) => body.preedit), [emptyPreedit, unchangedPreedit, unchangedPreedit],
     "empty and unchanged preedit snapshots are transmitted exactly with their commits");
-  assert.deepEqual(inputs.map(({ body }) => Buffer.from(body.bytes, "base64").toString("utf8")), ["a", "b", "c"],
+  assert.deepEqual(inputs.map(({ body }) => body.actions[0].text), ["a", "b", "c"],
     "each snapshot remains attached to its own committed bytes");
   assert.deepEqual(expose.getStatus("terminal.compose").readFn(), unchangedPreedit,
     "the current compose status follows the latest native insert snapshot");
@@ -2553,24 +2699,18 @@ test("native compose forwards the exact UTF-16 markedRange and explicit null", {
   openSession(fakeSidecar);
 
   const markedRange = { location: 1, length: 2 };
-  await fakeAttachImage.trigger("compose", {
-    text: "A😀B", markedRange, selectedRange: { location: 3, length: 0 }, replacementRange: null, attributed: true,
-  });
-  const expected = {
-    text: "A😀B", markedRange, selectedRange: { location: 3, length: 0 }, replacementRange: null, attributed: true,
-  };
+  const expected = inputPreedit("A😀B", { markedRange, selectedRange: { location: 3, length: 0 }, attributed: true });
+  await fakeAttachImage.triggerRaw("input", inputEvent([], expected));
   assert.deepEqual(expose.getStatus("terminal.compose").readFn(), expected,
     "terminal.compose keeps the text-relative UTF-16 markedRange independently of the selected range");
-  assert.deepEqual(fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.compose).at(-1).body.compose,
+  assert.deepEqual(fakeSidecar.getMessages().filter(({ body }) => body.operation === "input").at(-1).body.preedit,
     expected, "the exact native markedRange reaches the VT compose input");
 
-  await fakeAttachImage.trigger("compose", {
-    text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false,
-  });
   const empty = { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false };
+  await fakeAttachImage.triggerRaw("input", inputEvent([], empty));
   assert.deepEqual(expose.getStatus("terminal.compose").readFn(), empty,
     "an empty native compose explicitly clears the marked range");
-  assert.deepEqual(fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.compose).at(-1).body.compose,
+  assert.deepEqual(fakeSidecar.getMessages().filter(({ body }) => body.operation === "input").at(-1).body.preedit,
     empty, "the explicit null reaches the VT compose input");
 });
 
@@ -2605,9 +2745,9 @@ test("native compose rejects missing and out-of-text markedRanges before status 
       const event = { text: name === "grapheme split" ? "á" : "ab", selectedRange: null, replacementRange: null, attributed: false };
       if (markedRange !== undefined) event.markedRange = markedRange;
 
-      await fakeAttachImage.trigger("compose", event);
+      await fakeAttachImage.triggerRaw("input", inputEvent([], event));
 
-      assert.match(expose.getStatus("terminal.session").readFn().error, expectedError,
+      assert.match(expose.getStatus("terminal.session").readFn().error, new RegExp(`terminal input failed: native input preedit ${expectedError.source}`),
         "the malformed native markedRange is reported");
       assert.deepEqual(expose.getStatus("terminal.compose").readFn(), before,
         "the malformed native markedRange does not update status");
@@ -2695,19 +2835,14 @@ test("accepting native marked text writes it to the PTY exactly once", async () 
   openSession(fakeSidecar);
 
   // macOS unmarkText 가 보고하는 순서: 조합 해제 뒤 확정 insert 하나.
-  regionReference._trigger("compose", {
-    text: "한글", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 }, replacementRange: null, attributed: true,
-  });
-  regionReference._trigger("compose", {
-    text: "", markedRange: null, selectedRange: { location: 0, length: 0 }, replacementRange: { location: 0, length: 2 }, attributed: false,
-  });
-  regionReference._trigger("insert", { text: "한글", replacementRange: { location: 0, length: 0 }, attributed: false });
+  regionReference._trigger("input", inputEvent([], inputPreedit("한글", { attributed: true })));
+  regionReference._trigger("input", inputEvent([inputInsert("한글", { replacementRange: { location: 0, length: 2 } })], inputPreedit()));
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(expose.getStatus("terminal.compose").readFn().text, "", "the accepted preedit must clear");
-  const byteInputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.bytes);
-  assert.deepEqual(byteInputs.map(({ body }) => Buffer.from(body.bytes, "base64").toString("utf8")), ["한글"],
+  const byteInputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.actions.some(({ type }) => type === "insert"));
+  assert.deepEqual(byteInputs.map(({ body }) => body.actions[0].text), ["한글"],
     "accepted marked text is committed once");
 });
 
@@ -2751,9 +2886,9 @@ test("terminal.compose.update exposes ordered preedit changes without writing pa
     assert.equal(expose.getStatus("terminal.compose").readFn().text, text);
   }
   const inputMessages = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input");
-  assert.deepEqual(inputMessages.map(({ body }) => body.compose?.text), ["ㅎ", "하", "한"]);
-  assert.equal(inputMessages.some(({ body }) => body.bytes !== undefined), false,
-    "preedit updates must not become PTY bytes");
+  assert.deepEqual(inputMessages.map(({ body }) => body.preedit?.text), ["ㅎ", "하", "한"]);
+  assert.deepEqual(inputMessages.map(({ body }) => body.actions), [[], [], []],
+    "preedit updates use empty action lists and never become PTY bytes");
 });
 
 test("terminal.compose.update rejects malformed ranges instead of replacing them with empty ranges", async () => {
@@ -2779,7 +2914,7 @@ test("terminal.compose.update rejects malformed ranges instead of replacing them
     "invalid compose input must not be sent");
 });
 
-test("terminal.ime.trace records native callbacks and ordered terminal input, and reports overflow", async () => {
+test("terminal.ime.trace records native transactions and terminal input, and reports overflow", async () => {
   FakeResizeObserver.reset();
   const fakeAttachImage = createFakeAttachImage();
   const fakeSidecar = createFakeSidecar();
@@ -2801,22 +2936,27 @@ test("terminal.ime.trace records native callbacks and ordered terminal input, an
   openSession(fakeSidecar);
 
   await expose.getCommand("terminal.ime.trace")({ action: "start" });
-  regionReference._trigger("key", { key: "Char", text: "d", shift: false, alt: false, ctrl: false });
-  regionReference._trigger("insert", { text: "d" });
-  regionReference._trigger("compose", { text: "ㅎ", markedRange: { location: 0, length: 1 } });
-  regionReference._trigger("insert", { text: "한" });
+  const first = inputEvent([inputKey("Char", "d"), inputInsert("d")]);
+  const second = inputEvent([], inputPreedit("ㅎ"));
+  const third = inputEvent([inputInsert("한")]);
+  regionReference._trigger("input", first);
+  regionReference._trigger("input", second);
+  regionReference._trigger("input", third);
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
   const result = await expose.getCommand("terminal.ime.trace")({ action: "stop" });
   assert.equal(result.overflow, false);
   assert.deepEqual(result.entries.map(({ kind }) => kind), [
-    "native-key", "terminal-input", "native-insert", "terminal-input", "native-compose", "terminal-input", "native-insert", "terminal-input",
+    "native-input", "terminal-input", "native-input", "terminal-input", "native-input", "terminal-input",
   ]);
-  assert.deepEqual(result.entries[0], { sequence: 0, kind: "native-key", key: "Char", text: "d" });
-  assert.deepEqual(result.entries.filter(({ kind }) => kind === "native-insert").map(({ text }) => text), ["d", "한"]);
+  assert.deepEqual(result.entries[0], {
+    sequence: 0, kind: "native-input", input: { type: "input", actions: first.actions, preedit: first.preedit, errors: [] }, cids: first.cids,
+  });
+  assert.deepEqual(result.entries.filter(({ kind }) => kind === "native-input").map(({ input }) => input), [first, second, third]
+    .map(({ type, actions, preedit, errors }) => ({ type, actions, preedit, errors })));
 
   await expose.getCommand("terminal.ime.trace")({ action: "start" });
-  for (let i = 0; i < 257; i++) regionReference._trigger("insert", { text: "x" });
+  for (let i = 0; i < 257; i++) regionReference._trigger("input", inputEvent([inputInsert("x")]));
   const overflow = expose.getStatus("terminal.ime.trace").readFn();
   assert.equal(overflow.enabled, false);
   assert.equal(overflow.overflow, true);
@@ -2853,7 +2993,8 @@ test("native focus and cursor state route to sidecar without moving an unframed 
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(regionReference._caret, undefined, "an unframed state cursor moved the native caret");
   assert.deepEqual(fakeSidecar.getMessages().at(-1).body, {
-    operation: "input", focus: { focused: true },
+    operation: "input", actions: [{ type: "focus", focused: true }],
+    preedit: { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false },
   });
 });
 
@@ -3359,11 +3500,11 @@ test("input send failures remain observable and later queued input still sends",
     window: { TextEncoder: FakeTextEncoder },
   });
   openSession(fakeSidecar);
-  regionReference._trigger("insert", { text: "a" });
-  regionReference._trigger("insert", { text: "b" });
+  regionReference._trigger("input", inputEvent([inputInsert("a")]));
+  regionReference._trigger("input", inputEvent([inputInsert("b")]));
   await new Promise((resolve) => setImmediate(resolve));
   assert.match(fakeExpose.getStatus("terminal.session").readFn().error, /input unavailable/);
-  assert.equal(Buffer.from(fakeSidecar.getMessages().at(-1).body.bytes, "base64").toString(), "b");
+  assert.equal(fakeSidecar.getMessages().at(-1).body.actions[0].text, "b");
 });
 
 // vendor 이벤트에는 타입 있는 소비자가 있다. 관련 없는 이벤트는 unsupported로 관측 가능하게 남는다.
@@ -3491,11 +3632,11 @@ test("invalid_key_event_modifiers: non-boolean modifiers trigger error", async (
   const sessionStatus = fakeExpose.getStatus("terminal.session");
 
   // 계약 위반: shift가 문자열
-  regionReference._trigger("key", { key: "Enter", shift: "true", alt: false, ctrl: false });
+  regionReference._trigger("input", inputEvent([{ type: "key", key: "Enter", text: "", shift: "true", alt: false, ctrl: false }]));
 
   const session = sessionStatus.readFn();
   assert(session.error, "error field set for invalid modifier");
-  assert(session.error.includes("invalid key event"), "error indicates key event issue");
+  assert(session.error.includes("native input action"), "error indicates input action issue");
 });
 
 test("a caller scale option cannot enter the terminal protocol", async () => {
@@ -3598,8 +3739,8 @@ test("region input is buffered in order until sidecar state opens the session", 
   });
 
   // 크기가 0인 상태에서 region 이벤트를 보낸다
-  regionReference._trigger("insert", { text: "a" });
-  regionReference._trigger("key", { key: "Enter", shift: false, alt: false, ctrl: false });
+  regionReference._trigger("input", inputEvent([inputInsert("a")]));
+  regionReference._trigger("input", inputEvent([inputKey("Enter")]));
 
   // open만 전송되고 입력은 bounded startup queue에 남는다.
   let messages = sessionMessages(fakeSidecar);
@@ -3613,8 +3754,8 @@ test("region input is buffered in order until sidecar state opens the session", 
 
   messages = sessionMessages(fakeSidecar);
   assert.equal(messages.length, 3, "open and two inputs are sent after state");
-  assert.equal(Buffer.from(messages[1].body.bytes, "base64").toString(), "a");
-  assert.equal(messages[2].body.keys[0].key, "Enter");
+  assert.deepEqual(messages[1].body.actions, [inputInsert("a")]);
+  assert.deepEqual(messages[2].body.actions, [inputKey("Enter")]);
 });
 
 test("startup input overflow is visible and does not report success", async () => {
@@ -3630,7 +3771,7 @@ test("startup input overflow is visible and does not report success", async () =
     window: { TextEncoder: FakeTextEncoder },
   });
   for (let index = 0; index <= 1024; index += 1) {
-    regionReference._trigger("insert", { text: String(index) });
+    regionReference._trigger("input", inputEvent([inputInsert(String(index))]));
   }
   await new Promise((resolve) => setImmediate(resolve));
   assert.match(fakeExpose.getStatus("terminal.session").readFn().error, /queue overflow/);
@@ -4183,8 +4324,8 @@ test("a sidecar reconnection reopens the session and re-sends the bootstrap", as
   assert.equal(recursor.shape, SHELL_SETTINGS.read()["cursor.shape"]);
 
   // 새 세션이 열리기 전까지 입력은 대기하고, state 이벤트가 오면 흘러간다.
-  region._trigger("key", { key: "Enter", text: "\r", shift: false, alt: false, ctrl: false });
-  const inputs = () => messages().filter(({ body }) => body.operation === "input" && body.keys).length;
+  region._trigger("input", inputEvent([inputKey("Enter")]));
+  const inputs = () => messages().filter(({ body }) => body.operation === "input").length;
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(inputs(), 0, "input did not wait for the reopened session");
   sidecar.triggerEvent("test-session", { event: "state", sessionId: "s2", cols: 100, rows: 50, cellWidth: 8, cellHeight: 16 });
@@ -4230,7 +4371,7 @@ test("input queued during a reconnection flows when the preserved session answer
   });
   openSession(sidecar);
   const messages = () => sidecar.getMessages();
-  const inputs = () => messages().filter(({ body }) => body.operation === "input" && body.keys).length;
+  const inputs = () => messages().filter(({ body }) => body.operation === "input").length;
   const settle = async (predicate, what) => {
     for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
     assert.ok(predicate(), what);
@@ -4238,7 +4379,7 @@ test("input queued during a reconnection flows when the preserved session answer
   // A live service keeps the session across the reconnection and answers the reattached surface with a session event,
   // not with a state event, so that event opens the session gate (docs/spec/terminal-runtime.md in core).
   sidecar.triggerEvent("test-session", { event: "connection", connected: true });
-  region._trigger("key", { key: "Enter", text: "\r", shift: false, alt: false, ctrl: false });
+  region._trigger("input", inputEvent([inputKey("Enter")]));
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(inputs(), 0, "input did not wait for the reattached session");
   sidecar.triggerEvent("test-session", { event: "session", sessionId: "s1" });
@@ -4254,19 +4395,20 @@ test("the trace records each input with its text, the session gate and the flush
     view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
     expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
   });
-  region._trigger("insert", { text: "secret" });
+  const event = inputEvent([inputInsert("secret")]);
+  region._trigger("input", event);
   openSession(sidecar);
   await new Promise((resolve) => setImmediate(resolve));
   const recorded = lines.map(([event, fields]) => [event, JSON.parse(JSON.stringify(fields))]);
   assert.deepEqual(recorded.filter(([event]) => ["ime", "input", "input.flush"].includes(event)), [
-    ["ime", { kind: "native-insert", text: "secret" }],
-    ["input", { kind: "insert", text: "secret", queued: true, queue: 0 }],
+    ["ime", { kind: "native-input", input: { type: "input", actions: event.actions, preedit: event.preedit, errors: [] }, cids: event.cids }],
+    ["input", { kind: "input", actions: event.actions, preedit: event.preedit, queued: true, queue: 0 }],
     ["input.flush", { count: 1 }],
   ]);
   assert.deepEqual(recorded.find(([event]) => event === "session.gate"), ["session.gate", { open: true, event: "state" }]);
 });
 
-test("the trace records each native input callback of the input method with its text and ranges", async () => {
+test("the trace records one native input transaction with its actions and final ranges", async () => {
   const attach = createFakeAttachImage();
   const sidecar = createFakeSidecar();
   const lines = [];
@@ -4276,19 +4418,17 @@ test("the trace records each native input callback of the input method with its 
     expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
   });
   openSession(sidecar);
-  region._trigger("key", { key: "Char", text: "s", shift: false, alt: false, ctrl: false });
-  region._trigger("key", { key: "Enter", text: "\r", shift: false, alt: false, ctrl: false });
-  region._trigger("compose", { text: "비밀", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 }, replacementRange: { location: 4, length: 1 } });
-  region._trigger("insert", { text: "secret", replacementRange: { location: 28, length: 1 } });
+  const transaction = inputEvent([
+    inputKey("Char", "s"), inputKey("Enter"),
+    inputInsert("secret", { replacementRange: { location: 28, length: 1 } }),
+  ], inputPreedit("비밀", { markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 },
+    replacementRange: { location: 4, length: 1 } }));
+  region._trigger("input", transaction);
   await new Promise((resolve) => setImmediate(resolve));
   const ime = lines.filter(([event]) => event === "ime").map(([, fields]) => JSON.parse(JSON.stringify(fields)));
-  assert.deepEqual(ime, [
-    { kind: "native-key", key: "Char", text: "s", shift: false, alt: false, ctrl: false },
-    { kind: "native-key", key: "Enter", text: "\r", shift: false, alt: false, ctrl: false },
-    { kind: "native-compose", text: "비밀", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 }, replacementRange: { location: 4, length: 1 } },
-    { kind: "native-insert", text: "secret", replacementRange: { location: 28, length: 1 },
-      preedit: { text: "", markedRange: null, selectedRange: { location: 0, length: 0 }, replacementRange: null, attributed: false } },
-  ]);
+  assert.deepEqual(ime, [{ kind: "native-input", input: {
+    type: "input", actions: transaction.actions, preedit: transaction.preedit, errors: [],
+  }, cids: transaction.cids }]);
 });
 
 test("the trace records every message sent to the sidecar with its result, every event received and every region event", async () => {
@@ -4301,7 +4441,7 @@ test("the trace records every message sent to the sidecar with its result, every
     expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
   });
   openSession(sidecar);
-  region._trigger("insert", { text: "한" });
+  region._trigger("input", inputEvent([inputInsert("한")]));
   region._trigger("focus", { focused: true });
   sidecar.triggerEvent("test-session", { event: "directory", uri: "file:///tmp/a", path: "/tmp/a" });
   await new Promise((resolve) => setImmediate(resolve));
@@ -4309,16 +4449,16 @@ test("the trace records every message sent to the sidecar with its result, every
   // Every message that the plugin sends is recorded with its whole body before it is sent and with its result after.
   const sent = of("send");
   assert.ok(sent.some((fields) => fields.body.operation === "open"), "the open message was not recorded");
-  const input = sent.find((fields) => fields.body.operation === "input" && fields.body.bytes);
+  const input = sent.find((fields) => fields.body.operation === "input");
   assert.ok(input, "the input message was not recorded");
-  assert.equal(input.body.bytes, Buffer.from(new FakeTextEncoder().encode("한")).toString("base64"));
+  assert.deepEqual(input.body.actions, [inputInsert("한")]);
   const results = of("send.result");
   assert.ok(results.some((fields) => fields.operation === "input" && fields.ok === true && Number.isInteger(fields.micros) && fields.micros >= 0 && fields.error === undefined), "the result of the input message was not recorded");
   // Every event that the sidecar sends is recorded with its whole body.
   assert.ok(of("sidecar.event").some((fields) => fields.body.event === "directory" && fields.body.path === "/tmp/a"));
   assert.ok(of("sidecar.event").some((fields) => fields.body.event === "state"));
   // Every event of the image region is recorded with its type and its whole body.
-  assert.ok(of("region").some((fields) => fields.type === "insert" && fields.text === "한"));
+  assert.ok(of("region").some((fields) => fields.type === "input" && fields.actions[0].text === "한"));
   assert.ok(of("region").some((fields) => fields.type === "focus" && fields.focused === true));
 });
 
@@ -4333,7 +4473,7 @@ test("a failed send is recorded with its error", async () => {
   });
   openSession(sidecar);
   sidecar.failNext(new Error("denied"));
-  region._trigger("insert", { text: "x" });
+  region._trigger("input", inputEvent([inputInsert("x")]));
   await new Promise((resolve) => setImmediate(resolve));
   const failed = lines.filter(([event]) => event === "send.result").map(([, fields]) => fields).find((fields) => fields.ok === false);
   assert.ok(failed, "the failed send was not recorded");
@@ -4354,9 +4494,9 @@ test("the session gate, the session open, the refused input, the shown error and
   });
   const of = (name) => lines.filter(([event]) => event === name);
   assert.deepEqual(of("session.open").map(([, fields, level]) => [fields.shell, fields.directory, level]), [["/bin/sh", null, "info"]]);
-  for (let index = 0; index <= 1024; index += 1) region._trigger("insert", { text: "a" });
+  for (let index = 0; index <= 1024; index += 1) region._trigger("input", inputEvent([inputInsert("a")]));
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(of("input.overflow").map(([, fields, level]) => [fields, level]), [[{ kind: "insert", max: 1024, queue: 1024 }, "warn"]]);
+  assert.deepEqual(of("input.overflow").map(([, fields, level]) => [fields, level]), [[{ kind: "input", max: 1024, queue: 1024 }, "warn"]]);
   assert.ok(of("error").some(([, fields, level]) => level === "error" && fields.source === "input" && /queue overflow/.test(fields.message)), "the shown error was not stored");
   openSession(sidecar);
   assert.deepEqual(of("session.gate").map(([, fields, level]) => [fields, level]), [[{ open: true, event: "state" }, "info"]]);
@@ -4376,12 +4516,12 @@ test("the input of a region event reaches the sidecar with the cids of that even
     expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder },
   });
   openSession(sidecar);
-  region._trigger("key", { key: "Enter", text: "\r", shift: false, alt: false, ctrl: false, cids: ["b1.7"] });
-  region._trigger("insert", { text: "x", cids: ["b1.8"] });
-  region._trigger("key", { key: "Tab", text: "\t", shift: false, alt: false, ctrl: false });
+  region._trigger("input", inputEvent([inputKey("Enter")], inputPreedit(), { cids: ["b1.7"] }));
+  region._trigger("input", inputEvent([inputInsert("x")], inputPreedit(), { cids: ["b1.8"] }));
+  region._trigger("input", inputEvent([inputKey("Tab")], inputPreedit(), { cids: ["b1.9"] }));
   await new Promise((resolve) => setImmediate(resolve));
   const inputs = sent.filter(({ body }) => body.operation === "input");
-  assert.deepEqual(inputs.map(({ cids }) => cids), [["b1.7"], ["b1.8"], []]);
+  assert.deepEqual(inputs.map(({ cids }) => cids), [["b1.7"], ["b1.8"], ["b1.9"]]);
 });
 
 test("the inputs that waited for the session keep their cids when they are sent", async () => {
@@ -4395,8 +4535,8 @@ test("the inputs that waited for the session keep their cids when they are sent"
     view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
     expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder },
   });
-  region._trigger("key", { key: "Enter", text: "\r", shift: false, alt: false, ctrl: false, cids: ["b1.7"] });
-  region._trigger("insert", { text: "x", cids: ["b1.8"] });
+  region._trigger("input", inputEvent([inputKey("Enter")], inputPreedit(), { cids: ["b1.7"] }));
+  region._trigger("input", inputEvent([inputInsert("x")], inputPreedit(), { cids: ["b1.8"] }));
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(sent.filter(({ body }) => body.operation === "input"), []);
   openSession(sidecar);
@@ -4414,7 +4554,7 @@ test("cids that are no list of identifiers are an observable input error", async
     window: { TextEncoder: FakeTextEncoder },
   });
   openSession(sidecar);
-  region._trigger("insert", { text: "x", cids: "b1.7" });
+  region._trigger("input", { ...inputEvent([inputInsert("x")]), cids: "b1.7" });
   await new Promise((resolve) => setImmediate(resolve));
   assert.match(expose.getStatus("terminal.session").readFn().error, /cids/);
   assert.equal(sidecar.getMessages().filter(({ body }) => body.operation === "input").length, 0);
@@ -4431,9 +4571,9 @@ test("a failed reconnection reports the reason and keeps input queued", async ()
   });
   openSession(sidecar);
   sidecar.triggerEvent("test-session", { event: "connection", connected: false, reason: "spawn failed" });
-  region._trigger("key", { key: "Enter", text: "\r", shift: false, alt: false, ctrl: false });
+  region._trigger("input", inputEvent([inputKey("Enter")]));
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(sidecar.getMessages().filter(({ body }) => body.operation === "input" && body.keys).length, 0,
+  assert.equal(sidecar.getMessages().filter(({ body }) => body.operation === "input").length, 0,
     "input did not wait while the connection is down");
   assert.equal(expose.getStatus("terminal.session").readFn().error, "sidecar connection failed: spawn failed");
   // 다음 연결 이벤트가 오면 재부트스트랩이 다시 흐른다.
@@ -4506,7 +4646,7 @@ test("the high-rate events pass their fields as a builder so that a closed level
     expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
   });
   openSession(sidecar);
-  region._trigger("key", { key: "Enter", text: "\r", shift: false, alt: false, ctrl: false });
+  region._trigger("input", inputEvent([inputKey("Enter")]));
   await new Promise((resolve) => setImmediate(resolve));
   for (const name of ["ime", "input", "send", "send.result", "sidecar.event", "region"]) {
     assert.ok(lines.some(([event]) => event === name), `${name} was not stored`);
@@ -4524,9 +4664,9 @@ test("the events input and send carry the cids of their input", async () => {
     expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
   });
   openSession(sidecar);
-  region._trigger("key", { key: "Enter", text: "\r", shift: false, alt: false, ctrl: false, cids: ["b1.7"] });
+  region._trigger("input", inputEvent([inputKey("Enter")], inputPreedit(), { cids: ["b1.7"] }));
   await new Promise((resolve) => setImmediate(resolve));
-  const input = lines.find(([event, fields]) => event === "input" && fields.kind === "key");
+  const input = lines.find(([event, fields]) => event === "input" && fields.kind === "input");
   assert.deepEqual(input?.[3], ["b1.7"], "the input event did not carry the cids");
   const send = lines.find(([event, fields]) => event === "send" && fields.body.operation === "input");
   assert.deepEqual(send?.[3], ["b1.7"], "the send event did not carry the cids");

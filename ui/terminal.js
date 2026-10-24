@@ -5,14 +5,6 @@ import { screenFromMessage, screenHash } from "@soksak/plugin-api/screen-hash";
 //
 // startTerminal 함수는 인자로 받은 의존성을 사용하므로 브라우저와 Node 환경에서 모두 부를 수 있다.
 
-/**
- * 입력 텍스트를 base64로 인코딩한다.
- */
-function encodeBytes(text, encoder) {
-  const bytes = encoder.encode(text);
-  return btoa(String.fromCharCode(...bytes));
-}
-
 function fileURLPath(value) {
   if (typeof value !== "string") throw new Error("clipboard file URL is not a string");
   let url;
@@ -32,35 +24,6 @@ function fileURLPath(value) {
   }
   if (!path.startsWith("/") || path.length === 1) throw new Error("clipboard file URL path is empty");
   return path;
-}
-
-/**
- * 키 이벤트를 sidecar 메시지 형식으로 변환한다.
- * 평문과 특수 키 모두에 사용한다.
- */
-function keyToMessage(keyName, text = "", modifiers = {}) {
-  const message = {
-    operation: "input",
-    keys: [{
-      key: keyName,
-      text,
-      shift: modifiers.shift,
-      alt: modifiers.alt,
-      ctrl: modifiers.ctrl,
-    }],
-  };
-  return message;
-}
-
-/**
- * 텍스트 입력을 base64로 인코딩하여 사이드카로 전송한다.
- */
-function sendInput(text, terminal, id, encoder, cids, compose) {
-  const base64 = encodeBytes(text, encoder);
-  return terminal.send(id, {
-    operation: "input", bytes: base64,
-    ...(compose === undefined ? {} : { compose }),
-  }, cids);
 }
 
 /**
@@ -403,7 +366,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   window: globalWindow = globalThis.window }) {
   // 브라우저 환경에서 필요한 객체들
   const window = globalWindow;
-  const TextEncoder = globalWindow.TextEncoder;
 
   if (!id) {
     throw new Error("startTerminal requires explicit surface id");
@@ -423,8 +385,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       (origin.directory !== null && (typeof origin.directory !== "string" || origin.directory === ""))) {
     throw new TypeError(`startTerminal requires origin {directory} with a path or null, found ${JSON.stringify(origin)}`);
   }
-  const encoder = new TextEncoder();
-
   // 공개 status 마다 값이 바뀔 때 호출할 함수
   const watchers = { session: new Set(), screen: new Set(), compose: new Set(), cursor: new Set() };
   const changed = (name) => {
@@ -477,8 +437,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   const notifyInput = (entry) => {
     for (const fn of inputObservers) fn(entry);
   };
-  // The trace records each native callback of the input method with every field that it carries, the typed text and the
-  // ranges included, because a defect of the input is located only from what was typed and in which order.
+  // The trace records each report-bearing input scope as one ordered transaction, including its final preedit and errors.
   const traceNative = (kind, event) => {
     runtime.log.debug("ime", () => ({ kind, ...event }));
   };
@@ -548,13 +507,16 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
 
   const normalizeCompose = (event, strict = false) => {
     if (strict && (!event || typeof event !== "object" || Array.isArray(event))) {
-      throw new Error("native insert preedit must be an object");
+      throw new Error("native input preedit must be an object");
     }
     if (!event || typeof event !== "object" || Array.isArray(event) || typeof event.text !== "string") {
       throw new Error("terminal.compose.update requires a text string");
     }
     if (strict && ["text", "markedRange", "selectedRange", "replacementRange", "attributed"].some((key) => !Object.hasOwn(event, key))) {
-      throw new Error("native insert preedit requires text, markedRange, selectedRange, replacementRange and attributed");
+      throw new Error("native input preedit requires text, markedRange, selectedRange, replacementRange and attributed");
+    }
+    if (strict && ["selectedRange", "replacementRange"].some((key) => event[key] === undefined)) {
+      throw new Error("native input preedit ranges must be explicit objects or null");
     }
     if (event.attributed !== undefined && typeof event.attributed !== "boolean") {
       throw new Error("IME attributed must be a boolean");
@@ -577,13 +539,78 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     const cids = cidsOf(event);
     const nextCompose = normalizeCompose(event);
     applyCompose(nextCompose);
-    try {
-      await enqueueInput({ type: "compose", ...compose }, cids);
-    } catch (error) {
-      reportInputError(error);
-      throw error;
-    }
+    await enqueueInput({ type: "input", actions: [], preedit: nextCompose }, cids);
     return null;
+  };
+  const exactKeys = (value, keys, label) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be an object`);
+    const actual = Object.keys(value).sort();
+    const expected = [...keys].sort();
+    if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
+      throw new Error(`${label} must contain exactly ${expected.join(", ")}`);
+    }
+  };
+  const normalizeNativeAction = (action, index) => {
+    if (!action || typeof action !== "object" || Array.isArray(action) || typeof action.type !== "string") {
+      throw new Error(`native input action ${index} must be an object with a type`);
+    }
+    if (action.type === "insert") {
+      exactKeys(action, ["type", "text", "replacementRange", "attributed"], `native input action ${index}`);
+      if (typeof action.text !== "string") throw new Error(`native input action ${index} text must be a string`);
+      if (action.replacementRange === undefined) throw new Error(`native input action ${index} replacementRange must be explicit`);
+      if (typeof action.attributed !== "boolean") throw new Error(`native input action ${index} attributed must be a boolean`);
+      if (action.replacementRange !== null) exactKeys(action.replacementRange, ["location", "length"], `native input action ${index} replacementRange`);
+      return { type: "insert", text: action.text, replacementRange: normalizeRange(action.replacementRange), attributed: action.attributed };
+    }
+    if (action.type === "key") {
+      if (!action || typeof action !== "object" || Array.isArray(action)) throw new Error(`native input action ${index} must be an object`);
+      const fields = Object.hasOwn(action, "text")
+        ? ["type", "key", "text", "shift", "alt", "ctrl"]
+        : ["type", "key", "shift", "alt", "ctrl"];
+      exactKeys(action, fields, `native input action ${index}`);
+      if (typeof action.key !== "string" || action.key.length === 0 ||
+          (Object.hasOwn(action, "text") && typeof action.text !== "string") ||
+          (action.key === "Char" && typeof action.text !== "string") ||
+          (action.key !== "Char" && Object.hasOwn(action, "text"))) {
+        throw new Error(`native input action ${index} requires a key and character text when key is Char`);
+      }
+      if (![action.shift, action.alt, action.ctrl].every((value) => typeof value === "boolean")) {
+        throw new Error(`native input action ${index} modifiers must be booleans`);
+      }
+      return {
+        type: "key", key: action.key,
+        ...(Object.hasOwn(action, "text") ? { text: action.text } : {}),
+        shift: action.shift, alt: action.alt, ctrl: action.ctrl,
+      };
+    }
+    if (action.type === "command") {
+      exactKeys(action, ["type", "selector"], `native input action ${index}`);
+      if (typeof action.selector !== "string" || action.selector.length === 0) {
+        throw new Error(`native input action ${index} selector must be a non-empty string`);
+      }
+      return { type: "command", selector: action.selector };
+    }
+    throw new Error(`native input action ${index} has unknown type ${action.type}`);
+  };
+  const normalizeNativeInput = (event) => {
+    exactKeys(event, ["type", "actions", "preedit", "errors", "cids"], "native input event");
+    if (event.type !== "input") throw new Error(`native input event type must be input, got ${String(event.type)}`);
+    if (!Array.isArray(event.actions)) throw new Error("native input actions must be an array");
+    if (!Array.isArray(event.errors)) throw new Error("native input errors must be an array");
+    const cids = cidsOf(event);
+    if (cids.length !== 1) throw new Error(`native input requires exactly one scope correlation identifier, got ${cids.length}`);
+    const actions = event.actions.map(normalizeNativeAction);
+    const errors = event.errors.map((item, index) => {
+      exactKeys(item, ["reason"], `native input error ${index}`);
+      if (typeof item.reason !== "string" || item.reason.length === 0) throw new Error(`native input error ${index} reason must be a non-empty string`);
+      return { reason: item.reason };
+    });
+    exactKeys(event.preedit, ["text", "markedRange", "selectedRange", "replacementRange", "attributed"], "native input preedit");
+    for (const range of [event.preedit.markedRange, event.preedit.selectedRange, event.preedit.replacementRange]) {
+      if (range !== null) exactKeys(range, ["location", "length"], "native input preedit range");
+    }
+    const preedit = normalizeCompose(event.preedit, true);
+    return { actions, preedit, errors, cids };
   };
 
   // 세션이 생겼는지 추적한다. 래스터 크기는 페이지가 아니라 호스트 configure가 정한다.
@@ -617,16 +644,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     const message = error instanceof Error ? error.message : String(error);
     setError(source, `terminal input failed: ${message}`);
   };
-  // The cids of a region event, or null after the error of an invalid value is reported.
-  const regionCids = (event) => {
-    try {
-      return cidsOf(event);
-    } catch (error) {
-      reportInputError(error);
-      return null;
-    }
-  };
-
   // 프로그램이 정한 마지막 제목(OSC 0/2). 설정 title 이 program 이면 탭에 보이고, name 이면 지운다.
   // 탭이 거부한 제목은 세션 오류이며 다음에 받아들여진 제목이 그 오류를 해소한다.
   let programTitle = null;
@@ -682,7 +699,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   };
   const sendPaste = async (text) => {
     if (typeof text !== "string" || text.length === 0) throw new Error("terminal paste text is empty");
-    await terminal.send(id, { operation: "paste", text });
+    await enqueueInput({ type: "input", actions: [{ type: "insert", text, replacementRange: null, attributed: false }], preedit: compose });
     return null;
   };
   const dropFileURLs = (value) => {
@@ -783,25 +800,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   });
   const recoverInputTail = () => undefined;
 
+  const inputBody = (entry) => ({ operation: "input", actions: entry.actions, preedit: entry.preedit });
   const sendEntry = async (entry, cids) => {
-    if (entry.type === "insert") {
-      await sendInput(entry.text, terminal, id, encoder, cids, entry.compose);
-    } else if (entry.type === "key") {
-      await terminal.send(id, keyToMessage(entry.key, entry.text, {
-        shift: entry.shift, alt: entry.alt, ctrl: entry.ctrl,
-      }), cids);
-    } else if (entry.type === "compose") {
-      await terminal.send(id, { operation: "input", compose: {
-        text: entry.text,
-        markedRange: entry.markedRange,
-        selectedRange: entry.selectedRange,
-        replacementRange: entry.replacementRange,
-        attributed: entry.attributed === true,
-      }}, cids);
-    } else if (entry.type === "command") {
-      await terminal.send(id, { operation: "input", command: { selector: entry.selector } }, cids);
-    } else if (entry.type === "focus") {
-      await terminal.send(id, { operation: "input", focus: { focused: entry.focused } }, cids);
+    if (entry.type === "input") {
+      await terminal.send(id, inputBody(entry), cids);
     } else {
       throw new Error(`unknown terminal input type: ${entry.type}`);
     }
@@ -837,7 +839,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   };
 
   const enqueueInput = (entry, cids = []) => {
-    notifyInput({ kind: "terminal-input", input: entry });
+    const input = inputBody(entry);
+    notifyInput({ kind: "terminal-input", input, cids });
     // The trace records each input with every field that it carries, the text included, and whether it waits for the session.
     const { type, ...fields } = entry;
     runtime.log.debug("input", () => ({ kind: type, ...fields, queued: !sessionOpen, queue: inputQueue.length }), { cids });
@@ -860,58 +863,32 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     }
   };
 
-  // 영역 insert 이벤트: 평문 텍스트 입력
-  onRegion("insert", (event) => {
-    const { text } = event;
-    notifyInput({ kind: "native-insert", text });
-    traceNative("native-insert", event);
-    const cids = regionCids(event);
-    if (cids === null) return;
+  // The region reports all callbacks from one native input scope as one strict transaction.
+  onRegion("input", async (event) => {
+    let transaction;
     try {
-      const nextCompose = normalizeCompose(event.preedit, true);
-      applyCompose(nextCompose);
-      return observeInput(enqueueInput({ type: "insert", text, compose: nextCompose }, cids));
+      transaction = normalizeNativeInput(event);
+    } catch (error) {
+      reportInputError(error);
+      return;
+    }
+    const { actions, preedit, errors: inputErrors, cids } = transaction;
+    const traceInput = { type: "input", actions, preedit, errors: inputErrors };
+    notifyInput({ kind: "native-input", input: traceInput, cids });
+    traceNative("native-input", { input: traceInput, cids });
+    applyCompose(preedit);
+    try {
+      await enqueueInput({ type: "input", actions, preedit }, cids);
     } catch (error) {
       reportInputError(error);
     }
-  });
-
-  // 영역 key 이벤트: 특수 키와 수정자
-  // 사이드카는 키 이름만 받고 이스케이프 시퀀스를 생성한다
-  onRegion("key", async (event) => {
-    const { key, text, shift, alt, ctrl } = event;
-    notifyInput({ kind: "native-key", key, text });
-    traceNative("native-key", event);
-    const cids = regionCids(event);
-    if (cids === null) return;
-    // 네이티브 영역은 항상 불린으로 수정자를 보낸다. 아니면 계약 위반이다.
-    if (typeof shift !== "boolean" || typeof alt !== "boolean" || typeof ctrl !== "boolean") {
-      setError("key", `invalid key event from region: modifiers must be boolean, got shift:${typeof shift} alt:${typeof alt} ctrl:${typeof ctrl}`);
-      return;
-    }
-    await observeInput(enqueueInput({ type: "key", key, text, shift, alt, ctrl }, cids));
+    for (const { reason } of inputErrors) reportInputError(reason);
   });
 
   onRegion("error", (event) => {
     const message = `native image: ${event.reason}`;
     setError("native image", message);
     reportSurfaceError(new Error(message));
-  });
-
-  onRegion("compose", async (event) => {
-    notifyInput({ kind: "native-compose", text: event.text });
-    traceNative("native-compose", event);
-    await observeInput(updateCompose(event));
-  });
-
-  onRegion("command", async (event) => {
-    if (typeof event.selector !== "string" || event.selector.length === 0) {
-      reportInputError("native command event requires selector");
-      return;
-    }
-    const cids = regionCids(event);
-    if (cids === null) return;
-    await observeInput(enqueueInput({ type: "command", selector: event.selector }, cids));
   });
 
   // Edit 메뉴 동작은 선언된 명령을 레지스트리로 실행한다(docs/spec/terminal-runtime.md).
@@ -932,7 +909,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     }
     nativeFocused = event.focused;
     notifyPointer({ kind: "pointer-focus", focused: nativeFocused });
-    await observeInput(enqueueInput({ type: "focus", focused: event.focused }));
+    await observeInput(enqueueInput({ type: "input", actions: [{ type: "focus", focused: event.focused }], preedit: compose }));
     if (event.focused) {
       for (const resolve of focusWaiters) resolve();
       focusWaiters.clear();
@@ -1751,7 +1728,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     expose.command("terminal.input", async ({ bytes }) => {
       if (typeof bytes !== "string") throw new Error("terminal.input requires bytes");
       try {
-        await enqueueInput({ type: "insert", text: bytes });
+        await enqueueInput({ type: "input", actions: [{ type: "insert", text: bytes, replacementRange: null, attributed: false }], preedit: compose });
       } catch (error) {
         reportInputError(error);
         throw error;

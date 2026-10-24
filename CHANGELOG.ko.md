@@ -4,6 +4,13 @@
 
 ## 미배포
 
+- P86: 보고할 native input scope를 검증된 순서형 transaction 하나로
+  소비한다. Terminal은 최종 preedit을 한 번 적용하고 VT input request 하나를
+  보낸 뒤 request가 실패해도 유효한 오류를 순서대로 보고한다. Red: 변경 전
+  consumer에는 transaction event listener가 없어 request를 보내지 않았고,
+  request 실패 시 callback error도 누락됐다. Green: terminal focused case
+  39개와 copied SDK, event, records 검사가 통과한다.
+
 - P85: VT `^0.0.16`을 요구하는 terminal 0.0.20 local diagnostic candidate를
   준비한다. Controlled installer registry에 VT 0.0.15와 0.0.16이 있으며,
   설치는 terminal 0.0.20, VT 0.0.16과 선언된 regular module

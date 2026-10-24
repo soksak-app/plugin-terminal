@@ -4,6 +4,13 @@
 
 ## Unreleased
 
+- P86: Consume each report-bearing native input scope as one validated ordered
+  transaction. The terminal applies its final preedit once, sends one VT input
+  request, then reports valid errors in order even when the request fails. Red:
+  the unchanged consumer had no listener for the transaction event and sent no
+  request; a failed request also dropped callback errors. Green: 39 focused
+  terminal cases pass; copied SDK, event and records checks pass.
+
 - P85: Prepare terminal 0.0.20 as a local diagnostic candidate requiring VT
   `^0.0.16`. The controlled installer registry contains VT 0.0.15 and 0.0.16;
   installation selects terminal 0.0.20, VT 0.0.16 and the declared regular
