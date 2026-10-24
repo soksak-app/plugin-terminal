@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- P78: 확정 native insert bytes를 같은 input-document update의 strict 결과 compose snapshot과 함께 보낸다. `terminal.compose`를 해당 snapshot으로 갱신한 뒤 결합된 VT request를 queue하고, snapshot이 없는 insert는 bytes 전송 전에 거부한다. Red: 변경 전 production에서 insert request에 결과 compose snapshot이 없어 owning test가 실패했다. Green: test UI build가 module 9개와 contract fake 2개를 생성하고 terminal 및 native-input focused test 10개가 통과했다(UTF-16 marked-range 하위 case 4개를 포함해 결과 14개). Package는 미출시 상태다.
+
 - P75-3: required-nullable render 의미를 status description에 두고 nested schema에서 지원하지 않는 `description` 항목을 제거한다. Red: 공식 diagnostics pack이 schema reader가 지원하지 않는 항목 때문에 manifest를 거부했다. Green: owning manifest test와 P77 `make check`가 통과하고 공식 diagnostics pack에 `diagnostics.json`과 필수 nullable cursor render schema가 포함된다.
 
 - P75-2: leading cell 기준의 raw fractional CTFont/CTLine glyph bounds를 음수 좌표 또는 cell 밖 overhang이 있어도 보존한다. Cursor rectangle은 frame 절대 좌표로 raster 안에 유지한다. Red: consumer가 raw 한글 overhang을 거부했고 signed glyph-rectangle parser는 음수 absolute cursor rectangle을 수락했다. Green: owning test가 finite overhang을 수락하고 zero-width/non-finite glyph bounds와 음수 cursor rectangle을 atomic하게 거부한다. Application은 실행하지 않았다.

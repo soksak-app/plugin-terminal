@@ -163,6 +163,10 @@ function createFakeView({ captureError = null, releaseError = null } = {}) {
 function createFakeAttachImage() {
   const attachCalls = [];
   let regionEventHandlers = {};
+  const emptyCompose = () => ({ text: "", markedRange: null, selectedRange: { location: 0, length: 0 }, replacementRange: null, attributed: false });
+  const withInsertSnapshot = (eventType, event) => eventType === "insert" && !Object.hasOwn(event, "preedit")
+    ? { ...event, preedit: emptyCompose() }
+    : event;
 
   return {
     function: function(view, name, sidecar) {
@@ -187,6 +191,7 @@ function createFakeAttachImage() {
           return Promise.resolve();
         },
         _trigger: function(eventType, event) {
+          event = withInsertSnapshot(eventType, event);
           if (regionEventHandlers[eventType]) {
             for (const handler of regionEventHandlers[eventType]) {
               handler(event);
@@ -200,7 +205,8 @@ function createFakeAttachImage() {
     },
     getCalls: () => attachCalls,
     // 네이티브 영역이 보고한 이벤트를 처리기에 전달하고 처리기의 결과를 모두 기다린다.
-    trigger: (eventType, event) => Promise.all((regionEventHandlers[eventType] ?? []).map((handler) => handler(event))),
+    trigger: (eventType, event) => Promise.all((regionEventHandlers[eventType] ?? []).map((handler) => handler(withInsertSnapshot(eventType, event)))),
+    triggerRaw: (eventType, event) => Promise.all((regionEventHandlers[eventType] ?? []).map((handler) => handler(event))),
     reset: () => {
       attachCalls.length = 0;
       regionEventHandlers = {};
@@ -2269,7 +2275,7 @@ test("an input method's edited syllables reach the PTY once and in order before 
   assert.equal(expose.getStatus("terminal.compose").readFn().text, "", "no preedit remains after the commit");
 });
 
-test("a partial native insert preserves the remaining input-method preedit", async () => {
+test("a partial native insert carries its remaining preedit snapshot", async () => {
   FakeResizeObserver.reset();
   const fakeAttachImage = createFakeAttachImage();
   const fakeSidecar = createFakeSidecar();
@@ -2290,21 +2296,87 @@ test("a partial native insert preserves the remaining input-method preedit", asy
   openSession(fakeSidecar);
 
   await fakeAttachImage.trigger("compose", { text: "ㅏㅏ", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 }, cids: ["ime.1"] });
-  await fakeAttachImage.trigger("insert", { text: "ㅏ", replacementRange: null, attributed: false, cids: ["ime.2"] });
+  const remaining = { text: "ㅏ", markedRange: { location: 0, length: 1 }, selectedRange: { location: 1, length: 0 }, replacementRange: null, attributed: false };
+  await fakeAttachImage.trigger("insert", { text: "ㅏ", preedit: remaining, replacementRange: null, attributed: false, cids: ["ime.2"] });
   await new Promise((resolve) => setImmediate(resolve));
 
-  assert.equal(expose.getStatus("terminal.compose").readFn().text, "ㅏㅏ",
-    "a committed prefix does not end the unchanged remaining preedit");
+  assert.equal(expose.getStatus("terminal.compose").readFn().text, "ㅏ",
+    "the resulting snapshot contains only the remaining preedit");
   const inputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input");
   assert.deepEqual(inputs.map(({ body }) => body.compose?.text ?? (body.bytes ? Buffer.from(body.bytes, "base64").toString("utf8") : null)),
-    ["ㅏㅏ", "ㅏ"], "a partial insert does not send an empty compose or duplicate the preedit");
+    ["ㅏㅏ", "ㅏ"], "the native insert carries its remaining preedit with committed bytes");
 
   await fakeAttachImage.trigger("compose", { text: "", markedRange: null, selectedRange: null, replacementRange: null, cids: ["ime.3"] });
   assert.equal(expose.getStatus("terminal.compose").readFn().text, "",
     "an empty compose clears the preedit after the committed prefix is sent");
   const afterCommit = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input");
   assert.deepEqual(afterCommit.map(({ body }) => body.compose?.text ?? (body.bytes ? Buffer.from(body.bytes, "base64").toString("utf8") : null)),
-    ["ㅏㅏ", "ㅏ", ""], "the native insert arrives before its changed empty preedit");
+    ["ㅏㅏ", "ㅏ", ""], "the next native compose clear remains a distinct valid update");
+});
+
+test("a native insert sends committed bytes with its resulting preedit in one sidecar request", async () => {
+  FakeResizeObserver.reset();
+  const fakeAttachImage = createFakeAttachImage();
+  const fakeSidecar = createFakeSidecar();
+  let regionReference;
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
+      regionReference = fakeAttachImage.function(view, name, sidecar);
+      return regionReference;
+    },
+    sidecar: fakeSidecar,
+    expose,
+    scale: 1,
+    window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  FakeResizeObserver.triggerAll();
+  openSession(fakeSidecar);
+
+  const preedit = {
+    text: "ㅏㅏ", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 },
+    replacementRange: null, attributed: false,
+  };
+  await fakeAttachImage.trigger("insert", { text: "ㅏㅏ", preedit, cids: ["ime.commit"] });
+
+  const inputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.bytes);
+  assert.equal(inputs.length, 1, "the native insert is one VT input operation");
+  assert.equal(Buffer.from(inputs[0].body.bytes, "base64").toString("utf8"), "ㅏㅏ");
+  assert.deepEqual(inputs[0].body.compose, preedit,
+    "the same request carries the resulting preedit before PTY echo can race its clear");
+  assert.deepEqual(expose.getStatus("terminal.compose").readFn(), preedit,
+    "the public compose status reflects the insert's resulting input-document snapshot");
+});
+
+test("a native insert without a resulting preedit snapshot is rejected before sending bytes", async () => {
+  FakeResizeObserver.reset();
+  const fakeAttachImage = createFakeAttachImage();
+  const fakeSidecar = createFakeSidecar();
+  let regionReference;
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
+      regionReference = fakeAttachImage.function(view, name, sidecar);
+      return regionReference;
+    },
+    sidecar: fakeSidecar,
+    expose,
+    scale: 1,
+    window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  FakeResizeObserver.triggerAll();
+  openSession(fakeSidecar);
+  const priorCompose = expose.getStatus("terminal.compose").readFn();
+
+  await fakeAttachImage.triggerRaw("insert", { text: "ㅏㅏ", cids: ["ime.missing-snapshot"] });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.bytes).length, 0,
+    "missing resulting state cannot be sent as a committed insert");
+  assert.deepEqual(expose.getStatus("terminal.compose").readFn(), priorCompose,
+    "invalid insert leaves the prior compose state unchanged");
 });
 
 test("native compose forwards the exact UTF-16 markedRange and explicit null", { timeout: 10000 }, async () => {
@@ -4052,7 +4124,8 @@ test("the trace records each native input callback of the input method with its 
     { kind: "native-key", key: "Char", text: "s", shift: false, alt: false, ctrl: false },
     { kind: "native-key", key: "Enter", text: "\r", shift: false, alt: false, ctrl: false },
     { kind: "native-compose", text: "비밀", markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 }, replacementRange: { location: 4, length: 1 } },
-    { kind: "native-insert", text: "secret", replacementRange: { location: 28, length: 1 } },
+    { kind: "native-insert", text: "secret", replacementRange: { location: 28, length: 1 },
+      preedit: { text: "", markedRange: null, selectedRange: { location: 0, length: 0 }, replacementRange: null, attributed: false } },
   ]);
 });
 

@@ -55,9 +55,12 @@ function keyToMessage(keyName, text = "", modifiers = {}) {
 /**
  * 텍스트 입력을 base64로 인코딩하여 사이드카로 전송한다.
  */
-function sendInput(text, terminal, id, encoder, cids) {
+function sendInput(text, terminal, id, encoder, cids, compose) {
   const base64 = encodeBytes(text, encoder);
-  return terminal.send(id, { operation: "input", bytes: base64 }, cids);
+  return terminal.send(id, {
+    operation: "input", bytes: base64,
+    ...(compose === undefined ? {} : { compose }),
+  }, cids);
 }
 
 /**
@@ -520,25 +523,37 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     return handler(event);
   });
 
-  const updateCompose = async (event) => {
-    const cids = cidsOf(event);
+  const normalizeCompose = (event, strict = false) => {
+    if (strict && (!event || typeof event !== "object" || Array.isArray(event))) {
+      throw new Error("native insert preedit must be an object");
+    }
     if (!event || typeof event !== "object" || Array.isArray(event) || typeof event.text !== "string") {
       throw new Error("terminal.compose.update requires a text string");
+    }
+    if (strict && ["text", "markedRange", "selectedRange", "replacementRange", "attributed"].some((key) => !Object.hasOwn(event, key))) {
+      throw new Error("native insert preedit requires text, markedRange, selectedRange, replacementRange and attributed");
     }
     if (event.attributed !== undefined && typeof event.attributed !== "boolean") {
       throw new Error("IME attributed must be a boolean");
     }
-    const nextCompose = {
+    return {
       text: event.text,
       markedRange: normalizeMarkedRange(event.markedRange, event.text),
       selectedRange: normalizeRange(event.selectedRange),
       replacementRange: normalizeRange(event.replacementRange),
       attributed: event.attributed === true,
     };
+  };
+  const applyCompose = (nextCompose) => {
     compose = nextCompose;
-    session = { ...session, compose };
+    session = { ...session, compose: nextCompose };
     changed("session");
     changed("compose");
+  };
+  const updateCompose = async (event) => {
+    const cids = cidsOf(event);
+    const nextCompose = normalizeCompose(event);
+    applyCompose(nextCompose);
     try {
       await enqueueInput({ type: "compose", ...compose }, cids);
     } catch (error) {
@@ -747,7 +762,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
 
   const sendEntry = async (entry, cids) => {
     if (entry.type === "insert") {
-      await sendInput(entry.text, terminal, id, encoder, cids);
+      await sendInput(entry.text, terminal, id, encoder, cids, entry.compose);
     } else if (entry.type === "key") {
       await terminal.send(id, keyToMessage(entry.key, entry.text, {
         shift: entry.shift, alt: entry.alt, ctrl: entry.ctrl,
@@ -829,8 +844,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     traceNative("native-insert", event);
     const cids = regionCids(event);
     if (cids === null) return;
-    // An insert can commit a prefix while the native region keeps the same preedit. Only a compose event changes that state.
-    const insertRequest = enqueueInput({ type: "insert", text }, cids);
+    const insertRequest = Promise.resolve().then(() => {
+      const nextCompose = normalizeCompose(event.preedit, true);
+      applyCompose(nextCompose);
+      return enqueueInput({ type: "insert", text, compose: nextCompose }, cids);
+    });
     await observeInput(insertRequest);
   });
 

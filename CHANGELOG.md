@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- P78: Send committed native insert bytes with the same input-document update's strict resulting compose snapshot. Apply that snapshot to `terminal.compose` before queueing the combined VT request, and reject an insert without the snapshot before sending bytes. Red: the owning test failed against unchanged production because the insert request omitted its resulting compose snapshot. Green: the test UI build resolves 9 modules and 2 contract fakes; 10 focused terminal and neighboring native-input cases pass (14 test results including four marked-range subcases). The package remains unreleased.
+
 - P75-3: Keep the render status's required-nullable meaning in the status description and remove an unsupported `description` member from its nested schema. Red: the official diagnostic pack refused the manifest because the schema reader does not accept that member. Green: the owning manifest case passes, P77 `make check` passes, and the official diagnostics pack contains both `diagnostics.json` and the required nullable cursor render schema.
 
 - P75-2: Preserve raw fractional CTFont/CTLine glyph bounds relative to the leading cell, including negative coordinates and overhang beyond a cell. Keep cursor rectangles frame-absolute and inside the raster. Red: the consumer rejected raw Hangul overhang; the signed glyph-rectangle parser accepted a negative absolute cursor rectangle. Green: the owning tests accept finite overhang and reject zero-width/non-finite glyph bounds and negative cursor rectangles atomically. No application was run.
