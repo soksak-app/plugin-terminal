@@ -44,6 +44,13 @@ test("compose and cursor preedit schemas use the supported range keywords", () =
   }
 });
 
+test("terminal.cursor declares its nullable screen frame", () => {
+  const cursor = manifest.exposes.status.find(({ name }) => name === "terminal.cursor").schema;
+  assert.deepEqual(cursor.properties.frame.type, ["object", "null"]);
+  assert.deepEqual(Object.keys(cursor.properties.frame.properties).sort(), ["generation", "raster", "sequence"]);
+  assert.ok(Object.values(cursor.properties.frame.properties).every(({ type }) => type === "integer"));
+});
+
 test("the view page delegates terminal startup", () => {
   const source = readFileSync(new URL(`../${manifest.surface.composition.page}`, import.meta.url).pathname.replace(/\.html$/, ".js"), "utf8");
   assert.match(source, /startTerminal/);

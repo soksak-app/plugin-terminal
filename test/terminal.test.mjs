@@ -7,6 +7,9 @@ import { screenMessage } from "./screen-message.mjs";
 const terminalManifest = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
 const SCREEN_MESSAGES = JSON.parse(readFileSync(new URL("./fixtures/screen-message.json", import.meta.url), "utf8"));
 const SCREEN_MESSAGE = SCREEN_MESSAGES.vectors[0];
+const SCREEN_FRAME_PREEDIT = JSON.parse(readFileSync(new URL("../scripts/test-sdk-cases.json", import.meta.url), "utf8"))
+  .modules.find(({ specifier }) => specifier === "@soksak/plugin-api/screen-hash")
+  .caseCopies.find(({ id }) => id === "screen.message.frame-preedit").steps[0].message.value;
 
 const { startTerminal: realStartTerminal } = await import("../build/test/ui/terminal.js?terminal-test");
 
@@ -2622,7 +2625,7 @@ test("cursor state exposes typed shape and blink policy while routing the caret"
   assert.deepEqual(fakeExpose.getStatus("terminal.cursor").readFn(), {
     row: 1, col: 2, shape: "beam", visible: true, blinking: true, focused: true,
     blink: "Always", interval: 700, idleTimeout: 1200, unfocused: "hollow", hollow: true,
-    blinkVisible: true, drawn: { shape: "block", blinking: false }, preedit: null,
+    blinkVisible: true, drawn: { shape: "block", blinking: false }, frame: null, preedit: null,
   });
   assert.deepEqual(regionReference._caret, { x: 18, y: 18, width: 9, height: 18 });
 });
@@ -2650,6 +2653,119 @@ test("the drawn cursor follows the screen event while the policy shape stays", a
     cursor: { col: 1, row: 0, visible: true, focused: false, shape: "HollowBlock", blinking: false },
   });
   assert.deepEqual(fakeExpose.getStatus("terminal.cursor").readFn().drawn, { shape: "hollowBlock", blinking: false });
+});
+
+test("terminal.cursor publishes the screen frame with its cursor and preserves status on an invalid frame", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose,
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(fakeSidecar);
+
+  const status = fakeExpose.getStatus("terminal.cursor");
+  const publications = [];
+  const stop = status.watchFn((value) => publications.push(value));
+  const screenMessage = { ...SCREEN_MESSAGE.message, frame: null };
+  fakeSidecar.triggerEvent("test-session", screenMessage);
+  const previous = status.readFn();
+  assert.equal(previous.frame, null, "terminal.cursor omitted the nullable screen frame");
+  assert.equal(previous.preedit, null, "a screen without preedit did not publish its null preedit");
+  assert.equal(publications.length, 1, "the screen cursor and frame were not published atomically");
+  assert.deepEqual(publications[0], previous);
+
+  fakeSidecar.triggerEvent("test-session", {
+    ...screenMessage,
+    frame: { generation: 4, raster: 2, sequence: -1 },
+    cursor: { ...screenMessage.cursor, col: 8 },
+  });
+  assert.deepEqual(status.readFn(), previous, "an invalid frame changed terminal.cursor");
+  assert.match(fakeExpose.getStatus("terminal.session").readFn().error, /invalid screen frame from sidecar/);
+  stop();
+});
+
+test("terminal.cursor publishes the public screen frame with its preedit atomically", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose,
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(fakeSidecar);
+
+  const status = fakeExpose.getStatus("terminal.cursor");
+  const publications = [];
+  const stop = status.watchFn((value) => publications.push(value));
+  fakeSidecar.triggerEvent("test-session", SCREEN_FRAME_PREEDIT);
+
+  const current = status.readFn();
+  assert.deepEqual(current.frame, SCREEN_FRAME_PREEDIT.frame);
+  assert.deepEqual(current.preedit, {
+    text: "한",
+    selectedRange: { location: 1, length: 0 },
+    replacementRange: null,
+    markedRange: { location: 0, length: 1 },
+    attributed: false,
+  });
+  assert.equal(publications.length, 1, "the screen frame, cursor, and preedit were not published atomically");
+  assert.deepEqual(publications[0], current);
+  stop();
+});
+
+test("terminal.cursor clears the frame when a state event updates its cursor", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose,
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(fakeSidecar);
+
+  const status = fakeExpose.getStatus("terminal.cursor");
+  fakeSidecar.triggerEvent("test-session", SCREEN_FRAME_PREEDIT);
+  assert.deepEqual(status.readFn().frame, SCREEN_FRAME_PREEDIT.frame);
+
+  fakeSidecar.triggerEvent("test-session", {
+    event: "state", sessionId: "s1", cols: 10, rows: 4, cellWidth: 9, cellHeight: 18,
+    cursor: { row: 0, col: 0 },
+  });
+
+  assert.equal(status.readFn().frame, null, "a state cursor was paired with the prior screen frame");
+  assert.equal(status.readFn().preedit, null, "the state cursor preedit was not cleared");
+});
+
+test("terminal.cursor rejects a screen frame on a state event without mutating status", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose,
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(fakeSidecar);
+
+  const status = fakeExpose.getStatus("terminal.cursor");
+  fakeSidecar.triggerEvent("test-session", SCREEN_FRAME_PREEDIT);
+  const previous = status.readFn();
+  fakeSidecar.triggerEvent("test-session", {
+    event: "state", sessionId: "s1", cols: 10, rows: 4, cellWidth: 9, cellHeight: 18,
+    cursor: { row: 0, col: 0, frame: { generation: 4, raster: 2, sequence: 13 } },
+  });
+
+  assert.deepEqual(status.readFn(), previous, "a state event replaced the screen cursor tuple");
+  assert.match(fakeExpose.getStatus("terminal.session").readFn().error, /cursor\.frame/);
 });
 
 test("an OSC 22 pointer event sets the view cursor and the session pointer", async () => {

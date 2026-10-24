@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- P74: 검증된 각 screen event의 frame을 그 event의 cursor, preedit과 함께 `terminal.cursor`에 한 번의 status update로 발행한다. Frame은 필수 nullable이며 frame 없는 state event가 cursor를 갱신하면 `null`로 지운다. State event는 non-null frame을 지정할 수 없다. Invalid screen frame은 이전 status를 보존하고 기존 screen 오류 경로를 따른다. Red: public frame/preedit screen case의 frame이 `undefined`였고, 후속 state cursor가 이전 frame을 보존하거나 frame을 포함한 state cursor가 이전 screen tuple을 바꿨다. Green: frame/state focused test 5개와 invalid-input status 보존, terminal/manifest test 168개가 통과한다. Current core source 기준 copied contract case 43개도 통과한다. 그 외 기존 screen test가 유한한 test fake에서 unlisted hash input을 기록하며 P74-1이 누락된 public hash case를 추적한다. Pinned `make check`는 별도 P69 SDK version gate에서 멈춘다. 변경은 미출시 상태다.
+
 - P73: terminal exposure schema에서 지원하지 않는 `required`를 제거한다. 변경 전 manifest를 공식 CLI로 검사한 Red는 `terminal exposes terminal.cursor schema.preedit: unknown field required`였고, writer는 `type`, `properties`, `items`, `enum`만 허용한다. Green: 일반 및 diagnostics CLI 379 pack, manifest test 9/9, focused marked-range runtime test 7/7, candidate exposure·engines·events·records와 복사 계약 case 41개가 통과한다. pinned `make check`는 설치된 SDK 0.0.20이 `^0.0.21`을 거부하는 별도 P69 gate에서 계속 실패한다. Runtime 검증은 바뀌지 않았고 package는 release되지 않았다. CLI 빌드 로그는 보존되지 않았다.
 
 - P72-1: IME trace test는 보내는 입력 작업 네 개마다 `terminal-input` record 하나를 기대한다. 이전 예상은 일치하는 작업이 없는 다섯 번째 record를 포함했다. Red: 원래 terminal 구현은 네 건을 기록했지만 test는 다섯 건을 기대했다. Green: focused trace test 1/1과 terminal/manifest 파일 163/163 통과. Runtime 동작은 바꾸지 않았다.

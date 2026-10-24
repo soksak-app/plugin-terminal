@@ -80,7 +80,7 @@ const NOTIFICATION_POLICIES = new Set(["tab", "system"]);
 const DEFAULT_CURSOR = Object.freeze({
   row: 0, col: 0, shape: "block", visible: true, blinking: false, focused: false,
   blink: "Off", interval: 750, idleTimeout: 5000, unfocused: "hollow", hollow: false,
-  blinkVisible: true, drawn: Object.freeze({ shape: "block", blinking: false }), preedit: null,
+  blinkVisible: true, drawn: Object.freeze({ shape: "block", blinking: false }), frame: null, preedit: null,
 });
 
 // terminal.session.rejected 에 남기는 거부한 시퀀스의 수.
@@ -195,6 +195,7 @@ function normalizeCursor(value) {
   };
   if (!CURSOR_UNFOCUSED.has(cursor.unfocused)) throw new Error(`cursor.unfocused is invalid: ${String(cursor.unfocused)}`);
   if (!cursor.drawn || typeof cursor.drawn !== "object") throw new Error("cursor.drawn is invalid");
+  if (!isScreenFrame(cursor.frame)) throw new Error(`cursor.frame is invalid: ${JSON.stringify(cursor.frame)}`);
   return {
     row: integer("row"),
     col: integer("col"),
@@ -209,6 +210,7 @@ function normalizeCursor(value) {
     hollow: boolean("hollow"),
     blinkVisible: boolean("blinkVisible"),
     drawn: cursor.drawn,
+    frame: cursor.frame,
     preedit: normalizePreedit(cursor.preedit),
   };
 }
@@ -1190,8 +1192,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         errorDetails.push(`cellHeight: ${typeof body.cellHeight === "number" ? `invalid value ${body.cellHeight}` : `missing or wrong type`}`);
       }
       if (body.cursor && typeof body.cursor === "object" && !Array.isArray(body.cursor)) {
+        if (Object.hasOwn(body.cursor, "frame") && body.cursor.frame !== null) {
+          errorDetails.push("cursor.frame: a state event cannot identify a screen frame");
+        }
         try {
-          normalizeCursor({ ...cursor, ...body.cursor, preedit: body.cursor.preedit ?? null });
+          normalizeCursor({ ...cursor, ...body.cursor, frame: null, preedit: body.cursor.preedit ?? null });
         } catch (error) {
           errorDetails.push(`invalid cursor: ${error.message}`);
         }
@@ -1212,7 +1217,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         unsupported: session.unsupported,
       };
       resolveError("state");
-      if (body.cursor !== undefined) applyCursor(body.cursor, { ...body.cursor, preedit: body.cursor.preedit ?? null });
+      if (body.cursor !== undefined) applyCursor(body.cursor, { ...body.cursor, frame: null, preedit: body.cursor.preedit ?? null });
       sessionOpen = true;
       runtime.log.info("session.gate", { open: true, event: "state" });
       changed("session");
@@ -1320,7 +1325,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         if (shape !== undefined) drawn.shape = DRAWN_SHAPES[shape] ?? shape;
         if (blinking !== undefined) drawn.blinking = blinking;
         applyCursor(body.cursor, {
-          col, row, visible, ...(focused === undefined ? {} : { focused }), drawn, preedit: body.cursor.preedit ?? null,
+          col, row, visible, ...(focused === undefined ? {} : { focused }), drawn, frame: body.frame,
+          preedit: body.cursor.preedit ?? null,
         });
         if (resolveError("screen")) changed("session");
       }
