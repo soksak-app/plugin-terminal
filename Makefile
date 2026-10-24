@@ -15,11 +15,13 @@ node_modules: package.json
 test: node_modules
 	pnpm test
 
-# check compares copied contract cases with the API source and runs available SDK validators.
-# Until an allowed API release publishes contract/clipboard.json, set CORE_PLUGIN_API_DIR to the core package source.
-# The pinned release still lacks soksak-view-check; the view-literal check remains explicitly open.
+# check compares copied contract cases and the view literal with the API source, then runs SDK validators.
+# Set CORE_PLUGIN_API_DIR to a local core package source when the pinned release lacks a checker.
+VIEW_CHECK = $(if $(filter environment command line,$(origin CORE_PLUGIN_API_DIR)),node "$(CORE_PLUGIN_API_DIR)/view-check.js",pnpm exec soksak-view-check)
+
 check: node_modules
 	CORE_PLUGIN_API_DIR="$(CORE_PLUGIN_API_DIR)" node scripts/check-test-cases.mjs
+	$(VIEW_CHECK) view-check.json test/fixtures/screen-message.json
 	pnpm exec soksak-exposure
 	pnpm exec soksak-engines
 	pnpm exec soksak-events --census census.json --catalog events.json

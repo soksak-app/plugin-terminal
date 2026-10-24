@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- P76: `make check`에서 SDK view literal checker를 실행한다. Target은 설치된 `soksak-view-check` 또는 local `CORE_PLUGIN_API_DIR` override의 `view-check.js`에 `view-check.json`과 복사한 screen-message vector를 전달한다. Red: 변경 전 Makefile의 dry-run에서 command와 두 파일이 없어 owning check-target test가 실패했다. Green: `test/check-target.test.mjs` 5/5 통과. Current core source로 `make check`는 복사 계약 52개, view literal, exposure를 통과한 뒤 기존 P69 `soksak-engines` version gate에서 실패한다. SDK pin과 release metadata는 바꾸지 않는다.
+
 - P74-1: 유효한 screen message projection 15개에서 사용하는 core 발행 screen hash case 9개를 terminal test fake에 추가한다. 동일 projection은 하나의 case를 재사용한다. Red: owning consumer test가 미등록 `screenHash` 입력 오류 15개를 보고하고 `terminal.session.error`를 설정했다. Green: 같은 test가 screen/session 오류 없이 1/1 통과하며, copied-case checker가 current core API source 기준 case 52개를 검증하고 exposure, event catalog, record 검사도 통과한다. Test UI build는 module 9개와 contract fake 2개를 해석한다. Production code, SDK pin, release는 변경하지 않았다.
 
 - P74: 검증된 각 screen event의 frame을 그 event의 cursor, preedit과 함께 `terminal.cursor`에 한 번의 status update로 발행한다. Frame은 필수 nullable이며 frame 없는 state event가 cursor를 갱신하면 `null`로 지운다. State event는 non-null frame을 지정할 수 없다. Invalid screen frame은 이전 status를 보존하고 기존 screen 오류 경로를 따른다. Red: public frame/preedit screen case의 frame이 `undefined`였고, 후속 state cursor가 이전 frame을 보존하거나 frame을 포함한 state cursor가 이전 screen tuple을 바꿨다. Green: frame/state focused test 5개와 invalid-input status 보존, terminal/manifest test 168개가 통과한다. Current core source 기준 copied contract case 43개도 통과한다. 유효한 screen projection 15개에는 finite test fake에 hash input이 없었으며 P74-1이 이에 대응하는 core 발행 hash case 9개를 추가한다. Pinned `make check`는 별도 P69 SDK version gate에서 멈춘다. 변경은 미출시 상태다.

@@ -24,6 +24,16 @@ test("check runs the SDK validation subset without running plugin tests", () => 
   assert.equal(output.includes("pnpm test"), false);
 });
 
+test("check validates the view literal against its copied screen vector", () => {
+  const output = make("-n", "check");
+  assert.match(output, /(?:soksak-view-check|view-check\.js).*view-check\.json.*test\/fixtures\/screen-message\.json/);
+});
+
+test("check uses the declared local SDK source override for the view checker", () => {
+  const output = make("-n", "check", "CORE_PLUGIN_API_DIR=/tmp/core-plugin-api");
+  assert.match(output, /node "\/tmp\/core-plugin-api\/view-check\.js" view-check\.json test\/fixtures\/screen-message\.json/);
+});
+
 test("pack runs check before the plugin pack command", () => {
   const output = make("-n", "pack", "OUT=/tmp/terminal-check-package");
   const check = output.indexOf("soksak-exposure");
