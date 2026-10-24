@@ -236,10 +236,14 @@ function normalizeScreenRender(value, frame) {
   }
   finite(cursor.border, "cursor.border");
   if (cursor.color !== null) color(cursor.color, "cursor.color");
-  if ((cursor.blend === "difference" || !cursor.visible || cursor.shape === "hidden") && cursor.color !== null) {
+  const cursorDrawn = cursor.visible && cursor.blinkVisible && cursor.shape !== "hidden";
+  if (cursorDrawn !== (cursor.rect !== null)) {
+    throw new Error("render.cursor.rect must match whether the cursor is drawn");
+  }
+  if ((!cursorDrawn || cursor.blend === "difference") && cursor.color !== null) {
     throw new Error("render.cursor.color must be null for a non-color cursor");
   }
-  if (cursor.blend === "normal" && cursor.visible && cursor.shape !== "hidden" && cursor.color === null) {
+  if (cursorDrawn && cursor.blend === "normal" && cursor.color === null) {
     throw new Error("render.cursor.color is required for a visible normal cursor");
   }
   if (!Array.isArray(result.glyphs)) throw new Error("render.glyphs must be an array");
@@ -252,12 +256,13 @@ function normalizeScreenRender(value, frame) {
     color(glyph.foreground, `glyphs[${index}].foreground`);
     color(glyph.background, `glyphs[${index}].background`);
     rect(glyph.bounds, `glyphs[${index}].bounds`);
-    if (glyph.bounds && (glyph.bounds.x + glyph.bounds.width > grid.cellWidth || glyph.bounds.y + glyph.bounds.height > grid.cellHeight)) {
-      throw new Error(`render.glyphs[${index}].bounds exceeds its cell`);
+    const glyphSpanWidth = grid.cellWidth * glyph.width;
+    if (glyph.bounds && (glyph.bounds.x + glyph.bounds.width > glyphSpanWidth || glyph.bounds.y + glyph.bounds.height > grid.cellHeight)) {
+      throw new Error(`render.glyphs[${index}].bounds exceeds its cell span`);
     }
     const underlineRect = rect(object(glyph.underline, `glyphs[${index}].underline`).rect, `glyphs[${index}].underline.rect`);
-    if (underlineRect && (underlineRect.x + underlineRect.width > grid.cellWidth || underlineRect.y + underlineRect.height > grid.cellHeight)) {
-      throw new Error(`render.glyphs[${index}].underline.rect exceeds its cell`);
+    if (underlineRect && (underlineRect.x + underlineRect.width > glyphSpanWidth || underlineRect.y + underlineRect.height > grid.cellHeight)) {
+      throw new Error(`render.glyphs[${index}].underline.rect exceeds its cell span`);
     }
   });
   return result;

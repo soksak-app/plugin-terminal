@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- P75-1: Sidecar의 cursor draw 상태와 leading-cell-local glyph span을 맞춘다. Visible이지만 blink가 꺼진 cursor는 rectangle/color가 없고, 실제 그려지는 normal cursor는 rectangle과 effective color가 필요하다. Width-2 glyph ink/underline bounds는 두 cell까지 span할 수 있다. Red: owning consumer test가 유효한 blink-off frame과 width-2 한글 glyph를 거부했다. Green: focused render metadata test가 통과하며 범위 밖 rectangle 거부와 malformed drawn-cursor의 status 원자 보존도 확인한다. Application은 실행하지 않았다.
+
 - P77: 복사 case, view, exposure, engines, events, records 검사를 같은 `CORE_PLUGIN_API_DIR`에서 실행하며 기본값은 설치된 plugin API 경로다. Red: fixture SDK에서 view checker만 선택되고 나머지 네 도구는 pinned `pnpm`을 통해 실행됐다. Preflight가 없으면 checker 누락이 구체적인 경로 없이 Node module 오류로 드러났다. Green: owning check-target test 6/6이 다섯 local entry point와 경로가 명시된 누락 오류를 검증한다. Current core source로 전체 `make check`가 복사 case 52개, view literal, exposure, engines, census, event catalog, records를 통과한다. Pin과 release metadata는 바꾸지 않았다.
 
 - P75: Sidecar의 필수 nullable screen render metadata를 screen frame, cursor, preedit과 같은 status update의 `terminal.cursor.render`로 발행한다. 화면 상태를 바꾸기 전에 render object 전체와 정확한 frame 연결을 검증하고, SDK screen hash를 호출하기 전에 terminal 전용 field를 projection에서 제거한다. State cursor 갱신은 frame과 render를 모두 지운다. Red: 변경 전 production에는 render status와 필수 field 검사가 없었고 frame에 연결된 metadata를 검증하지 않았다. Green: focused renderer/cursor-state case가 통과하고 terminal 및 manifest test가 171/171 통과한다. Plugin은 미출시 상태다.

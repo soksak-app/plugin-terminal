@@ -2785,6 +2785,24 @@ test("screen renderer metadata is required, nullable, frame-bound, and validated
   assert.deepEqual(cursorStatus.readFn().frame, unavailable.frame);
   assert.equal(cursorStatus.readFn().render, null);
 
+  const blinkOffRender = SCREEN_RENDER();
+  blinkOffRender.cursor = { rect: null, shape: "block", visible: true, blinkVisible: false, focused: true,
+    blend: "normal", color: null, border: 0 };
+  const blinkOff = { ...SCREEN_FRAME_PREEDIT, render: blinkOffRender };
+  fakeSidecar.triggerEvent("test-session", blinkOff);
+  assert.deepEqual(cursorStatus.readFn().frame, blinkOff.frame);
+  assert.deepEqual(cursorStatus.readFn().render, blinkOffRender,
+    "a normal cursor that blink suppresses was not accepted as a no-draw frame");
+
+  const wideRender = SCREEN_RENDER();
+  wideRender.glyphs = [{ row: 0, col: 0, width: 2, fontRuns: 1, grapheme: "한", foreground: "#000000",
+    background: "#ffffff", bounds: { x: 0, y: 1, width: 14, height: 8 },
+    underline: { rect: { x: 0, y: 14, width: 16, height: 1 } } }];
+  const wideFrame = { ...SCREEN_FRAME_PREEDIT, render: wideRender };
+  fakeSidecar.triggerEvent("test-session", wideFrame);
+  assert.deepEqual(cursorStatus.readFn().render, wideRender,
+    "leading-cell-local bounds for a width-2 glyph were not accepted across its full span");
+
   const malformed = { ...SCREEN_FRAME_PREEDIT, render: { ...SCREEN_RENDER(), frame: {
     ...SCREEN_FRAME_PREEDIT.frame, sequence: SCREEN_FRAME_PREEDIT.frame.sequence + 1,
   } } };
@@ -2806,6 +2824,31 @@ test("screen renderer metadata is required, nullable, frame-bound, and validated
   assert.deepEqual(cursorStatus.readFn(), beforeMalformedCursor, "malformed font runs changed cursor state");
   assert.deepEqual(screenStatus.readFn(), beforeMalformedScreen, "malformed font runs changed screen state");
   assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "", /glyphs\[0\]\.fontRuns/);
+
+  const outsideSpan = { ...SCREEN_FRAME_PREEDIT, render: {
+    ...wideRender,
+    glyphs: [{ ...wideRender.glyphs[0], bounds: { ...wideRender.glyphs[0].bounds, width: 17 } }],
+  } };
+  const beforeOutsideSpanCursor = cursorStatus.readFn();
+  const beforeOutsideSpanScreen = screenStatus.readFn();
+  fakeSidecar.triggerEvent("test-session", outsideSpan);
+  assert.deepEqual(cursorStatus.readFn(), beforeOutsideSpanCursor,
+    "a glyph rectangle outside its width-2 span changed cursor state");
+  assert.deepEqual(screenStatus.readFn(), beforeOutsideSpanScreen,
+    "a glyph rectangle outside its width-2 span changed screen state");
+  assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "", /glyphs\[0\]\.bounds exceeds its cell span/);
+
+  const drawnCursorMalformed = { ...SCREEN_FRAME_PREEDIT, render: SCREEN_RENDER() };
+  drawnCursorMalformed.render.cursor = { rect: { x: 0, y: 0, width: 8, height: 16 }, shape: "block",
+    visible: true, blinkVisible: true, focused: true, blend: "normal", color: null, border: 0 };
+  const beforeMalformedDrawnCursor = cursorStatus.readFn();
+  const beforeMalformedDrawnScreen = screenStatus.readFn();
+  fakeSidecar.triggerEvent("test-session", drawnCursorMalformed);
+  assert.deepEqual(cursorStatus.readFn(), beforeMalformedDrawnCursor,
+    "a drawn cursor without its effective color changed cursor state");
+  assert.deepEqual(screenStatus.readFn(), beforeMalformedDrawnScreen,
+    "a drawn cursor without its effective color changed screen state");
+  assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "", /cursor\.color is required/);
 });
 
 test("terminal.cursor clears the frame when a state event updates its cursor", async () => {
