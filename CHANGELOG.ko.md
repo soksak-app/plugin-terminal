@@ -4,6 +4,16 @@
 
 ## 미배포
 
+- P83: raw cursor 좌표를 screen hash와 public cursor field에 보존하면서 VT의
+  frame-effective screen caret을 사용한다. 필수 nullable `cursor.caret`은
+  상태 변경 전에 검증하고 `terminal.cursor.caret`으로 발행하며 non-null일 때만
+  native input-method 배치에 사용한다. State update는 값을 null로 지우고 raw
+  좌표에서 대체값을 추론하지 않는다. Red: 변경 전 코드는 raw 좌표를 사용하고
+  public caret을 생략했으며 누락/격자 밖 값을 수락했다. Green: hash projection
+  검사를 포함한 terminal/manifest 선택 test 14개가 통과한다. Manifest는 VT
+  `^0.0.15`를 요구하며 terminal 0.0.19 candidate packaging은 P84에서 추적한다.
+  Application/package build는 실행하지 않았다.
+
 - P82: Diagnostic candidate pack은 `diagnostics.json`과 선언된 module을 항상
   포함한다. Red: 공식 installer가 terminal 0.0.17과 VT 0.0.14를 설치한 뒤
   installed-package 검사에서 declaration이 없어 실패했다. Green: 같은

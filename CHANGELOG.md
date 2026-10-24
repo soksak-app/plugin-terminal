@@ -4,6 +4,17 @@
 
 ## Unreleased
 
+- P83: Use VT's frame-effective screen caret while preserving raw cursor
+  coordinates for the screen hash and public cursor fields. The required
+  nullable `cursor.caret` is validated before state changes, published as
+  `terminal.cursor.caret`, and used for native input-method placement only when
+  non-null. State updates clear it and never infer a replacement from raw
+  coordinates. Red: unchanged code used raw coordinates, omitted the public
+  caret, and accepted missing/out-of-grid values. Green: 14 selected terminal
+  and manifest tests pass, including hash-projection coverage. The manifest
+  requires VT `^0.0.15`; terminal 0.0.19 candidate packaging is tracked by
+  P84. No application or package build was run.
+
 - P82: Diagnostic candidate packing now always includes `diagnostics.json`
   and its declared module. Red: the official installer installed terminal
   0.0.17 with VT 0.0.14, then the installed-package check failed because the

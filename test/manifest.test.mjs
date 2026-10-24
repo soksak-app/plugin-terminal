@@ -25,8 +25,8 @@ test("the package publishes the manifest and the view page", () => {
   assert.equal(manifest.surface.module, undefined, "a view surface has no module");
 });
 
-test("the plugin requires the VT sidecar process identity release", () => {
-  assert.equal(manifest.dependencies["@soksak/sidecar-vt-alacritty"], "^0.0.14");
+test("the plugin requires the VT replay-safe caret contract", () => {
+  assert.equal(manifest.dependencies["@soksak/sidecar-vt-alacritty"], "^0.0.15");
   assert.equal(pkg.version, "0.0.18");
 });
 
@@ -49,6 +49,15 @@ test("terminal.cursor declares its nullable screen frame", () => {
   assert.deepEqual(cursor.properties.frame.type, ["object", "null"]);
   assert.deepEqual(Object.keys(cursor.properties.frame.properties).sort(), ["generation", "raster", "sequence"]);
   assert.ok(Object.values(cursor.properties.frame.properties).every(({ type }) => type === "integer"));
+});
+
+test("terminal.cursor declares its required nullable frame-effective caret", () => {
+  const cursor = manifest.exposes.status.find(({ name }) => name === "terminal.cursor").schema;
+  assert.deepEqual(cursor.properties.caret.type, ["object", "null"]);
+  assert.deepEqual(Object.keys(cursor.properties.caret.properties).sort(), ["col", "row"]);
+  assert.ok(Object.values(cursor.properties.caret.properties).every(({ type }) => type === "integer"));
+  assert.match(manifest.exposes.status.find(({ name }) => name === "terminal.cursor").description,
+    /frame-effective nullable caret/);
 });
 
 test("terminal.cursor declares its required nullable screen render metadata", () => {

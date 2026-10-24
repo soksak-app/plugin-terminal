@@ -162,7 +162,7 @@
     }
   },
   "dependencies": {
-    "@soksak/sidecar-vt-alacritty": "^0.0.14"
+    "@soksak/sidecar-vt-alacritty": "^0.0.15"
   },
   "background": {
     "sidecar": "@soksak/sidecar-vt-alacritty",
@@ -278,7 +278,7 @@
       },
       {
         "name": "terminal.cursor",
-        "description": "The terminal cursor position and the rendering policy, shape, blink request and preedit drawn by the sidecar, together with the frame and required nullable render metadata from the same screen event; null means no matching draw is available.",
+        "description": "The terminal cursor position and the rendering policy, shape, blink request and preedit drawn by the sidecar, together with the frame-effective nullable caret and required nullable render metadata from the same screen event.",
         "schema": {
           "type": "object",
           "properties": {
@@ -299,6 +299,13 @@
               "properties": {
                 "shape": { "type": "string", "enum": ["block", "underline", "beam", "hollowBlock", "hidden"] },
                 "blinking": { "type": "boolean" }
+              }
+            },
+            "caret": {
+              "type": ["object", "null"],
+              "properties": {
+                "row": { "type": "integer" },
+                "col": { "type": "integer" }
               }
             },
             "frame": {

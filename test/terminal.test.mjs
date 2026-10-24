@@ -10,6 +10,8 @@ const SCREEN_MESSAGE = SCREEN_MESSAGES.vectors[0];
 const SCREEN_FRAME_PREEDIT = JSON.parse(readFileSync(new URL("../scripts/test-sdk-cases.json", import.meta.url), "utf8"))
   .modules.find(({ specifier }) => specifier === "@soksak/plugin-api/screen-hash")
   .caseCopies.find(({ id }) => id === "screen.message.frame-preedit").steps[0].message.value;
+SCREEN_FRAME_PREEDIT.cursor = { ...SCREEN_FRAME_PREEDIT.cursor,
+  caret: { row: SCREEN_FRAME_PREEDIT.cursor.row, col: SCREEN_FRAME_PREEDIT.cursor.col } };
 const SCREEN_RENDER = (frame = SCREEN_FRAME_PREEDIT.frame) => ({
   frame,
   pixel: { width: 32, height: 16, bytesPerRow: 128, format: "bgra8", alpha: "premultiplied",
@@ -25,6 +27,7 @@ const SCREEN_RENDER = (frame = SCREEN_FRAME_PREEDIT.frame) => ({
 });
 const SCREEN_HASH_CASES = JSON.parse(readFileSync(new URL("../scripts/test-sdk-cases.json", import.meta.url), "utf8"))
   .modules.find(({ specifier }) => specifier === "@soksak/plugin-api/screen-hash").caseCopies;
+const SCREEN_CARET_MESSAGE = SCREEN_HASH_CASES.find(({ id }) => id === "screen.message.frame-preedit").steps[0].message.value;
 const P74_SCREEN_MESSAGE_IDS = [
   "screen.message.letter-x-cursor-hidden",
   "screen.message.scrollback-offset-3",
@@ -2191,7 +2194,7 @@ test("clearing a native preedit cancels it without writing the uncommitted text 
   assert.deepEqual(byteInputs, [], "a cleared marked string is not committed input");
 });
 
-test("screen events update terminal.cursor and move the input-method caret", async () => {
+test("screen events publish the raw cursor and move the input-method caret to its frame position", async () => {
   FakeResizeObserver.reset();
   const fakeAttachImage = createFakeAttachImage();
   const fakeSidecar = createFakeSidecar();
@@ -2211,27 +2214,95 @@ test("screen events update terminal.cursor and move the input-method caret", asy
   FakeResizeObserver.triggerAll();
   openSession(fakeSidecar);
 
-  fakeSidecar.triggerEvent("test-session", {
-    event: "screen",
-    cols: 8,
-    rows: 4,
-    cursor: { col: 7, row: 3, shape: "Block", visible: true, blinking: false, blink_visible: true, focused: true, preedit: null },
-    lines: [],
+  fakeSidecar.triggerRaw("test-session", {
+    ...SCREEN_CARET_MESSAGE,
+    cursor: { ...SCREEN_CARET_MESSAGE.cursor, caret: { row: 0, col: 2 } },
+    render: null,
   });
   await new Promise((resolve) => setImmediate(resolve));
 
   const status = expose.getStatus("terminal.cursor").readFn();
-  assert.deepEqual({ col: status.col, row: status.row, visible: status.visible, focused: status.focused },
-    { col: 7, row: 3, visible: true, focused: true }, "terminal.cursor reports the cursor of the latest screen");
-  assert.deepEqual(regionReference._caret, { x: 56, y: 48, width: 8, height: 16 },
-    "the input-method caret follows the latest cursor cell");
+  assert.deepEqual({ col: status.col, row: status.row, visible: status.visible, focused: status.focused, caret: status.caret },
+    { col: 0, row: 0, visible: false, focused: false, caret: { row: 0, col: 2 } },
+    "terminal.cursor preserves raw coordinates and publishes the frame-effective caret");
+  assert.deepEqual(regionReference._caret, { x: 16, y: 0, width: 8, height: 16 },
+    "the input-method caret follows the frame-effective screen cell");
 
   fakeSidecar.triggerEvent("test-session", { event: "screen", cols: 100, rows: 50, cursor: { col: 1, row: 1 }, lines: [] });
   await new Promise((resolve) => setImmediate(resolve));
   const after = expose.getStatus("terminal.cursor").readFn();
-  assert.deepEqual({ col: after.col, row: after.row }, { col: 7, row: 3 }, "an incomplete cursor does not replace the status");
+  assert.deepEqual({ col: after.col, row: after.row }, { col: 0, row: 0 }, "an incomplete cursor does not replace the status");
   assert.match(expose.getStatus("terminal.session").readFn().error ?? "", /invalid screen cursor/,
     "an incomplete cursor is reported as an error");
+});
+
+test("screen rejects a missing caret before changing screen and cursor status", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose, window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(fakeSidecar);
+
+  const initialCursor = fakeExpose.getStatus("terminal.cursor").readFn();
+  const initialScreen = fakeExpose.getStatus("terminal.screen").readFn();
+  const missingCaret = { ...SCREEN_CARET_MESSAGE, render: null, cursor: { ...SCREEN_CARET_MESSAGE.cursor } };
+  delete missingCaret.cursor.caret;
+  fakeSidecar.triggerRaw("test-session", missingCaret);
+  assert.deepEqual(fakeExpose.getStatus("terminal.cursor").readFn(), initialCursor,
+    "a screen without caret changed cursor status");
+  assert.deepEqual(fakeExpose.getStatus("terminal.screen").readFn(), initialScreen,
+    "a screen without caret changed screen status");
+  assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "", /invalid screen cursor.*caret/);
+
+});
+
+test("screen rejects an out-of-grid caret before changing screen and cursor status", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose, window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(fakeSidecar);
+
+  const initialCursor = fakeExpose.getStatus("terminal.cursor").readFn();
+  const initialScreen = fakeExpose.getStatus("terminal.screen").readFn();
+  const outsideGrid = { ...SCREEN_CARET_MESSAGE, render: null,
+    cursor: { ...SCREEN_CARET_MESSAGE.cursor, caret: { row: 1, col: 0 } } };
+  fakeSidecar.triggerRaw("test-session", outsideGrid);
+  assert.deepEqual(fakeExpose.getStatus("terminal.cursor").readFn(), initialCursor,
+    "an out-of-grid caret changed cursor status");
+  assert.deepEqual(fakeExpose.getStatus("terminal.screen").readFn(), initialScreen,
+    "an out-of-grid caret changed screen status");
+  assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "", /invalid screen cursor.*caret/);
+});
+
+test("screen with a null caret publishes null without moving the native caret", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeAttachImage = createFakeAttachImage();
+  const fakeExpose = createFakeExpose();
+  let regionReference;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {},
+    attachImage: (view, name, sidecar) => {
+      regionReference = fakeAttachImage.function(view, name, sidecar);
+      return regionReference;
+    },
+    sidecar: fakeSidecar, expose: fakeExpose, window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(fakeSidecar);
+  const initialCaret = regionReference._caret;
+  fakeSidecar.triggerRaw("test-session", {
+    ...SCREEN_CARET_MESSAGE, render: null,
+    cursor: { ...SCREEN_CARET_MESSAGE.cursor, caret: null },
+  });
+  assert.equal(fakeExpose.getStatus("terminal.cursor").readFn().caret, null);
+  assert.equal(regionReference._caret, initialCaret, "a null frame-effective caret moved the native caret");
 });
 
 test("an input method's edited syllables reach the PTY once and in order before Enter", async () => {
@@ -2757,7 +2828,7 @@ test("terminal.ime.trace records native callbacks and ordered terminal input, an
   assert.equal(error(), undefined, "a new trace did not resolve the overflow");
 });
 
-test("native focus and cursor state route to sidecar and caret", async () => {
+test("native focus and cursor state route to sidecar without moving an unframed caret", async () => {
   FakeResizeObserver.reset();
   const fakeAttachImage = createFakeAttachImage();
   const fakeSidecar = createFakeSidecar();
@@ -2780,13 +2851,13 @@ test("native focus and cursor state route to sidecar and caret", async () => {
   });
   regionReference._trigger("focus", { focused: true });
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(regionReference._caret, { x: 27, y: 36, width: 9, height: 18 });
+  assert.equal(regionReference._caret, undefined, "an unframed state cursor moved the native caret");
   assert.deepEqual(fakeSidecar.getMessages().at(-1).body, {
     operation: "input", focus: { focused: true },
   });
 });
 
-test("cursor state exposes typed shape and blink policy while routing the caret", async () => {
+test("cursor state exposes typed shape and blink policy without a caret fallback", async () => {
   FakeResizeObserver.reset();
   const fakeAttachImage = createFakeAttachImage();
   const fakeSidecar = createFakeSidecar();
@@ -2811,9 +2882,9 @@ test("cursor state exposes typed shape and blink policy while routing the caret"
   assert.deepEqual(fakeExpose.getStatus("terminal.cursor").readFn(), {
     row: 1, col: 2, shape: "beam", visible: true, blinking: true, focused: true,
     blink: "Always", interval: 700, idleTimeout: 1200, unfocused: "hollow", hollow: true,
-    blinkVisible: true, drawn: { shape: "block", blinking: false }, frame: null, render: null, preedit: null,
+    blinkVisible: true, drawn: { shape: "block", blinking: false }, frame: null, render: null, caret: null, preedit: null,
   });
-  assert.deepEqual(regionReference._caret, { x: 18, y: 18, width: 9, height: 18 });
+  assert.equal(regionReference._caret, undefined, "state cursor coordinates were used as a caret fallback");
 });
 
 test("the drawn cursor follows the screen event while the policy shape stays", async () => {
@@ -2894,6 +2965,7 @@ test("terminal.cursor publishes the public screen frame with its preedit atomica
 
   const current = status.readFn();
   assert.deepEqual(current.frame, SCREEN_FRAME_PREEDIT.frame);
+  assert.deepEqual(current.caret, { row: 0, col: 0 });
   assert.deepEqual(current.preedit, {
     text: "한",
     selectedRange: { location: 1, length: 0 },
@@ -3080,6 +3152,7 @@ test("terminal.cursor clears the frame when a state event updates its cursor", a
 
   assert.equal(status.readFn().frame, null, "a state cursor was paired with the prior screen frame");
   assert.equal(status.readFn().render, null, "a state cursor retained the prior screen render");
+  assert.equal(status.readFn().caret, null, "a state cursor retained the prior frame-effective caret");
   assert.equal(status.readFn().preedit, null, "the state cursor preedit was not cleared");
 });
 
@@ -3112,6 +3185,13 @@ test("terminal.cursor rejects a screen frame on a state event without mutating s
   });
   assert.deepEqual(status.readFn(), previous, "a state event replaced the screen renderer tuple");
   assert.match(fakeExpose.getStatus("terminal.session").readFn().error, /cursor\.render/);
+
+  fakeSidecar.triggerEvent("test-session", {
+    event: "state", sessionId: "s1", cols: 10, rows: 4, cellWidth: 9, cellHeight: 18,
+    cursor: { row: 0, col: 0, caret: { row: 0, col: 0 } },
+  });
+  assert.deepEqual(status.readFn(), previous, "a state event replaced the screen caret tuple");
+  assert.match(fakeExpose.getStatus("terminal.session").readFn().error, /cursor\.caret/);
 });
 
 test("an OSC 22 pointer event sets the view cursor and the session pointer", async () => {
@@ -4500,7 +4580,8 @@ test("valid copied screen messages do not leave a screen hash error in terminal.
   for (const id of P74_SCREEN_MESSAGE_IDS) {
     const testCase = SCREEN_HASH_CASES.find(({ id: candidate }) => candidate === id);
     assert.ok(testCase, `missing copied public message case ${id}`);
-    const message = { ...testCase.steps[0].message.value, render: null };
+    const source = testCase.steps[0].message.value;
+    const message = { ...source, cursor: { ...source.cursor, caret: null }, render: null };
     sidecar.triggerRaw("test-session", message);
   }
   await new Promise((resolve) => setImmediate(resolve));

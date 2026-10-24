@@ -83,7 +83,7 @@ const NOTIFICATION_POLICIES = new Set(["tab", "system"]);
 const DEFAULT_CURSOR = Object.freeze({
   row: 0, col: 0, shape: "block", visible: true, blinking: false, focused: false,
   blink: "Off", interval: 750, idleTimeout: 5000, unfocused: "hollow", hollow: false,
-  blinkVisible: true, drawn: Object.freeze({ shape: "block", blinking: false }), frame: null, render: null, preedit: null,
+  blinkVisible: true, drawn: Object.freeze({ shape: "block", blinking: false }), frame: null, render: null, caret: null, preedit: null,
 });
 
 // terminal.session.rejected 에 남기는 거부한 시퀀스의 수.
@@ -100,6 +100,22 @@ function isScreenFrame(frame) {
   if (frame === null) return true;
   if (typeof frame !== "object" || Array.isArray(frame) || Object.keys(frame).length !== SCREEN_FRAME_KEYS.length) return false;
   return SCREEN_FRAME_KEYS.every((key) => Number.isInteger(frame[key]) && frame[key] >= 0);
+}
+
+function screenCaretError(cursor, rows, cols, frame) {
+  if (!Object.hasOwn(cursor, "caret")) return "cursor.caret is required";
+  const caret = cursor.caret;
+  if (caret === null) return null;
+  if (!caret || typeof caret !== "object" || Array.isArray(caret) || Object.keys(caret).length !== 2 ||
+      !Object.hasOwn(caret, "row") || !Object.hasOwn(caret, "col") ||
+      !Number.isInteger(caret.row) || caret.row < 0 || !Number.isInteger(caret.col) || caret.col < 0) {
+    return "cursor.caret must be null or contain nonnegative integer row and col";
+  }
+  if (!Number.isInteger(rows) || rows < 1 || !Number.isInteger(cols) || cols < 1 || caret.row >= rows || caret.col >= cols) {
+    return `cursor.caret is outside the screen grid ${cols}x${rows}`;
+  }
+  if (frame === null) return "cursor.caret must be null when screen frame is null";
+  return null;
 }
 
 function normalizeRange(range) {
@@ -296,6 +312,12 @@ function normalizeCursor(value) {
   if (!cursor.drawn || typeof cursor.drawn !== "object") throw new Error("cursor.drawn is invalid");
   if (!isScreenFrame(cursor.frame)) throw new Error(`cursor.frame is invalid: ${JSON.stringify(cursor.frame)}`);
   if (!Object.hasOwn(cursor, "render")) throw new Error("cursor.render is required");
+  if (!Object.hasOwn(cursor, "caret")) throw new Error("cursor.caret is required");
+  if (cursor.caret !== null && (!cursor.caret || typeof cursor.caret !== "object" || Array.isArray(cursor.caret) ||
+      Object.keys(cursor.caret).length !== 2 || !Number.isInteger(cursor.caret.row) || cursor.caret.row < 0 ||
+      !Number.isInteger(cursor.caret.col) || cursor.caret.col < 0)) {
+    throw new Error("cursor.caret is invalid");
+  }
   return {
     row: integer("row"),
     col: integer("col"),
@@ -312,6 +334,7 @@ function normalizeCursor(value) {
     drawn: cursor.drawn,
     frame: cursor.frame,
     render: normalizeScreenRender(cursor.render, cursor.frame),
+    caret: cursor.caret === null ? null : { row: cursor.caret.row, col: cursor.caret.col },
     preedit: normalizePreedit(cursor.preedit),
   };
 }
@@ -800,10 +823,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("cursor must be an object");
       cursor = normalizeCursor({ ...cursor, ...fields });
       changed("cursor");
-      if (typeof region.setCaret === "function") {
+      if (cursor.caret !== null && typeof region.setCaret === "function") {
         Promise.resolve(region.setCaret({
-          x: cursor.col * session.cellWidth,
-          y: cursor.row * session.cellHeight,
+          x: cursor.caret.col * session.cellWidth,
+          y: cursor.caret.row * session.cellHeight,
           width: session.cellWidth,
           height: session.cellHeight,
         })).catch(reportInputError);
@@ -1312,11 +1335,14 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         if (Object.hasOwn(body.cursor, "frame") && body.cursor.frame !== null) {
           errorDetails.push("cursor.frame: a state event cannot identify a screen frame");
         }
+        if (Object.hasOwn(body.cursor, "caret") && body.cursor.caret !== null) {
+          errorDetails.push("cursor.caret: a state event cannot identify a frame-effective caret");
+        }
         if (Object.hasOwn(body.cursor, "render") && body.cursor.render !== null) {
           errorDetails.push("cursor.render: a state event cannot identify screen render metadata");
         }
         try {
-          normalizeCursor({ ...cursor, ...body.cursor, frame: null, render: null, preedit: body.cursor.preedit ?? null });
+          normalizeCursor({ ...cursor, ...body.cursor, frame: null, render: null, caret: null, preedit: body.cursor.preedit ?? null });
         } catch (error) {
           errorDetails.push(`invalid cursor: ${error.message}`);
         }
@@ -1337,7 +1363,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         unsupported: session.unsupported,
       };
       resolveError("state");
-      if (body.cursor !== undefined) applyCursor(body.cursor, { ...body.cursor, frame: null, render: null, preedit: body.cursor.preedit ?? null });
+      if (body.cursor !== undefined) applyCursor(body.cursor, { ...body.cursor, frame: null, render: null, caret: null, preedit: body.cursor.preedit ?? null });
       sessionOpen = true;
       runtime.log.info("session.gate", { open: true, event: "state" });
       changed("session");
@@ -1393,6 +1419,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         if (!isScreenFrame(body.frame)) {
           throw new Error(`invalid screen frame from sidecar: ${JSON.stringify(body.frame)}`);
         }
+        const caretFailure = cursorIsObject ? screenCaretError(body.cursor, body.rows, body.cols, body.frame) : null;
+        if (caretFailure !== null) throw new Error(`invalid screen cursor caret from sidecar: ${caretFailure}`);
         if (!Object.hasOwn(body, "render")) throw new Error("screen render is required");
         body.render = normalizeScreenRender(body.render, body.frame);
         // render is a terminal consumer field; the SDK screen hash owns the
@@ -1451,7 +1479,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         if (blinking !== undefined) drawn.blinking = blinking;
         applyCursor(body.cursor, {
           col, row, visible, ...(focused === undefined ? {} : { focused }), drawn, frame: body.frame,
-          render: body.render, preedit: body.cursor.preedit ?? null,
+          render: body.render, caret: body.cursor.caret, preedit: body.cursor.preedit ?? null,
         });
         if (resolveError("screen")) changed("session");
       }
