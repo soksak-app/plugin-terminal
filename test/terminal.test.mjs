@@ -2379,6 +2379,88 @@ test("a native insert without a resulting preedit snapshot is rejected before se
     "invalid insert leaves the prior compose state unchanged");
 });
 
+test("a native insert and same-turn Backspace reach the sidecar in callback order", async () => {
+  FakeResizeObserver.reset();
+  const fakeAttachImage = createFakeAttachImage();
+  const fakeSidecar = createFakeSidecar();
+  let regionReference;
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
+      regionReference = fakeAttachImage.function(view, name, sidecar);
+      return regionReference;
+    },
+    sidecar: fakeSidecar,
+    expose,
+    scale: 1,
+    window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  FakeResizeObserver.triggerAll();
+  openSession(fakeSidecar);
+
+  const emptyPreedit = {
+    text: "", markedRange: null, selectedRange: { location: 0, length: 0 }, replacementRange: null, attributed: false,
+  };
+  regionReference._trigger("insert", { text: "a", preedit: emptyPreedit, cids: ["ime.same-turn-insert"] });
+  regionReference._trigger("key", {
+    key: "Backspace", text: "", shift: false, alt: false, ctrl: false, cids: ["ime.same-turn-backspace"],
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const inputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input");
+  assert.equal(inputs.length, 2, "both native callbacks reach the sidecar");
+  assert.deepEqual(inputs[0].body.compose, emptyPreedit,
+    `the first request carries the empty preedit snapshot (got ${JSON.stringify(inputs.map(({ body }) => body))})`);
+  assert.equal(Buffer.from(inputs[0].body.bytes, "base64").toString("utf8"), "a",
+    "committed bytes remain attached to that snapshot");
+  assert.deepEqual(inputs[1].body.keys, [{
+    key: "Backspace", text: "", shift: false, alt: false, ctrl: false,
+  }], "the following Backspace remains the second sidecar input");
+});
+
+test("native inserts send empty and unchanged preedit snapshots with each commit", async () => {
+  FakeResizeObserver.reset();
+  const fakeAttachImage = createFakeAttachImage();
+  const fakeSidecar = createFakeSidecar();
+  let regionReference;
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
+      regionReference = fakeAttachImage.function(view, name, sidecar);
+      return regionReference;
+    },
+    sidecar: fakeSidecar,
+    expose,
+    scale: 1,
+    window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  FakeResizeObserver.triggerAll();
+  openSession(fakeSidecar);
+
+  const emptyPreedit = {
+    text: "", markedRange: null, selectedRange: { location: 0, length: 0 }, replacementRange: null, attributed: false,
+  };
+  await fakeAttachImage.trigger("insert", { text: "a", preedit: emptyPreedit, cids: ["ime.empty"] });
+  const unchangedPreedit = {
+    text: "same", markedRange: { location: 0, length: 4 }, selectedRange: { location: 4, length: 0 },
+    replacementRange: null, attributed: false,
+  };
+  await fakeAttachImage.trigger("insert", { text: "b", preedit: unchangedPreedit, cids: ["ime.unchanged"] });
+  await fakeAttachImage.trigger("insert", { text: "c", preedit: unchangedPreedit, cids: ["ime.unchanged-again"] });
+
+  const inputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.bytes);
+  assert.equal(inputs.length, 3, "each native commit sends one input request");
+  assert.deepEqual(inputs.map(({ body }) => body.compose), [emptyPreedit, unchangedPreedit, unchangedPreedit],
+    "empty and unchanged preedit snapshots are transmitted exactly with their commits");
+  assert.deepEqual(inputs.map(({ body }) => Buffer.from(body.bytes, "base64").toString("utf8")), ["a", "b", "c"],
+    "each snapshot remains attached to its own committed bytes");
+  assert.deepEqual(expose.getStatus("terminal.compose").readFn(), unchangedPreedit,
+    "the current compose status follows the latest native insert snapshot");
+});
+
 test("native compose forwards the exact UTF-16 markedRange and explicit null", { timeout: 10000 }, async () => {
   FakeResizeObserver.reset();
   const fakeAttachImage = createFakeAttachImage();

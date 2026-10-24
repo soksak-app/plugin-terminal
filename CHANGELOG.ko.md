@@ -4,6 +4,12 @@
 
 ## 미배포
 
+- P80: Native insert snapshot을 동기적으로 검증하고 region callback 순서로 queue한다.
+  같은 turn의 Backspace가 bytes-plus-compose request보다 앞서지 않는다. Red:
+  변경 전 handler는 Backspace를 먼저 보냈다. Green: ordering, 빈 snapshot, 동일
+  snapshot, 단일 결합 전달, snapshot 누락 거부를 검증하는 terminal focused test
+  4개가 통과한다. Test UI tree를 다시 만들었고 application/package build는 하지 않았다.
+
 - P78: 확정 native insert bytes를 같은 input-document update의 strict 결과 compose snapshot과 함께 보낸다. `terminal.compose`를 해당 snapshot으로 갱신한 뒤 결합된 VT request를 queue하고, snapshot이 없는 insert는 bytes 전송 전에 거부한다. Red: 변경 전 production에서 insert request에 결과 compose snapshot이 없어 owning test가 실패했다. Green: test UI build가 module 9개와 contract fake 2개를 생성하고 terminal 및 native-input focused test 10개가 통과했다(UTF-16 marked-range 하위 case 4개를 포함해 결과 14개). Package는 미출시 상태다.
 
 - P75-3: required-nullable render 의미를 status description에 두고 nested schema에서 지원하지 않는 `description` 항목을 제거한다. Red: 공식 diagnostics pack이 schema reader가 지원하지 않는 항목 때문에 manifest를 거부했다. Green: owning manifest test와 P77 `make check`가 통과하고 공식 diagnostics pack에 `diagnostics.json`과 필수 nullable cursor render schema가 포함된다.

@@ -838,18 +838,19 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   };
 
   // 영역 insert 이벤트: 평문 텍스트 입력
-  onRegion("insert", async (event) => {
+  onRegion("insert", (event) => {
     const { text } = event;
     notifyInput({ kind: "native-insert", text });
     traceNative("native-insert", event);
     const cids = regionCids(event);
     if (cids === null) return;
-    const insertRequest = Promise.resolve().then(() => {
+    try {
       const nextCompose = normalizeCompose(event.preedit, true);
       applyCompose(nextCompose);
-      return enqueueInput({ type: "insert", text, compose: nextCompose }, cids);
-    });
-    await observeInput(insertRequest);
+      return observeInput(enqueueInput({ type: "insert", text, compose: nextCompose }, cids));
+    } catch (error) {
+      reportInputError(error);
+    }
   });
 
   // 영역 key 이벤트: 특수 키와 수정자
