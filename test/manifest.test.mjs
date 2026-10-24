@@ -51,6 +51,17 @@ test("terminal.cursor declares its nullable screen frame", () => {
   assert.ok(Object.values(cursor.properties.frame.properties).every(({ type }) => type === "integer"));
 });
 
+test("terminal.cursor declares its required nullable screen render metadata", () => {
+  const cursor = manifest.exposes.status.find(({ name }) => name === "terminal.cursor").schema;
+  assert.deepEqual(cursor.properties.render.type, ["object", "null"]);
+  assert.match(manifest.exposes.status.find(({ name }) => name === "terminal.cursor").description,
+    /required nullable render/);
+  assert.deepEqual(cursor.properties.render.properties.pixel.properties.format.enum, ["bgra8"]);
+  assert.deepEqual(cursor.properties.render.properties.pixel.properties.alpha.enum, ["premultiplied"]);
+  assert.deepEqual(cursor.properties.render.properties.underline.properties.colorSource.enum, ["glyph.foreground"]);
+  assert.deepEqual(cursor.properties.render.properties.cursor.properties.color.type, ["string", "null"]);
+});
+
 test("the view page delegates terminal startup", () => {
   const source = readFileSync(new URL(`../${manifest.surface.composition.page}`, import.meta.url).pathname.replace(/\.html$/, ".js"), "utf8");
   assert.match(source, /startTerminal/);

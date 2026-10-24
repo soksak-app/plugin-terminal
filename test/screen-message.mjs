@@ -6,7 +6,8 @@ const DEFAULT_CURSOR = { visible: false, row: 0, col: 0, focused: false, shape: 
 
 export function screenMessage(compact) {
   if (compact.event !== "screen") return compact;
-  const framed = "frame" in compact ? compact : { ...compact, frame: null };
+  const withRender = "render" in compact ? compact : { ...compact, render: null };
+  const framed = "frame" in withRender ? withRender : { ...withRender, frame: null };
   if (!Array.isArray(framed.lines)) return framed;
   const { lines, ...rest } = framed;
   const rowsOfCells = lines.map((line) => (typeof line === "string"

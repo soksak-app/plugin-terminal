@@ -278,7 +278,7 @@
       },
       {
         "name": "terminal.cursor",
-        "description": "The terminal cursor position and the rendering policy, shape, blink request and preedit drawn by the sidecar, together with the frame of the same screen event or null.",
+        "description": "The terminal cursor position and the rendering policy, shape, blink request and preedit drawn by the sidecar, together with the frame and required nullable render metadata from the same screen event.",
         "schema": {
           "type": "object",
           "properties": {
@@ -307,6 +307,54 @@
                 "generation": { "type": "integer" },
                 "raster": { "type": "integer" },
                 "sequence": { "type": "integer" }
+              }
+            },
+            "render": {
+              "type": ["object", "null"],
+              "description": "Required. Null means no exact draw metadata is available for this screen frame.",
+              "properties": {
+                "frame": { "type": "object", "properties": {
+                  "generation": { "type": "integer" }, "raster": { "type": "integer" }, "sequence": { "type": "integer" }
+                } },
+                "pixel": { "type": "object", "properties": {
+                  "width": { "type": "integer" }, "height": { "type": "integer" }, "bytesPerRow": { "type": "integer" },
+                  "format": { "type": "string", "enum": ["bgra8"] }, "alpha": { "type": "string", "enum": ["premultiplied"] },
+                  "colorSpace": { "type": "string", "enum": ["sRGB"] }, "origin": { "type": "string", "enum": ["top-left"] }
+                } },
+                "grid": { "type": "object", "properties": {
+                  "rows": { "type": "integer" }, "cols": { "type": "integer" },
+                  "origin": { "type": "object", "properties": { "x": { "type": "integer" }, "y": { "type": "integer" } } },
+                  "cellWidth": { "type": "integer" }, "cellHeight": { "type": "integer" }
+                } },
+                "font": { "type": "object", "properties": {
+                  "family": { "type": "string" }, "size": { "type": "number" }, "ascent": { "type": "number" },
+                  "descent": { "type": "number" }, "leading": { "type": "number" }, "baselineFromCellTop": { "type": "number" }
+                } },
+                "underline": { "type": "object", "properties": {
+                  "positionFromBaseline": { "type": "number" },
+                  "positionCoordinate": { "type": "string", "enum": ["CoreText y-up"] },
+                  "thickness": { "type": "number" }, "minimumThickness": { "type": "integer", "enum": [1] },
+                  "colorSource": { "type": "string", "enum": ["glyph.foreground"] }
+                } },
+                "cursor": { "type": "object", "properties": {
+                  "rect": { "type": ["object", "null"], "properties": {
+                    "x": { "type": "number" }, "y": { "type": "number" }, "width": { "type": "number" }, "height": { "type": "number" }
+                  } },
+                  "shape": { "type": "string", "enum": ["block", "underline", "beam", "hollowBlock", "hidden"] },
+                  "visible": { "type": "boolean" }, "blinkVisible": { "type": "boolean" }, "focused": { "type": "boolean" },
+                  "blend": { "type": "string", "enum": ["normal", "difference"] }, "color": { "type": ["string", "null"] }, "border": { "type": "number" }
+                } },
+                "glyphs": { "type": "array", "items": { "type": "object", "properties": {
+                  "row": { "type": "integer" }, "col": { "type": "integer" }, "width": { "type": "integer" },
+                  "fontRuns": { "type": "integer" }, "grapheme": { "type": "string" },
+                  "foreground": { "type": "string" }, "background": { "type": "string" },
+                  "bounds": { "type": ["object", "null"], "properties": {
+                    "x": { "type": "number" }, "y": { "type": "number" }, "width": { "type": "number" }, "height": { "type": "number" }
+                  } },
+                  "underline": { "type": "object", "properties": { "rect": { "type": ["object", "null"], "properties": {
+                    "x": { "type": "number" }, "y": { "type": "number" }, "width": { "type": "number" }, "height": { "type": "number" }
+                  } } } }
+                } } }
               }
             },
             "preedit": {

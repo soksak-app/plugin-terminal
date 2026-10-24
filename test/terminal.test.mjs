@@ -10,6 +10,19 @@ const SCREEN_MESSAGE = SCREEN_MESSAGES.vectors[0];
 const SCREEN_FRAME_PREEDIT = JSON.parse(readFileSync(new URL("../scripts/test-sdk-cases.json", import.meta.url), "utf8"))
   .modules.find(({ specifier }) => specifier === "@soksak/plugin-api/screen-hash")
   .caseCopies.find(({ id }) => id === "screen.message.frame-preedit").steps[0].message.value;
+const SCREEN_RENDER = (frame = SCREEN_FRAME_PREEDIT.frame) => ({
+  frame,
+  pixel: { width: 32, height: 16, bytesPerRow: 128, format: "bgra8", alpha: "premultiplied",
+    colorSpace: "sRGB", origin: "top-left" },
+  grid: { rows: 1, cols: 4, origin: { x: 0, y: 0 }, cellWidth: 8, cellHeight: 16 },
+  font: { family: "Menlo", size: 13, ascent: 10, descent: 3, leading: 0, baselineFromCellTop: 13 },
+  underline: { positionFromBaseline: -1, positionCoordinate: "CoreText y-up", thickness: 1,
+    minimumThickness: 1, colorSource: "glyph.foreground" },
+  cursor: { rect: null, shape: "hidden", visible: false, blinkVisible: false, focused: false,
+    blend: "normal", color: null, border: 0 },
+  glyphs: [{ row: 0, col: 0, width: 1, fontRuns: 1, grapheme: "g", foreground: "#000000",
+    background: "#ffffff", bounds: { x: 0, y: 1, width: 4, height: 8 }, underline: { rect: null } }],
+});
 const SCREEN_HASH_CASES = JSON.parse(readFileSync(new URL("../scripts/test-sdk-cases.json", import.meta.url), "utf8"))
   .modules.find(({ specifier }) => specifier === "@soksak/plugin-api/screen-hash").caseCopies;
 const P74_SCREEN_MESSAGE_IDS = [
@@ -2644,7 +2657,7 @@ test("cursor state exposes typed shape and blink policy while routing the caret"
   assert.deepEqual(fakeExpose.getStatus("terminal.cursor").readFn(), {
     row: 1, col: 2, shape: "beam", visible: true, blinking: true, focused: true,
     blink: "Always", interval: 700, idleTimeout: 1200, unfocused: "hollow", hollow: true,
-    blinkVisible: true, drawn: { shape: "block", blinking: false }, frame: null, preedit: null,
+    blinkVisible: true, drawn: { shape: "block", blinking: false }, frame: null, render: null, preedit: null,
   });
   assert.deepEqual(regionReference._caret, { x: 18, y: 18, width: 9, height: 18 });
 });
@@ -2722,7 +2735,8 @@ test("terminal.cursor publishes the public screen frame with its preedit atomica
   const status = fakeExpose.getStatus("terminal.cursor");
   const publications = [];
   const stop = status.watchFn((value) => publications.push(value));
-  fakeSidecar.triggerEvent("test-session", SCREEN_FRAME_PREEDIT);
+  const message = { ...SCREEN_FRAME_PREEDIT, render: SCREEN_RENDER() };
+  fakeSidecar.triggerEvent("test-session", message);
 
   const current = status.readFn();
   assert.deepEqual(current.frame, SCREEN_FRAME_PREEDIT.frame);
@@ -2733,9 +2747,65 @@ test("terminal.cursor publishes the public screen frame with its preedit atomica
     markedRange: { location: 0, length: 1 },
     attributed: false,
   });
+  assert.deepEqual(current.render, message.render);
   assert.equal(publications.length, 1, "the screen frame, cursor, and preedit were not published atomically");
   assert.deepEqual(publications[0], current);
   stop();
+});
+
+test("screen renderer metadata is required, nullable, frame-bound, and validated before publication", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose, window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(fakeSidecar);
+  const cursorStatus = fakeExpose.getStatus("terminal.cursor");
+  const screenStatus = fakeExpose.getStatus("terminal.screen");
+  const sessionStatus = fakeExpose.getStatus("terminal.session");
+  const initialCursor = cursorStatus.readFn();
+  const initialScreen = screenStatus.readFn();
+  const initialSession = sessionStatus.readFn();
+
+  const missing = { ...SCREEN_FRAME_PREEDIT };
+  delete missing.render;
+  fakeSidecar.triggerRaw("test-session", missing);
+  assert.deepEqual(cursorStatus.readFn(), initialCursor, "missing renderer metadata changed cursor state");
+  assert.deepEqual(screenStatus.readFn(), initialScreen, "missing renderer metadata changed screen state");
+  assert.deepEqual({ sessionId: sessionStatus.readFn().sessionId, cols: sessionStatus.readFn().cols,
+    rows: sessionStatus.readFn().rows, cellWidth: sessionStatus.readFn().cellWidth, cellHeight: sessionStatus.readFn().cellHeight },
+  { sessionId: initialSession.sessionId, cols: initialSession.cols, rows: initialSession.rows,
+    cellWidth: initialSession.cellWidth, cellHeight: initialSession.cellHeight });
+  assert.match(sessionStatus.readFn().error ?? "", /render is required/);
+
+  const unavailable = { ...SCREEN_FRAME_PREEDIT, render: null };
+  fakeSidecar.triggerEvent("test-session", unavailable);
+  assert.deepEqual(cursorStatus.readFn().frame, unavailable.frame);
+  assert.equal(cursorStatus.readFn().render, null);
+
+  const malformed = { ...SCREEN_FRAME_PREEDIT, render: { ...SCREEN_RENDER(), frame: {
+    ...SCREEN_FRAME_PREEDIT.frame, sequence: SCREEN_FRAME_PREEDIT.frame.sequence + 1,
+  } } };
+  const beforeMalformedCursor = cursorStatus.readFn();
+  const beforeMalformedScreen = screenStatus.readFn();
+  fakeSidecar.triggerEvent("test-session", malformed);
+  assert.deepEqual(cursorStatus.readFn(), beforeMalformedCursor, "frame-mismatched metadata changed cursor state");
+  assert.deepEqual(screenStatus.readFn(), beforeMalformedScreen, "frame-mismatched metadata changed screen state");
+  assert.deepEqual({ sessionId: sessionStatus.readFn().sessionId, cols: sessionStatus.readFn().cols,
+    rows: sessionStatus.readFn().rows, cellWidth: sessionStatus.readFn().cellWidth, cellHeight: sessionStatus.readFn().cellHeight },
+  { sessionId: initialSession.sessionId, cols: initialSession.cols, rows: initialSession.rows,
+    cellWidth: initialSession.cellWidth, cellHeight: initialSession.cellHeight });
+  assert.match(sessionStatus.readFn().error ?? "", /render\.frame must match screen frame/);
+
+  const partial = { ...SCREEN_FRAME_PREEDIT, render: { ...SCREEN_RENDER(), glyphs: [
+    { ...SCREEN_RENDER().glyphs[0], fontRuns: 0 },
+  ] } };
+  fakeSidecar.triggerEvent("test-session", partial);
+  assert.deepEqual(cursorStatus.readFn(), beforeMalformedCursor, "malformed font runs changed cursor state");
+  assert.deepEqual(screenStatus.readFn(), beforeMalformedScreen, "malformed font runs changed screen state");
+  assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "", /glyphs\[0\]\.fontRuns/);
 });
 
 test("terminal.cursor clears the frame when a state event updates its cursor", async () => {
@@ -2751,8 +2821,10 @@ test("terminal.cursor clears the frame when a state event updates its cursor", a
   openSession(fakeSidecar);
 
   const status = fakeExpose.getStatus("terminal.cursor");
-  fakeSidecar.triggerEvent("test-session", SCREEN_FRAME_PREEDIT);
+  fakeSidecar.triggerEvent("test-session", { ...SCREEN_FRAME_PREEDIT, render: SCREEN_RENDER() });
   assert.deepEqual(status.readFn().frame, SCREEN_FRAME_PREEDIT.frame);
+  fakeSidecar.triggerEvent("test-session", { ...SCREEN_FRAME_PREEDIT, render: SCREEN_RENDER() });
+  assert.ok(status.readFn().render, "the current screen render was not published before the state update");
 
   fakeSidecar.triggerEvent("test-session", {
     event: "state", sessionId: "s1", cols: 10, rows: 4, cellWidth: 9, cellHeight: 18,
@@ -2760,6 +2832,7 @@ test("terminal.cursor clears the frame when a state event updates its cursor", a
   });
 
   assert.equal(status.readFn().frame, null, "a state cursor was paired with the prior screen frame");
+  assert.equal(status.readFn().render, null, "a state cursor retained the prior screen render");
   assert.equal(status.readFn().preedit, null, "the state cursor preedit was not cleared");
 });
 
@@ -2776,7 +2849,7 @@ test("terminal.cursor rejects a screen frame on a state event without mutating s
   openSession(fakeSidecar);
 
   const status = fakeExpose.getStatus("terminal.cursor");
-  fakeSidecar.triggerEvent("test-session", SCREEN_FRAME_PREEDIT);
+  fakeSidecar.triggerEvent("test-session", { ...SCREEN_FRAME_PREEDIT, render: SCREEN_RENDER() });
   const previous = status.readFn();
   fakeSidecar.triggerEvent("test-session", {
     event: "state", sessionId: "s1", cols: 10, rows: 4, cellWidth: 9, cellHeight: 18,
@@ -2785,6 +2858,13 @@ test("terminal.cursor rejects a screen frame on a state event without mutating s
 
   assert.deepEqual(status.readFn(), previous, "a state event replaced the screen cursor tuple");
   assert.match(fakeExpose.getStatus("terminal.session").readFn().error, /cursor\.frame/);
+
+  fakeSidecar.triggerEvent("test-session", {
+    event: "state", sessionId: "s1", cols: 10, rows: 4, cellWidth: 9, cellHeight: 18,
+    cursor: { row: 0, col: 0, render: SCREEN_RENDER() },
+  });
+  assert.deepEqual(status.readFn(), previous, "a state event replaced the screen renderer tuple");
+  assert.match(fakeExpose.getStatus("terminal.session").readFn().error, /cursor\.render/);
 });
 
 test("an OSC 22 pointer event sets the view cursor and the session pointer", async () => {
@@ -4172,7 +4252,7 @@ test("valid copied screen messages do not leave a screen hash error in terminal.
   for (const id of P74_SCREEN_MESSAGE_IDS) {
     const testCase = SCREEN_HASH_CASES.find(({ id: candidate }) => candidate === id);
     assert.ok(testCase, `missing copied public message case ${id}`);
-    const message = testCase.steps[0].message.value;
+    const message = { ...testCase.steps[0].message.value, render: null };
     sidecar.triggerRaw("test-session", message);
   }
   await new Promise((resolve) => setImmediate(resolve));
@@ -4307,7 +4387,7 @@ test("a screen message without a cursor is refused as an error before it changes
   const sidecar = createFakeSidecar();
   await startTerminal({ ...pageOptions(sidecar), runtime: log.runtime });
   openSession(sidecar);
-  const { cursor: _omitted, ...withoutCursor } = SCREEN_MESSAGE.message;
+  const { cursor: _omitted, ...withoutCursor } = { ...SCREEN_MESSAGE.message, render: null };
   sidecar.triggerRaw("test-session", withoutCursor);
   assert.ok(log.records.some(([event, fields, level]) => event === "error" && level === "error" && /invalid screen cursor from sidecar/.test(fields.message)),
     JSON.stringify(log.records));

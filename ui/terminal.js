@@ -80,7 +80,7 @@ const NOTIFICATION_POLICIES = new Set(["tab", "system"]);
 const DEFAULT_CURSOR = Object.freeze({
   row: 0, col: 0, shape: "block", visible: true, blinking: false, focused: false,
   blink: "Off", interval: 750, idleTimeout: 5000, unfocused: "hollow", hollow: false,
-  blinkVisible: true, drawn: Object.freeze({ shape: "block", blinking: false }), frame: null, preedit: null,
+  blinkVisible: true, drawn: Object.freeze({ shape: "block", blinking: false }), frame: null, render: null, preedit: null,
 });
 
 // terminal.session.rejected 에 남기는 거부한 시퀀스의 수.
@@ -168,6 +168,101 @@ function normalizePreedit(value) {
   };
 }
 
+// Renderer metadata belongs to one screen frame. Null means that the producer
+// has no draw metadata for that frame; an incomplete object is a protocol error.
+function normalizeScreenRender(value, frame) {
+  if (value === null) return null;
+  const object = (item, name) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw new Error(`render.${name} must be an object`);
+    return item;
+  };
+  const integer = (item, name, positive = false) => {
+    if (!Number.isInteger(item) || item < (positive ? 1 : 0)) throw new Error(`render.${name} must be ${positive ? "a positive" : "a non-negative"} integer`);
+  };
+  const finite = (item, name, positive = false, signed = false) => {
+    if (typeof item !== "number" || !Number.isFinite(item) || (positive ? item <= 0 : !signed && item < 0)) {
+      throw new Error(`render.${name} must be a ${positive ? "positive" : signed ? "signed" : "non-negative"} finite number`);
+    }
+  };
+  const string = (item, name) => {
+    if (typeof item !== "string" || item.length === 0) throw new Error(`render.${name} must be a non-empty string`);
+  };
+  const color = (item, name) => {
+    if (typeof item !== "string" || !/^#[0-9a-f]{6}$/.test(item)) throw new Error(`render.${name} must be an opaque lowercase sRGB color`);
+  };
+  const rect = (item, name) => {
+    if (item === null) return;
+    object(item, name);
+    for (const key of ["x", "y", "width", "height"]) finite(item[key], `${name}.${key}`, key === "width" || key === "height");
+    return item;
+  };
+  const result = object(value, "metadata");
+  if (!isScreenFrame(result.frame) || !frame || result.frame.generation !== frame.generation ||
+      result.frame.raster !== frame.raster || result.frame.sequence !== frame.sequence) {
+    throw new Error("render.frame must match screen frame");
+  }
+  const pixel = object(result.pixel, "pixel");
+  for (const key of ["width", "height"]) integer(pixel[key], `pixel.${key}`, true);
+  integer(pixel.bytesPerRow, "pixel.bytesPerRow", true);
+  if (pixel.bytesPerRow < pixel.width * 4) throw new Error("render.pixel.bytesPerRow is smaller than its BGRA8 row");
+  if (pixel.format !== "bgra8" || pixel.alpha !== "premultiplied" || pixel.colorSpace !== "sRGB" || pixel.origin !== "top-left") {
+    throw new Error("render.pixel format is invalid");
+  }
+  const grid = object(result.grid, "grid");
+  for (const key of ["rows", "cols", "cellWidth", "cellHeight"]) integer(grid[key], `grid.${key}`, true);
+  const origin = object(grid.origin, "grid.origin");
+  integer(origin.x, "grid.origin.x"); integer(origin.y, "grid.origin.y");
+  if (grid.cols * grid.cellWidth > pixel.width || grid.rows * grid.cellHeight > pixel.height ||
+      origin.x + grid.cols * grid.cellWidth > pixel.width || origin.y + grid.rows * grid.cellHeight > pixel.height) {
+    throw new Error("render.grid exceeds pixel dimensions");
+  }
+  const font = object(result.font, "font");
+  string(font.family, "font.family");
+  for (const key of ["size", "ascent", "descent", "leading", "baselineFromCellTop"]) finite(font[key], `font.${key}`);
+  finite(font.size, "font.size", true);
+  const underline = object(result.underline, "underline");
+  finite(underline.positionFromBaseline, "underline.positionFromBaseline", false, true);
+  finite(underline.thickness, "underline.thickness", true);
+  if (underline.positionCoordinate !== "CoreText y-up" || underline.minimumThickness !== 1 || underline.colorSource !== "glyph.foreground") {
+    throw new Error("render.underline policy is invalid");
+  }
+  const cursor = object(result.cursor, "cursor");
+  if (!["block", "underline", "beam", "hollowBlock", "hidden"].includes(cursor.shape)) throw new Error("render.cursor.shape is invalid");
+  for (const key of ["visible", "blinkVisible", "focused"]) if (typeof cursor[key] !== "boolean") throw new Error(`render.cursor.${key} must be a boolean`);
+  if (!["normal", "difference"].includes(cursor.blend)) throw new Error("render.cursor.blend is invalid");
+  rect(cursor.rect, "cursor.rect");
+  if (cursor.rect && (cursor.rect.x + cursor.rect.width > pixel.width || cursor.rect.y + cursor.rect.height > pixel.height)) {
+    throw new Error("render.cursor.rect exceeds pixel dimensions");
+  }
+  finite(cursor.border, "cursor.border");
+  if (cursor.color !== null) color(cursor.color, "cursor.color");
+  if ((cursor.blend === "difference" || !cursor.visible || cursor.shape === "hidden") && cursor.color !== null) {
+    throw new Error("render.cursor.color must be null for a non-color cursor");
+  }
+  if (cursor.blend === "normal" && cursor.visible && cursor.shape !== "hidden" && cursor.color === null) {
+    throw new Error("render.cursor.color is required for a visible normal cursor");
+  }
+  if (!Array.isArray(result.glyphs)) throw new Error("render.glyphs must be an array");
+  result.glyphs.forEach((glyph, index) => {
+    object(glyph, `glyphs[${index}]`);
+    for (const key of ["row", "col"]) integer(glyph[key], `glyphs[${index}].${key}`);
+    for (const key of ["width", "fontRuns"]) integer(glyph[key], `glyphs[${index}].${key}`, true);
+    if (glyph.row >= grid.rows || glyph.col + glyph.width > grid.cols) throw new Error(`render.glyphs[${index}] is outside the grid`);
+    string(glyph.grapheme, `glyphs[${index}].grapheme`);
+    color(glyph.foreground, `glyphs[${index}].foreground`);
+    color(glyph.background, `glyphs[${index}].background`);
+    rect(glyph.bounds, `glyphs[${index}].bounds`);
+    if (glyph.bounds && (glyph.bounds.x + glyph.bounds.width > grid.cellWidth || glyph.bounds.y + glyph.bounds.height > grid.cellHeight)) {
+      throw new Error(`render.glyphs[${index}].bounds exceeds its cell`);
+    }
+    const underlineRect = rect(object(glyph.underline, `glyphs[${index}].underline`).rect, `glyphs[${index}].underline.rect`);
+    if (underlineRect && (underlineRect.x + underlineRect.width > grid.cellWidth || underlineRect.y + underlineRect.height > grid.cellHeight)) {
+      throw new Error(`render.glyphs[${index}].underline.rect exceeds its cell`);
+    }
+  });
+  return result;
+}
+
 // 커서 상태를 검사한다. 값은 이전 상태에 사이드카가 알린 필드를 덮은 전체 상태이므로 모든 필드가 있어야 한다.
 function normalizeCursor(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -196,6 +291,7 @@ function normalizeCursor(value) {
   if (!CURSOR_UNFOCUSED.has(cursor.unfocused)) throw new Error(`cursor.unfocused is invalid: ${String(cursor.unfocused)}`);
   if (!cursor.drawn || typeof cursor.drawn !== "object") throw new Error("cursor.drawn is invalid");
   if (!isScreenFrame(cursor.frame)) throw new Error(`cursor.frame is invalid: ${JSON.stringify(cursor.frame)}`);
+  if (!Object.hasOwn(cursor, "render")) throw new Error("cursor.render is required");
   return {
     row: integer("row"),
     col: integer("col"),
@@ -211,6 +307,7 @@ function normalizeCursor(value) {
     blinkVisible: boolean("blinkVisible"),
     drawn: cursor.drawn,
     frame: cursor.frame,
+    render: normalizeScreenRender(cursor.render, cursor.frame),
     preedit: normalizePreedit(cursor.preedit),
   };
 }
@@ -1195,8 +1292,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         if (Object.hasOwn(body.cursor, "frame") && body.cursor.frame !== null) {
           errorDetails.push("cursor.frame: a state event cannot identify a screen frame");
         }
+        if (Object.hasOwn(body.cursor, "render") && body.cursor.render !== null) {
+          errorDetails.push("cursor.render: a state event cannot identify screen render metadata");
+        }
         try {
-          normalizeCursor({ ...cursor, ...body.cursor, frame: null, preedit: body.cursor.preedit ?? null });
+          normalizeCursor({ ...cursor, ...body.cursor, frame: null, render: null, preedit: body.cursor.preedit ?? null });
         } catch (error) {
           errorDetails.push(`invalid cursor: ${error.message}`);
         }
@@ -1217,7 +1317,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         unsupported: session.unsupported,
       };
       resolveError("state");
-      if (body.cursor !== undefined) applyCursor(body.cursor, { ...body.cursor, frame: null, preedit: body.cursor.preedit ?? null });
+      if (body.cursor !== undefined) applyCursor(body.cursor, { ...body.cursor, frame: null, render: null, preedit: body.cursor.preedit ?? null });
       sessionOpen = true;
       runtime.log.info("session.gate", { open: true, event: "state" });
       changed("session");
@@ -1273,7 +1373,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         if (!isScreenFrame(body.frame)) {
           throw new Error(`invalid screen frame from sidecar: ${JSON.stringify(body.frame)}`);
         }
-        message = screenFromMessage(body);
+        if (!Object.hasOwn(body, "render")) throw new Error("screen render is required");
+        body.render = normalizeScreenRender(body.render, body.frame);
+        // render is a terminal consumer field; the SDK screen hash owns the
+        // screen-message projection and does not include raster diagnostics.
+        const { render: _render, ...hashMessage } = body;
+        message = screenFromMessage(hashMessage);
       } catch (error) {
         reportInputError(error, "screen");
         return;
@@ -1326,7 +1431,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         if (blinking !== undefined) drawn.blinking = blinking;
         applyCursor(body.cursor, {
           col, row, visible, ...(focused === undefined ? {} : { focused }), drawn, frame: body.frame,
-          preedit: body.cursor.preedit ?? null,
+          render: body.render, preedit: body.cursor.preedit ?? null,
         });
         if (resolveError("screen")) changed("session");
       }
