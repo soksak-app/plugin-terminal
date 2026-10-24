@@ -15,17 +15,21 @@ node_modules: package.json
 test: node_modules
 	pnpm test
 
-# check compares copied contract cases and the view literal with the API source, then runs SDK validators.
-# Set CORE_PLUGIN_API_DIR to a local core package source when the pinned release lacks a checker.
-VIEW_CHECK = $(if $(filter environment command line,$(origin CORE_PLUGIN_API_DIR)),node "$(CORE_PLUGIN_API_DIR)/view-check.js",pnpm exec soksak-view-check)
+# check compares copied contract cases and runs every validator from one SDK directory.
+SDK_CHECKERS = view-check.js exposure-check.js engines-check.js events-check.js records-check.js
 
 check: node_modules
+	@for checker in $(SDK_CHECKERS); do \
+		if [ ! -f "$(CORE_PLUGIN_API_DIR)/$$checker" ]; then \
+			echo "missing SDK checker: $(CORE_PLUGIN_API_DIR)/$$checker" >&2; exit 1; \
+		fi; \
+	done
 	CORE_PLUGIN_API_DIR="$(CORE_PLUGIN_API_DIR)" node scripts/check-test-cases.mjs
-	$(VIEW_CHECK) view-check.json test/fixtures/screen-message.json
-	pnpm exec soksak-exposure
-	pnpm exec soksak-engines
-	pnpm exec soksak-events --census census.json --catalog events.json
-	pnpm exec soksak-records
+	node "$(CORE_PLUGIN_API_DIR)/view-check.js" view-check.json test/fixtures/screen-message.json
+	node "$(CORE_PLUGIN_API_DIR)/exposure-check.js"
+	node "$(CORE_PLUGIN_API_DIR)/engines-check.js"
+	node "$(CORE_PLUGIN_API_DIR)/events-check.js" --census census.json --catalog events.json
+	node "$(CORE_PLUGIN_API_DIR)/records-check.js"
 
 pack: check
 	@test -n "$(OUT)" || { echo "make pack OUT=<folder>" >&2; exit 2; }
