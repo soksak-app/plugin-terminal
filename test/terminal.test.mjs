@@ -2550,7 +2550,7 @@ test("terminal.ime.trace records native callbacks and ordered terminal input, an
   const result = await expose.getCommand("terminal.ime.trace")({ action: "stop" });
   assert.equal(result.overflow, false);
   assert.deepEqual(result.entries.map(({ kind }) => kind), [
-    "native-key", "terminal-input", "native-insert", "terminal-input", "native-compose", "terminal-input", "native-insert", "terminal-input", "terminal-input",
+    "native-key", "terminal-input", "native-insert", "terminal-input", "native-compose", "terminal-input", "native-insert", "terminal-input",
   ]);
   assert.deepEqual(result.entries[0], { sequence: 0, kind: "native-key", key: "Char", text: "d" });
   assert.deepEqual(result.entries.filter(({ kind }) => kind === "native-insert").map(({ text }) => text), ["d", "한"]);

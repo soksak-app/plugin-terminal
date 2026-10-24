@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- P72-1: The IME trace test now expects one `terminal-input` record for each of the four input operations it sends. The previous expectation included a fifth record with no matching operation. Red: the original terminal implementation produced four records while the test expected five. Green: the focused trace test passes 1/1 and the terminal/manifest files pass 163/163. No runtime behavior changed.
+
 - P72: The terminal preserves the native compose `markedRange` as UTF-16 offsets relative to the complete compose text, sends it unchanged to VT, and requires it in both compose status and cursor preedit. Missing, malformed, out-of-text and grapheme-splitting ranges are rejected before status mutation or queueing; invalid sidecar state does not mutate the session or flush queued input. Red: the unchanged terminal omitted marked ranges and accepted invalid ranges, and malformed state changed the session. Green: focused compose, state and manifest tests pass 9/9; the test UI build succeeds. The owning terminal and manifest files pass 162/163; the remaining IME trace expectation fails the same way against the original terminal source and is tracked by P72-1. The change is not released.
 
 - P71: The test-build guard now checks SDK dependencies through parsed module imports instead of scanning raw test source text. Manifest package keys remain ordinary data, while actual SDK imports remain rejected. Red: `node --test test/build-test.test.mjs` failed both the manifest-data case and the actual-import case because the broad string guard ran before parsing. Green: the focused build-guard and manifest tests pass 16/16, and `node scripts/build-test.mjs` builds the test UI tree.
