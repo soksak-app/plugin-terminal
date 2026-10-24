@@ -2825,19 +2825,6 @@ test("screen renderer metadata is required, nullable, frame-bound, and validated
   assert.deepEqual(screenStatus.readFn(), beforeMalformedScreen, "malformed font runs changed screen state");
   assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "", /glyphs\[0\]\.fontRuns/);
 
-  const outsideSpan = { ...SCREEN_FRAME_PREEDIT, render: {
-    ...wideRender,
-    glyphs: [{ ...wideRender.glyphs[0], bounds: { ...wideRender.glyphs[0].bounds, width: 17 } }],
-  } };
-  const beforeOutsideSpanCursor = cursorStatus.readFn();
-  const beforeOutsideSpanScreen = screenStatus.readFn();
-  fakeSidecar.triggerEvent("test-session", outsideSpan);
-  assert.deepEqual(cursorStatus.readFn(), beforeOutsideSpanCursor,
-    "a glyph rectangle outside its width-2 span changed cursor state");
-  assert.deepEqual(screenStatus.readFn(), beforeOutsideSpanScreen,
-    "a glyph rectangle outside its width-2 span changed screen state");
-  assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "", /glyphs\[0\]\.bounds exceeds its cell span/);
-
   const drawnCursorMalformed = { ...SCREEN_FRAME_PREEDIT, render: SCREEN_RENDER() };
   drawnCursorMalformed.render.cursor = { rect: { x: 0, y: 0, width: 8, height: 16 }, shape: "block",
     visible: true, blinkVisible: true, focused: true, blend: "normal", color: null, border: 0 };
@@ -2849,6 +2836,69 @@ test("screen renderer metadata is required, nullable, frame-bound, and validated
   assert.deepEqual(screenStatus.readFn(), beforeMalformedDrawnScreen,
     "a drawn cursor without its effective color changed screen state");
   assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "", /cursor\.color is required/);
+});
+
+test("screen render preserves raw CoreText overhang and rejects invalid glyph bounds atomically", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose, window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(fakeSidecar);
+  const cursorStatus = fakeExpose.getStatus("terminal.cursor");
+  const screenStatus = fakeExpose.getStatus("terminal.screen");
+  const sessionStatus = fakeExpose.getStatus("terminal.session");
+  const render = SCREEN_RENDER();
+  render.glyphs = [{ row: 0, col: 0, width: 2, fontRuns: 1, grapheme: "한", foreground: "#000000",
+    background: "#ffffff", bounds: { x: -1.25, y: -2.5, width: 18.5, height: 20.25 },
+    underline: { rect: { x: -0.5, y: 15.25, width: 17, height: 1.5 } } }];
+  fakeSidecar.triggerEvent("test-session", { ...SCREEN_FRAME_PREEDIT, render });
+  assert.deepEqual(cursorStatus.readFn().render, render,
+    "finite CoreText geometry was clipped or rejected at the cell span");
+
+  for (const [name, bounds, reason] of [
+    ["zero-width", { ...render.glyphs[0].bounds, width: 0 }, /bounds\.width must be a positive finite number/],
+    ["non-finite", { ...render.glyphs[0].bounds, x: Number.NaN }, /bounds\.x must be a signed finite number/],
+  ]) {
+    const malformed = { ...SCREEN_FRAME_PREEDIT, render: {
+      ...render, glyphs: [{ ...render.glyphs[0], bounds }],
+    } };
+    const beforeCursor = cursorStatus.readFn();
+    const beforeScreen = screenStatus.readFn();
+    fakeSidecar.triggerEvent("test-session", malformed);
+    assert.deepEqual(cursorStatus.readFn(), beforeCursor, `${name} geometry changed cursor state`);
+    assert.deepEqual(screenStatus.readFn(), beforeScreen, `${name} geometry changed screen state`);
+    assert.match(sessionStatus.readFn().error ?? "", reason);
+  }
+
+});
+
+test("screen render rejects negative absolute cursor rectangles atomically", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose, window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(fakeSidecar);
+  const cursorStatus = fakeExpose.getStatus("terminal.cursor");
+  const screenStatus = fakeExpose.getStatus("terminal.screen");
+  const sessionStatus = fakeExpose.getStatus("terminal.session");
+  const valid = { ...SCREEN_FRAME_PREEDIT, render: SCREEN_RENDER() };
+  fakeSidecar.triggerEvent("test-session", valid);
+  const beforeCursor = cursorStatus.readFn();
+  const beforeScreen = screenStatus.readFn();
+
+  const malformed = { ...SCREEN_FRAME_PREEDIT, render: SCREEN_RENDER() };
+  malformed.render.cursor = { rect: { x: -1, y: 0, width: 8, height: 16 }, shape: "block",
+    visible: true, blinkVisible: true, focused: true, blend: "normal", color: "#ffffff", border: 0 };
+  fakeSidecar.triggerEvent("test-session", malformed);
+  assert.deepEqual(cursorStatus.readFn(), beforeCursor, "negative absolute cursor geometry changed cursor state");
+  assert.deepEqual(screenStatus.readFn(), beforeScreen, "negative absolute cursor geometry changed screen state");
+  assert.match(sessionStatus.readFn().error ?? "", /cursor\.rect must be inside the pixel raster/);
 });
 
 test("terminal.cursor clears the frame when a state event updates its cursor", async () => {
