@@ -303,12 +303,11 @@
             },
             "preedit": {
               "type": ["object", "null"],
-              "required": ["markedRange"],
               "properties": {
                 "text": { "type": "string" },
                 "selectedRange": { "type": ["object", "null"] },
                 "replacementRange": { "type": ["object", "null"] },
-                "markedRange": { "type": ["object", "null"], "required": ["location", "length"],
+                "markedRange": { "type": ["object", "null"],
                   "properties": { "location": { "type": "integer" }, "length": { "type": "integer" } } },
                 "attributed": { "type": "boolean" }
               }
@@ -321,10 +320,9 @@
         "description": "The current terminal composition state.",
         "schema": {
           "type": "object",
-          "required": ["markedRange"],
           "properties": {
             "text": { "type": "string" },
-            "markedRange": { "type": ["object", "null"], "required": ["location", "length"],
+            "markedRange": { "type": ["object", "null"],
               "properties": { "location": { "type": "integer" }, "length": { "type": "integer" } } },
             "selectedRange": { "type": ["object", "null"] },
             "replacementRange": { "type": ["object", "null"] },

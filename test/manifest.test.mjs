@@ -30,13 +30,17 @@ test("the plugin requires the VT sidecar process identity release", () => {
   assert.equal(pkg.version, "0.0.15");
 });
 
-test("the compose and cursor preedit schemas require markedRange and its UTF-16 fields", () => {
+test("compose and cursor preedit schemas use the supported range keywords", () => {
   const statuses = manifest.exposes.status;
   const compose = statuses.find(({ name }) => name === "terminal.compose").schema;
   const cursor = statuses.find(({ name }) => name === "terminal.cursor").schema.properties.preedit;
-  for (const schema of [compose, cursor]) {
-    assert.deepEqual(schema.required, ["markedRange"]);
-    assert.deepEqual(schema.properties.markedRange.required, ["location", "length"]);
+  const diagnostic = diagnostics.exposes.commands.find(({ name }) => name === "terminal.compose.update").params;
+  for (const schema of [compose, cursor, diagnostic]) {
+    assert.equal(Object.hasOwn(schema, "required"), false);
+    assert.deepEqual(schema.properties.markedRange.type, ["object", "null"]);
+    assert.equal(Object.hasOwn(schema.properties.markedRange, "required"), false);
+    assert.equal(schema.properties.markedRange.properties.location.type, "integer");
+    assert.equal(schema.properties.markedRange.properties.length.type, "integer");
   }
 });
 

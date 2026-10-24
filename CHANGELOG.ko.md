@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- P73: terminal exposure schema에서 지원하지 않는 `required`를 제거한다. 변경 전 manifest를 공식 CLI로 검사한 Red는 `terminal exposes terminal.cursor schema.preedit: unknown field required`였고, writer는 `type`, `properties`, `items`, `enum`만 허용한다. Green: 일반 및 diagnostics CLI 379 pack, manifest test 9/9, focused marked-range runtime test 7/7, candidate exposure·engines·events·records와 복사 계약 case 41개가 통과한다. pinned `make check`는 설치된 SDK 0.0.20이 `^0.0.21`을 거부하는 별도 P69 gate에서 계속 실패한다. Runtime 검증은 바뀌지 않았고 package는 release되지 않았다. CLI 빌드 로그는 보존되지 않았다.
+
 - P72-1: IME trace test는 보내는 입력 작업 네 개마다 `terminal-input` record 하나를 기대한다. 이전 예상은 일치하는 작업이 없는 다섯 번째 record를 포함했다. Red: 원래 terminal 구현은 네 건을 기록했지만 test는 다섯 건을 기대했다. Green: focused trace test 1/1과 terminal/manifest 파일 163/163 통과. Runtime 동작은 바꾸지 않았다.
 
 - P72: terminal은 native compose `markedRange`를 전체 compose text 기준 UTF-16 범위로 보존해 VT에 그대로 보내며 compose status와 cursor preedit 모두에 필수로 둔다. 누락·잘못된 형식·text 범위 밖·grapheme 분할 범위는 status 변경이나 input queue 전에 거부하고, 잘못된 sidecar state는 session을 변경하거나 대기 입력을 보내지 않는다. Red: 변경 전 terminal은 marked range를 버리고 잘못된 범위를 허용했으며 malformed state가 session을 변경했다. Green: focused compose, state, manifest test 9/9와 test UI build가 통과한다. terminal/manifest owning 파일은 162/163 통과다. 남은 IME trace 예상값 실패는 원래 terminal source에서도 재현되며 P72-1로 추적한다. 수정은 아직 release되지 않았다.

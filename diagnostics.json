@@ -32,10 +32,9 @@
         "description": "Updates the active native terminal preedit without writing PTY bytes.",
         "params": {
           "type": "object",
-          "required": ["markedRange"],
           "properties": {
             "text": { "type": "string" },
-            "markedRange": { "type": ["object", "null"], "required": ["location", "length"],
+            "markedRange": { "type": ["object", "null"],
               "properties": { "location": { "type": "integer" }, "length": { "type": "integer" } } },
             "selectedRange": { "type": ["object", "null"], "properties": {
               "location": { "type": "integer" }, "length": { "type": "integer" }
