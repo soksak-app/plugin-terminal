@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- P75-3: Keep the render status's required-nullable meaning in the status description and remove an unsupported `description` member from its nested schema. Red: the official diagnostic pack refused the manifest because the schema reader does not accept that member. Green: the owning manifest case passes, P77 `make check` passes, and the official diagnostics pack contains both `diagnostics.json` and the required nullable cursor render schema.
+
 - P75-2: Preserve raw fractional CTFont/CTLine glyph bounds relative to the leading cell, including negative coordinates and overhang beyond a cell. Keep cursor rectangles frame-absolute and inside the raster. Red: the consumer rejected raw Hangul overhang; the signed glyph-rectangle parser accepted a negative absolute cursor rectangle. Green: the owning tests accept finite overhang and reject zero-width/non-finite glyph bounds and negative cursor rectangles atomically. No application was run.
 
 - P75-1: Match the sidecar's cursor draw state and width-2 glyph span. A visible cursor with blinking off has no rectangle or color; a drawn normal cursor requires both its rectangle and effective color. Red: the owning consumer test rejected valid blink-off and width-2 Hangul frames. Green: the focused render metadata test passed. Its original outside-span rejection was later corrected by P75-2 because S78.1 reports raw unclipped CoreText bounds. No application was run.

@@ -278,7 +278,7 @@
       },
       {
         "name": "terminal.cursor",
-        "description": "The terminal cursor position and the rendering policy, shape, blink request and preedit drawn by the sidecar, together with the frame and required nullable render metadata from the same screen event.",
+        "description": "The terminal cursor position and the rendering policy, shape, blink request and preedit drawn by the sidecar, together with the frame and required nullable render metadata from the same screen event; null means no matching draw is available.",
         "schema": {
           "type": "object",
           "properties": {
@@ -311,7 +311,6 @@
             },
             "render": {
               "type": ["object", "null"],
-              "description": "Required. Null means no exact draw metadata is available for this screen frame.",
               "properties": {
                 "frame": { "type": "object", "properties": {
                   "generation": { "type": "integer" }, "raster": { "type": "integer" }, "sequence": { "type": "integer" }

@@ -54,8 +54,12 @@ test("terminal.cursor declares its nullable screen frame", () => {
 test("terminal.cursor declares its required nullable screen render metadata", () => {
   const cursor = manifest.exposes.status.find(({ name }) => name === "terminal.cursor").schema;
   assert.deepEqual(cursor.properties.render.type, ["object", "null"]);
+  assert.equal(Object.hasOwn(cursor.properties.render, "description"), false,
+    "the manifest schema dialect does not permit description on a schema object");
   assert.match(manifest.exposes.status.find(({ name }) => name === "terminal.cursor").description,
     /required nullable render/);
+  assert.match(manifest.exposes.status.find(({ name }) => name === "terminal.cursor").description,
+    /null means no matching draw/);
   assert.deepEqual(cursor.properties.render.properties.pixel.properties.format.enum, ["bgra8"]);
   assert.deepEqual(cursor.properties.render.properties.pixel.properties.alpha.enum, ["premultiplied"]);
   assert.deepEqual(cursor.properties.render.properties.underline.properties.colorSource.enum, ["glyph.foreground"]);

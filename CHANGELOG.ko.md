@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- P75-3: required-nullable render 의미를 status description에 두고 nested schema에서 지원하지 않는 `description` 항목을 제거한다. Red: 공식 diagnostics pack이 schema reader가 지원하지 않는 항목 때문에 manifest를 거부했다. Green: owning manifest test와 P77 `make check`가 통과하고 공식 diagnostics pack에 `diagnostics.json`과 필수 nullable cursor render schema가 포함된다.
+
 - P75-2: leading cell 기준의 raw fractional CTFont/CTLine glyph bounds를 음수 좌표 또는 cell 밖 overhang이 있어도 보존한다. Cursor rectangle은 frame 절대 좌표로 raster 안에 유지한다. Red: consumer가 raw 한글 overhang을 거부했고 signed glyph-rectangle parser는 음수 absolute cursor rectangle을 수락했다. Green: owning test가 finite overhang을 수락하고 zero-width/non-finite glyph bounds와 음수 cursor rectangle을 atomic하게 거부한다. Application은 실행하지 않았다.
 
 - P75-1: Sidecar의 cursor draw 상태와 width-2 glyph span을 맞춘다. Visible이지만 blink가 꺼진 cursor는 rectangle/color가 없고, 실제 그려지는 normal cursor는 rectangle과 effective color가 필요하다. Red: owning consumer test가 유효한 blink-off frame과 width-2 한글 glyph를 거부했다. Green: focused render metadata test가 통과했다. 원래 outside-span 거부는 S78.1이 raw un-clipped CoreText bounds를 보낸다는 점 때문에 P75-2에서 교정했다. Application은 실행하지 않았다.
