@@ -2950,10 +2950,10 @@ test("terminal.ime.trace records native transactions and terminal input, and rep
     "native-input", "terminal-input", "native-input", "terminal-input", "native-input", "terminal-input",
   ]);
   assert.deepEqual(result.entries[0], {
-    sequence: 0, kind: "native-input", input: { type: "input", actions: first.actions, preedit: first.preedit, errors: [] }, cids: first.cids,
+    sequence: 0, kind: "native-input", input: { actions: first.actions, preedit: first.preedit, errors: [] }, cids: first.cids,
   });
   assert.deepEqual(result.entries.filter(({ kind }) => kind === "native-input").map(({ input }) => input), [first, second, third]
-    .map(({ type, actions, preedit, errors }) => ({ type, actions, preedit, errors })));
+    .map(({ actions, preedit, errors }) => ({ actions, preedit, errors })));
 
   await expose.getCommand("terminal.ime.trace")({ action: "start" });
   for (let i = 0; i < 257; i++) regionReference._trigger("input", inputEvent([inputInsert("x")]));
@@ -2968,7 +2968,7 @@ test("terminal.ime.trace records native transactions and terminal input, and rep
   assert.equal(error(), undefined, "a new trace did not resolve the overflow");
 });
 
-test("native focus and cursor state route to sidecar without moving an unframed caret", async () => {
+test("native focus transaction and cursor state route without moving an unframed caret", async () => {
   FakeResizeObserver.reset();
   const fakeAttachImage = createFakeAttachImage();
   const fakeSidecar = createFakeSidecar();
@@ -2989,13 +2989,18 @@ test("native focus and cursor state route to sidecar without moving an unframed 
     event: "state", sessionId: "s1", cols: 10, rows: 4, cellWidth: 9, cellHeight: 18,
     cursor: { row: 2, col: 3 },
   });
-  regionReference._trigger("focus", { focused: true });
+  regionReference._trigger("input", inputEvent([{ type: "focus", focused: true }]));
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(regionReference._caret, undefined, "an unframed state cursor moved the native caret");
+  assert.equal(fakeExpose.getStatus("terminal.session").readFn().error, undefined,
+    "a valid focus action was rejected");
   assert.deepEqual(fakeSidecar.getMessages().at(-1).body, {
     operation: "input", actions: [{ type: "focus", focused: true }],
-    preedit: { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false },
+    preedit: inputPreedit(),
   });
+  await fakeAttachImage.triggerRaw("input", inputEvent([{ type: "focus", focused: false }]));
+  assert.deepEqual(fakeSidecar.getMessages().at(-1).body.actions, [{ type: "focus", focused: false }],
+    "resign focus is kept as the false focus action");
 });
 
 test("cursor state exposes typed shape and blink policy without a caret fallback", async () => {
@@ -4401,7 +4406,7 @@ test("the trace records each input with its text, the session gate and the flush
   await new Promise((resolve) => setImmediate(resolve));
   const recorded = lines.map(([event, fields]) => [event, JSON.parse(JSON.stringify(fields))]);
   assert.deepEqual(recorded.filter(([event]) => ["ime", "input", "input.flush"].includes(event)), [
-    ["ime", { kind: "native-input", input: { type: "input", actions: event.actions, preedit: event.preedit, errors: [] }, cids: event.cids }],
+    ["ime", { kind: "native-input", input: { actions: event.actions, preedit: event.preedit, errors: [] }, cids: event.cids }],
     ["input", { kind: "input", actions: event.actions, preedit: event.preedit, queued: true, queue: 0 }],
     ["input.flush", { count: 1 }],
   ]);
@@ -4427,7 +4432,7 @@ test("the trace records one native input transaction with its actions and final 
   await new Promise((resolve) => setImmediate(resolve));
   const ime = lines.filter(([event]) => event === "ime").map(([, fields]) => JSON.parse(JSON.stringify(fields)));
   assert.deepEqual(ime, [{ kind: "native-input", input: {
-    type: "input", actions: transaction.actions, preedit: transaction.preedit, errors: [],
+    actions: transaction.actions, preedit: transaction.preedit, errors: [],
   }, cids: transaction.cids }]);
 });
 
@@ -4442,7 +4447,8 @@ test("the trace records every message sent to the sidecar with its result, every
   });
   openSession(sidecar);
   region._trigger("input", inputEvent([inputInsert("한")]));
-  region._trigger("focus", { focused: true });
+  const focusTransaction = inputEvent([{ type: "focus", focused: true }]);
+  region._trigger("input", focusTransaction);
   sidecar.triggerEvent("test-session", { event: "directory", uri: "file:///tmp/a", path: "/tmp/a" });
   await new Promise((resolve) => setImmediate(resolve));
   const of = (name) => lines.filter(([event]) => event === name).map(([, fields]) => fields);
@@ -4459,7 +4465,7 @@ test("the trace records every message sent to the sidecar with its result, every
   assert.ok(of("sidecar.event").some((fields) => fields.body.event === "state"));
   // Every event of the image region is recorded with its type and its whole body.
   assert.ok(of("region").some((fields) => fields.type === "input" && fields.actions[0].text === "한"));
-  assert.ok(of("region").some((fields) => fields.type === "focus" && fields.focused === true));
+  assert.ok(of("region").some((fields) => fields.type === "input" && fields.actions[0].type === "focus" && fields.actions[0].focused === true));
 });
 
 test("a failed send is recorded with its error", async () => {

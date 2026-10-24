@@ -4,6 +4,12 @@
 
 ## Unreleased
 
+- P86-1: Accept the required focus action in native input transactions and keep
+  the `native-input` diagnostic projection to `{actions, preedit, errors}`.
+  Red: focus transactions were rejected, and the trace input repeated the
+  region event discriminator. Green: five focused tests pass, including both
+  focus states and exact diagnostic shape.
+
 - P86: Consume each report-bearing native input scope as one validated ordered
   transaction. The terminal applies its final preedit once, sends one VT input
   request, then reports valid errors in order even when the request fails. Red:

@@ -590,6 +590,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
       return { type: "command", selector: action.selector };
     }
+    if (action.type === "focus") {
+      exactKeys(action, ["type", "focused"], `native input action ${index}`);
+      if (typeof action.focused !== "boolean") throw new Error(`native input action ${index} focused must be a boolean`);
+      return { type: "focus", focused: action.focused };
+    }
     throw new Error(`native input action ${index} has unknown type ${action.type}`);
   };
   const normalizeNativeInput = (event) => {
@@ -873,16 +878,26 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       return;
     }
     const { actions, preedit, errors: inputErrors, cids } = transaction;
-    const traceInput = { type: "input", actions, preedit, errors: inputErrors };
+    const traceInput = { actions, preedit, errors: inputErrors };
     notifyInput({ kind: "native-input", input: traceInput, cids });
     traceNative("native-input", { input: traceInput, cids });
     applyCompose(preedit);
+    for (const action of actions) {
+      if (action.type === "focus") {
+        nativeFocused = action.focused;
+        notifyPointer({ kind: "pointer-focus", focused: nativeFocused });
+      }
+    }
     try {
       await enqueueInput({ type: "input", actions, preedit }, cids);
     } catch (error) {
       reportInputError(error);
     }
     for (const { reason } of inputErrors) reportInputError(reason);
+    if (nativeFocused) {
+      for (const resolve of focusWaiters) resolve();
+      focusWaiters.clear();
+    }
   });
 
   onRegion("error", (event) => {
@@ -901,21 +916,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     }
     await observeInput(Promise.resolve().then(() => expose.run(command, {})));
   });
-
-  onRegion("focus", async (event) => {
-    if (typeof event.focused !== "boolean") {
-      reportInputError("native focus event requires boolean focused");
-      return;
-    }
-    nativeFocused = event.focused;
-    notifyPointer({ kind: "pointer-focus", focused: nativeFocused });
-    await observeInput(enqueueInput({ type: "input", actions: [{ type: "focus", focused: event.focused }], preedit: compose }));
-    if (event.focused) {
-      for (const resolve of focusWaiters) resolve();
-      focusWaiters.clear();
-    }
-  });
-
 
   // 네이티브 포커스를 받은 뒤 DOM 기본 동작이 키보드 소유권을 되찾지 않게 한다.
   const preventDefaultFocus = (event) => event.preventDefault();

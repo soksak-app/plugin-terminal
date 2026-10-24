@@ -4,6 +4,12 @@
 
 ## 미배포
 
+- P86-1: Native input transaction의 필수 focus action을 받고 `native-input`
+  diagnostic projection을 `{actions, preedit, errors}`로 유지한다. Red: focus
+  transaction은 거부됐고 trace input은 region event discriminator를 중복했다.
+  Green: 두 focus 상태와 정확한 diagnostic 형식을 포함한 focused test 5개가
+  통과한다.
+
 - P86: 보고할 native input scope를 검증된 순서형 transaction 하나로
   소비한다. Terminal은 최종 preedit을 한 번 적용하고 VT input request 하나를
   보낸 뒤 request가 실패해도 유효한 오류를 순서대로 보고한다. Red: 변경 전
