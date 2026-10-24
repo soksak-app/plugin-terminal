@@ -27,7 +27,7 @@ test("the package publishes the manifest and the view page", () => {
 
 test("the plugin requires the VT sidecar process identity release", () => {
   assert.equal(manifest.dependencies["@soksak/sidecar-vt-alacritty"], "^0.0.14");
-  assert.equal(pkg.version, "0.0.17");
+  assert.equal(pkg.version, "0.0.18");
 });
 
 test("compose and cursor preedit schemas use the supported range keywords", () => {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -53,6 +53,16 @@ try {
     "installer selected the expected terminal package version");
   assert.equal(installed.sidecars["@soksak/sidecar-vt-alacritty"].version, "0.0.14",
     "candidate installation selects the VT release with ordered input delivery");
+  const pluginDirectory = path.join(config, installed.plugins.terminal.path);
+  const diagnosticsPath = path.join(pluginDirectory, "diagnostics.json");
+  assert.ok(existsSync(diagnosticsPath), "installed diagnostic candidate includes diagnostics.json");
+  const diagnostics = JSON.parse(readFileSync(diagnosticsPath, "utf8"));
+  assert.equal(diagnostics.module, "ui/terminal-diagnostics.js",
+    "diagnostics.json names the module loaded by the terminal view");
+  const diagnosticsModule = path.join(pluginDirectory, diagnostics.module);
+  assert.ok(existsSync(diagnosticsModule) && statSync(diagnosticsModule).isFile(),
+    "installed diagnostic candidate includes the declared diagnostics module file");
+  process.stdout.write(`observed diagnostic module ${diagnostics.module}\n`);
   process.stdout.write("candidate installation check passed\n");
 } finally {
   rmSync(config, { recursive: true, force: true });

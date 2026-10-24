@@ -4,6 +4,19 @@
 
 ## 미배포
 
+- P82: Diagnostic candidate pack은 `diagnostics.json`과 선언된 module을 항상
+  포함한다. Red: 공식 installer가 terminal 0.0.17과 VT 0.0.14를 설치한 뒤
+  installed-package 검사에서 declaration이 없어 실패했다. Green: 같은
+  installer check가 terminal 0.0.18과 VT 0.0.14를 설치하고 declaration이
+  view가 적재하는 module을 지정하며 module이 regular file인지 확인한다. 공식
+  diagnostics pack은 copied contract, view, exposure, engines, events, records
+  검사를 통과했고 registry build는 plugin 5개, sidecar 2개, pack 2개를 보고했다.
+  Terminal archive SHA-256은
+  `e06c181f7b5a81c6ced5f3a4d37eaa1e7d9a366e256624b0b09ce12fb299d500`, registry
+  index SHA-256은
+  `2971d9d5d7872e60a4ceeb62c4d9866b0f624036633244741f83e25244da2a56`이다.
+  Candidate는 local이며 미출시 상태고 application을 실행하지 않았다.
+
 - P79: Terminal candidate version을 0.0.16으로 설정하고 P78 committed-input
   snapshot 및 P80 input ordering을 포함한 local archive를 생성한다. 공식
   `make pack`은 core candidate 0.0.21을 사용해 copied contract, view, exposure,

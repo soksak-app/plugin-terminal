@@ -4,6 +4,20 @@
 
 ## Unreleased
 
+- P82: Diagnostic candidate packing now always includes `diagnostics.json`
+  and its declared module. Red: the official installer installed terminal
+  0.0.17 with VT 0.0.14, then the installed-package check failed because the
+  declaration was absent. Green: the same installer check installs terminal
+  0.0.18 with VT 0.0.14 and verifies the declaration names the module loaded
+  by the view and that the module is a regular file. The official diagnostic
+  pack passes copied contract, view, exposure, engines, events and records
+  checks; registry build reports five plugins, two sidecars and two packs.
+  Terminal archive SHA-256:
+  `e06c181f7b5a81c6ced5f3a4d37eaa1e7d9a366e256624b0b09ce12fb299d500`;
+  registry index SHA-256:
+  `2971d9d5d7872e60a4ceeb62c4d9866b0f624036633244741f83e25244da2a56`.
+  The candidate remains local and unreleased; no application was launched.
+
 - P79: Set the terminal candidate version to 0.0.16 and build a local archive
   containing P78 committed-input snapshots and P80 input ordering. The
   official `make pack` path passes its copied contract, view, exposure,
