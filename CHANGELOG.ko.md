@@ -4,6 +4,21 @@
 
 ## 미배포
 
+- P84: VT `^0.0.15`를 요구하는 terminal 0.0.19 local diagnostic candidate를
+  준비한다. 공식 candidate pack은 `diagnostics.json`과 regular module을
+  포함한다. Controlled installer registry에는 VT 0.0.14와 0.0.15가 있으며,
+  설치는 terminal 0.0.19, VT 0.0.15와 `ui/terminal-diagnostics.js`를
+  선택한다. Registry는 plugin 5개, sidecar 2개, pack 2개를 담는다. Terminal
+  archive SHA-256은 `4b4b4c062d6920d7f166f47f111f499b7bf55fa7f1939cb064b65c876a235e60`,
+  VT archive SHA-256은 `c3532df4b23a92de04cbf9eabb72e782d743d85861901b0cfe99b7158fb735ef`,
+  registry index SHA-256은 `b79461cadcd9c64e5ef2b07f6cedfee4b91569be195c00a0699b1164cab122e7`이다.
+  P83 cursor description은 null render metadata가 matching draw 없음을 뜻하는
+  기존 의미를 유지한다. 이전 provisional archive SHA-256
+  `bee9a0c57f288eb247444fbd07c1cf83c3862f236116839618c924c6181640f5`는
+  보존했지만 재직렬화된 declaration에 해당 의미가 빠져 설치하지 않았다. Final
+  archive는 저장소 서식과 복원한 문구를 사용한다. Candidate는 local이며 미출시
+  상태고 application을 실행하지 않았다.
+
 - P83: raw cursor 좌표를 screen hash와 public cursor field에 보존하면서 VT의
   frame-effective screen caret을 사용한다. 필수 nullable `cursor.caret`은
   상태 변경 전에 검증하고 `terminal.cursor.caret`으로 발행하며 non-null일 때만

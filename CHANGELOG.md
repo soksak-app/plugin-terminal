@@ -4,6 +4,24 @@
 
 ## Unreleased
 
+- P84: Prepare terminal 0.0.19 as a local diagnostic candidate requiring VT
+  `^0.0.15`. The official candidate pack includes `diagnostics.json` and its
+  regular module. The controlled installer registry contains VT 0.0.14 and
+  0.0.15; installation selects terminal 0.0.19, VT 0.0.15, and
+  `ui/terminal-diagnostics.js`. The registry contains five plugins, two
+  sidecars and two packs. Terminal archive SHA-256 is
+  `4b4b4c062d6920d7f166f47f111f499b7bf55fa7f1939cb064b65c876a235e60`; VT
+  archive SHA-256 is
+  `c3532df4b23a92de04cbf9eabb72e782d743d85861901b0cfe99b7158fb735ef`;
+  registry index SHA-256 is
+  `b79461cadcd9c64e5ef2b07f6cedfee4b91569be195c00a0699b1164cab122e7`. The
+  P83 cursor description retains the existing meaning that null render metadata
+  means no matching draw. The earlier provisional archive SHA-256
+  `bee9a0c57f288eb247444fbd07c1cf83c3862f236116839618c924c6181640f5` was
+  retained but not installed because its reserialized declaration omitted that
+  meaning; the final archive uses the committed formatting and restored text.
+  The candidate remains local and unreleased; no application was launched.
+
 - P83: Use VT's frame-effective screen caret while preserving raw cursor
   coordinates for the screen hash and public cursor fields. The required
   nullable `cursor.caret` is validated before state changes, published as

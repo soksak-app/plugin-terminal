@@ -278,7 +278,7 @@
       },
       {
         "name": "terminal.cursor",
-        "description": "The terminal cursor position and the rendering policy, shape, blink request and preedit drawn by the sidecar, together with the frame-effective nullable caret and required nullable render metadata from the same screen event.",
+        "description": "The terminal cursor position and the rendering policy, shape, blink request and preedit drawn by the sidecar, together with the frame-effective nullable caret and required nullable render metadata from the same screen event; null means no matching draw.",
         "schema": {
           "type": "object",
           "properties": {
