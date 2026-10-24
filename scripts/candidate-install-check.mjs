@@ -18,10 +18,10 @@ const terminal = index.plugins.find(({ id }) => id === "terminal");
 const vt = index.sidecars.find(({ name }) => name === "@soksak/sidecar-vt-alacritty");
 assert.ok(terminal?.versions.some(({ version }) => version === expectedTerminalVersion),
   `registry does not list terminal ${expectedTerminalVersion}`);
-assert.ok(vt?.versions.some(({ version }) => version === "0.0.14"),
-  "registry must include prior VT 0.0.14 for the controlled selection check");
 assert.ok(vt?.versions.some(({ version }) => version === "0.0.15"),
-  "registry must include VT 0.0.15 for the controlled selection check");
+  "registry must include prior VT 0.0.15 for the controlled selection check");
+assert.ok(vt?.versions.some(({ version }) => version === "0.0.16"),
+  "registry must include VT 0.0.16 for the controlled selection check");
 
 const config = mkdtempSync(path.join(os.tmpdir(), "soksak-terminal-candidate-install-"));
 
@@ -51,8 +51,8 @@ try {
   assert.equal(installed.format, 3, "installer writes the current installed manifest format");
   assert.equal(installed.plugins.terminal.version, expectedTerminalVersion,
     "installer selected the expected terminal package version");
-  assert.equal(installed.sidecars["@soksak/sidecar-vt-alacritty"].version, "0.0.15",
-    "candidate installation selects the VT release with frame-effective caret delivery");
+  assert.equal(installed.sidecars["@soksak/sidecar-vt-alacritty"].version, "0.0.16",
+    "candidate installation selects VT 0.0.16 for diagnostic frame rendering");
   const pluginDirectory = path.join(config, installed.plugins.terminal.path);
   const diagnosticsPath = path.join(pluginDirectory, "diagnostics.json");
   assert.ok(existsSync(diagnosticsPath), "installed diagnostic candidate includes diagnostics.json");

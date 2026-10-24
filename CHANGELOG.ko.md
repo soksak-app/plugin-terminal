@@ -4,6 +4,22 @@
 
 ## 미배포
 
+- P85: VT `^0.0.16`을 요구하는 terminal 0.0.20 local diagnostic candidate를
+  준비한다. Controlled installer registry에 VT 0.0.15와 0.0.16이 있으며,
+  설치는 terminal 0.0.20, VT 0.0.16과 선언된 regular module
+  `ui/terminal-diagnostics.js`를 선택한다. 공식 candidate pack은 diagnostics를
+  포함하고 copied contract, view, exposure, engines, events, records 검사를
+  통과한다. VT 0.0.16 diagnostic binary smoke는 matching render/frame과 engine
+  trace 검사 2/2를 통과한다. Registry는 plugin 5개, sidecar 2개, pack 2개를
+  담는다. Terminal archive SHA-256은
+  `ddc66471f614ae5650670bcfc3317238b0ddb56e9b257a245be98ecce8c4eecf`, VT
+  archive SHA-256은
+  `f022206b32e5b44f03a7f236bad5b47f26c6c94fc4144039359f6ed28491bb85`, registry
+  index SHA-256은
+  `470b5341fd45fa3097c21ecf6b380fee5aec2e6263503dd566249dca1200e885`이다. 이전
+  terminal 0.0.19 archive와 P84 registry는 바뀌지 않았다. Candidate는 local이며
+  미출시 상태고 application을 실행하지 않았다.
+
 - P84: VT `^0.0.15`를 요구하는 terminal 0.0.19 local diagnostic candidate를
   준비한다. 공식 candidate pack은 `diagnostics.json`과 regular module을
   포함한다. Controlled installer registry에는 VT 0.0.14와 0.0.15가 있으며,

@@ -4,6 +4,22 @@
 
 ## Unreleased
 
+- P85: Prepare terminal 0.0.20 as a local diagnostic candidate requiring VT
+  `^0.0.16`. The controlled installer registry contains VT 0.0.15 and 0.0.16;
+  installation selects terminal 0.0.20, VT 0.0.16 and the declared regular
+  module `ui/terminal-diagnostics.js`. The official candidate pack includes
+  diagnostics and passes copied contract, view, exposure, engines, events and
+  records checks. The VT 0.0.16 diagnostic binary smoke passes 2/2 for matching
+  render/frame and engine trace. The registry contains five plugins, two
+  sidecars and two packs. Terminal archive SHA-256 is
+  `ddc66471f614ae5650670bcfc3317238b0ddb56e9b257a245be98ecce8c4eecf`; VT
+  archive SHA-256 is
+  `f022206b32e5b44f03a7f236bad5b47f26c6c94fc4144039359f6ed28491bb85`; registry
+  index SHA-256 is
+  `470b5341fd45fa3097c21ecf6b380fee5aec2e6263503dd566249dca1200e885`. The
+  prior terminal 0.0.19 archive and P84 registry remain unchanged. The candidate
+  is local and unreleased; no application was launched.
+
 - P84: Prepare terminal 0.0.19 as a local diagnostic candidate requiring VT
   `^0.0.15`. The official candidate pack includes `diagnostics.json` and its
   regular module. The controlled installer registry contains VT 0.0.14 and

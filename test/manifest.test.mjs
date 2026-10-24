@@ -26,8 +26,8 @@ test("the package publishes the manifest and the view page", () => {
 });
 
 test("the plugin requires the VT replay-safe caret contract", () => {
-  assert.equal(manifest.dependencies["@soksak/sidecar-vt-alacritty"], "^0.0.15");
-  assert.equal(pkg.version, "0.0.19");
+  assert.equal(manifest.dependencies["@soksak/sidecar-vt-alacritty"], "^0.0.16");
+  assert.equal(pkg.version, "0.0.20");
 });
 
 test("compose and cursor preedit schemas use the supported range keywords", () => {
