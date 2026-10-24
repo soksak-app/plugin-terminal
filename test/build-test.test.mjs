@@ -55,6 +55,21 @@ test("build permits an absent peer marked optional", (t) => {
   assert.equal(result.status, 0, result.stderr);
 });
 
+test("build permits an SDK package key in manifest test data", (t) => {
+  const manifest = `const manifest = { dependencies: { "@soksak/sidecar-vt-alacritty": "^0.0.12" } };\n`;
+  const dir = fixture(t, { testSource: manifest + testImportEntry() });
+  const result = runBuild(dir);
+  assert.equal(result.status, 0, result.stderr);
+});
+
+test("build rejects actual SDK imports in test sources through the parsed graph", (t) => {
+  const specifier = "@soksak" + "/plugin-api/screen-hash";
+  const dir = fixture(t, { testSource: staticImport(specifier) + testImportEntry() });
+  const result = runBuild(dir);
+  assert.notEqual(result.status, 0, "build accepted an SDK import from a test source");
+  assert.match(result.stderr, /test source reaches an SDK package: @soksak\/plugin-api\/screen-hash/);
+});
+
 test("build rewrites SDK imports with Unicode-escaped module specifiers", (t) => {
   const dir = fixture(t, {
     testSource: testImportEntry(),

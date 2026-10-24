@@ -158,9 +158,6 @@ function scanTestDependency(name, fromDirectory, visitedPackages, optional = fal
 }
 for (const file of walk(testsRoot).filter((name) => /\.(?:mjs|js)$/.test(name))) {
   const source = fs.readFileSync(file, "utf8");
-  if (source.includes("@soksak/") || /(?:from|import\()\s*[\"']soksak[\"']/.test(source)) {
-    throw new Error("test source contains an SDK specifier: " + path.relative(root, file));
-  }
   const discovered = importsOf(source, file);
   for (const item of discovered) {
     if (item.specifier.startsWith(".")) {

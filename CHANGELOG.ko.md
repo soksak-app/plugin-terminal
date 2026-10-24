@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- P71: test-build guard가 raw test source 문자열 대신 parsed module import로 SDK dependency를 검사한다. Manifest package key는 일반 data로 허용하고 실제 SDK import는 계속 거부한다. Red: `node --test test/build-test.test.mjs`는 broad string guard가 parsing 전에 실행되어 manifest-data case와 실제 import case가 모두 실패했다. Green: build-guard와 manifest focused tests가 16/16 통과하고, `node scripts/build-test.mjs`가 test UI tree를 만든다.
+
 - P69: Terminal `0.0.15`은 `engines.soksak` `^0.0.21`을 선언한다. 공개 core `v0.0.20`은 `surface.module`을 요구하므로 terminal의 view manifest를 거부한다. Red: `test/core-version.test.mjs`가 `">=0.0.11" !== "^0.0.21"`로 실패한다. Green: 같은 test가 1/1 통과하고 현재 core `engines-check.js`가 범위를 수용한다. SDK pin, plugin version, archive, registry는 바꾸지 않았으며, 일치하는 core release가 게시될 때까지 release는 대기한다.
 
 - P68: 필수 process display identity를 선언한 VT sidecar 0.0.12 이상을 요구하고 terminal plugin을 0.0.15로 올린다. Red: manifest test가 `^0.0.11`에서 실패했다. Green: `^0.0.12`로 통과한다.
