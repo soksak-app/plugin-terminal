@@ -2,6 +2,8 @@
 
 [한국어](features.ko.md)
 
+- [o] P69 — P0: Terminal `0.0.15` declares `engines.soksak: ">=0.0.11"`, which includes published core `v0.0.20`. Its manifest uses `surface.composition.kind: "view"` without the `surface.module` required by that reader, so the range promises an installation that fails. Expected: declare `^0.0.21`, the core candidate that accepts this manifest, and keep plugin release preparation gated until a matching core release is published. Red: `test/core-version.test.mjs` fails with `">=0.0.11" !== "^0.0.21"`. Green: `node --test test/core-version.test.mjs` passes 1/1, and current core `engines-check.js` accepts the package range. This item changes no SDK pin, plugin version, archive or registry.
+
 - [o] P68 — P1: Require VT sidecar 0.0.12 or later because the current sidecar manifest requires the process display identity. Bump the terminal plugin to 0.0.15. Red: the manifest test failed against the previous `^0.0.11` range. Green: the test passes with `^0.0.12` and the new plugin version.
 - [ ] P68-1 — P1: Publish terminal plugin version 0.0.15 with the VT sidecar minimum of 0.0.12, and update the installed plugin registry. The local archive exists; this dependency correction remains unreleased until the version is published.
 

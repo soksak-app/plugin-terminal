@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- P69: Terminal `0.0.15` now declares `engines.soksak` `^0.0.21` because published core `v0.0.20` requires `surface.module` and refuses its view manifest. Red: `test/core-version.test.mjs` fails with `">=0.0.11" !== "^0.0.21"`. Green: the same test passes 1/1, and current core `engines-check.js` accepts the range. No SDK pin, plugin version, archive or registry changed; publication remains pending a matching core release.
+
 - P68: Require VT sidecar 0.0.12 or later, which declares the required process display identity, and bump the terminal plugin to 0.0.15. Red: the manifest test rejected `^0.0.11`; Green: it passes with `^0.0.12`.
 
 - P66: A primary pointer press in the terminal view runs the declared `terminal.focus` command through the shared exposure binder, so it requests keyboard focus for the native image region. The separate view no longer depends on pointer bubbling to the main document card. Focus failures reach the session and the surface error path; disposal removes the binding, and a refused binding releases the terminal session and composition. Four owning tests fail before the correction and pass after it. The 16 owning page tests and the pointer propagation case pass on darwin arm64 with Node 26.11.1, and the declared plugin checks pass with the current core API source. The correction is unreleased (P66-1); pre-existing documentation differences are tracked by P67.

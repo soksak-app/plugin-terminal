@@ -2,6 +2,8 @@
 
 [English](features.md)
 
+- [o] P69 — P0: Terminal `0.0.15`은 공개 core `v0.0.20`을 포함하는 `engines.soksak: ">=0.0.11"`을 선언한다. Manifest는 해당 reader가 요구하는 `surface.module` 없이 `surface.composition.kind: "view"`를 사용하므로, 이 범위는 실패하는 설치까지 지원한다고 주장한다. 기대 동작: 이 manifest를 받는 core candidate만 선언하는 `^0.0.21`을 사용하고, 해당 contract를 담은 core release가 게시될 때까지 plugin release 준비를 대기시킨다. Red: `test/core-version.test.mjs`가 `">=0.0.11" !== "^0.0.21"`로 실패한다. Green: `node --test test/core-version.test.mjs`가 1/1 통과하고 현재 core `engines-check.js`가 package range를 수용한다. 이 항목은 SDK pin, plugin version, archive 또는 registry를 바꾸지 않는다.
+
 - [o] P68 — P1: 현재 sidecar manifest가 process display identity를 필수로 요구하므로 VT sidecar 0.0.12 이상을 사용한다. terminal plugin을 0.0.15로 올린다. Red: manifest test가 기존 `^0.0.11` 범위에서 실패했다. Green: `^0.0.12`와 새 plugin version으로 통과한다.
 - [ ] P68-1 — P1: VT sidecar 최소 버전 0.0.12를 선언한 terminal plugin 0.0.15를 게시하고 설치된 plugin registry를 갱신한다. local archive는 준비됐지만 version이 게시될 때까지 이 dependency correction은 미배포 상태다.
 

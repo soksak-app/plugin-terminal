@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- P69: Terminal `0.0.15`은 `engines.soksak` `^0.0.21`을 선언한다. 공개 core `v0.0.20`은 `surface.module`을 요구하므로 terminal의 view manifest를 거부한다. Red: `test/core-version.test.mjs`가 `">=0.0.11" !== "^0.0.21"`로 실패한다. Green: 같은 test가 1/1 통과하고 현재 core `engines-check.js`가 범위를 수용한다. SDK pin, plugin version, archive, registry는 바꾸지 않았으며, 일치하는 core release가 게시될 때까지 release는 대기한다.
+
 - P68: 필수 process display identity를 선언한 VT sidecar 0.0.12 이상을 요구하고 terminal plugin을 0.0.15로 올린다. Red: manifest test가 `^0.0.11`에서 실패했다. Green: `^0.0.12`로 통과한다.
 
 - P66: terminal view의 primary pointer 누름은 shared exposure binder를 통해 선언된 `terminal.focus` command를 실행하여 native image region의 keyboard focus를 요청한다. 별도 view는 main document card로 pointer가 bubble되는 데 의존하지 않는다. focus 실패는 session과 surface 오류 경로에 전달하고, dispose 시 binding을 제거하며, binding 거부 시 terminal session과 composition을 해제한다. owning test 4개가 수정 전에 실패하고 수정 후 통과한다. darwin arm64와 Node 26.11.1에서 owning page test 16개와 pointer 전파 case가 통과하며, 현재 core API source를 사용한 선언된 plugin 검사가 통과한다. 수정은 미배포 상태이며(P66-1), 기존 문서 차이는 P67로 추적한다.
