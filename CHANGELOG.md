@@ -4,6 +4,20 @@
 
 ## Unreleased
 
+- P87: Prepare terminal 0.0.21 as a local diagnostic candidate requiring VT
+  `^0.0.17`. Red: the manifest check found the previous `^0.0.16` dependency.
+  Green: the manifest case passes 1/1; official `candidate-pack` passes 52
+  copied cases and view, exposure, engines, events and records checks. The
+  installer selects terminal 0.0.21 and VT 0.0.17 and verifies the diagnostic
+  module is a regular file. Terminal archive SHA-256:
+  `f286666794bd606a53ae8b701a1818dae882ff9f9c027b8e4c3c2cff149ebe1b`; VT
+  archive SHA-256:
+  `6f3b7247bd1e14cc3ce4f25717abd0f5c7ad0e69ca79b6867cf90b5e0bfa7f9c`;
+  registry index SHA-256:
+  `b07f05cac2273648449b40bdf4df5c6e4ad28f71663656a87fee8037fa4e9d4f`. The
+  P85 index and its prior artifacts are unchanged. The candidate is local and
+  unreleased; no application was launched.
+
 - P86-1: Accept the required focus action in native input transactions and keep
   the `native-input` diagnostic projection to `{actions, preedit, errors}`.
   Red: focus transactions were rejected, and the trace input repeated the

@@ -25,9 +25,9 @@ test("the package publishes the manifest and the view page", () => {
   assert.equal(manifest.surface.module, undefined, "a view surface has no module");
 });
 
-test("the plugin requires the VT replay-safe caret contract", () => {
-  assert.equal(manifest.dependencies["@soksak/sidecar-vt-alacritty"], "^0.0.16");
-  assert.equal(pkg.version, "0.0.20");
+test("the local transaction candidate requires the VT input transaction contract", () => {
+  assert.equal(manifest.dependencies["@soksak/sidecar-vt-alacritty"], "^0.0.17");
+  assert.equal(pkg.version, "0.0.21");
 });
 
 test("compose and cursor preedit schemas use the supported range keywords", () => {

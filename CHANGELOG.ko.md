@@ -4,6 +4,18 @@
 
 ## 미배포
 
+- P87: VT `^0.0.17`을 요구하는 terminal 0.0.21 local diagnostic candidate를
+  준비한다. Red: manifest 검사에서 이전 의존 범위 `^0.0.16`을 확인했다.
+  Green: manifest case 1/1이 통과하고 공식 `candidate-pack`은 copied case
+  52개와 view, exposure, engines, events, records 검사를 통과한다. Installer는
+  terminal 0.0.21과 VT 0.0.17을 선택하고 diagnostics module이 regular file인지
+  확인한다. Terminal archive SHA-256은
+  `f286666794bd606a53ae8b701a1818dae882ff9f9c027b8e4c3c2cff149ebe1b`, VT
+  archive SHA-256은 `6f3b7247bd1e14cc3ce4f25717abd0f5c7ad0e69ca79b6867cf90b5e0bfa7f9c`,
+  registry index SHA-256은 `b07f05cac2273648449b40bdf4df5c6e4ad28f71663656a87fee8037fa4e9d4f`이다.
+  P85 index와 이전 artifact는 바뀌지 않았다. Candidate는 local 미출시 상태며
+  application을 실행하지 않았다.
+
 - P86-1: Native input transaction의 필수 focus action을 받고 `native-input`
   diagnostic projection을 `{actions, preedit, errors}`로 유지한다. Red: focus
   transaction은 거부됐고 trace input은 region event discriminator를 중복했다.

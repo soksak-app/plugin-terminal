@@ -42,10 +42,12 @@ candidate-pack: check
 
 # Checks the sidecar version selected by the official installer for a local candidate registry.
 candidate-install-check:
-	@test -n "$(SOK)" || { echo "make candidate-install-check SOK=<sok> REGISTRY=<folder> EXPECTED_TERMINAL_VERSION=<version>" >&2; exit 2; }
-	@test -n "$(REGISTRY)" || { echo "make candidate-install-check SOK=<sok> REGISTRY=<folder> EXPECTED_TERMINAL_VERSION=<version>" >&2; exit 2; }
-	@test -n "$(EXPECTED_TERMINAL_VERSION)" || { echo "make candidate-install-check SOK=<sok> REGISTRY=<folder> EXPECTED_TERMINAL_VERSION=<version>" >&2; exit 2; }
-	SOK="$(SOK)" CANDIDATE_REGISTRY="$(REGISTRY)" EXPECTED_TERMINAL_VERSION="$(EXPECTED_TERMINAL_VERSION)" node scripts/candidate-install-check.mjs
+	@test -n "$(SOK)" || { echo "make candidate-install-check SOK=<sok> REGISTRY=<folder> EXPECTED_TERMINAL_VERSION=<version> PREVIOUS_VT_VERSION=<version> EXPECTED_VT_VERSION=<version>" >&2; exit 2; }
+	@test -n "$(REGISTRY)" || { echo "make candidate-install-check SOK=<sok> REGISTRY=<folder> EXPECTED_TERMINAL_VERSION=<version> PREVIOUS_VT_VERSION=<version> EXPECTED_VT_VERSION=<version>" >&2; exit 2; }
+	@test -n "$(EXPECTED_TERMINAL_VERSION)" || { echo "make candidate-install-check SOK=<sok> REGISTRY=<folder> EXPECTED_TERMINAL_VERSION=<version> PREVIOUS_VT_VERSION=<version> EXPECTED_VT_VERSION=<version>" >&2; exit 2; }
+	@test -n "$(PREVIOUS_VT_VERSION)" || { echo "make candidate-install-check SOK=<sok> REGISTRY=<folder> EXPECTED_TERMINAL_VERSION=<version> PREVIOUS_VT_VERSION=<version> EXPECTED_VT_VERSION=<version>" >&2; exit 2; }
+	@test -n "$(EXPECTED_VT_VERSION)" || { echo "make candidate-install-check SOK=<sok> REGISTRY=<folder> EXPECTED_TERMINAL_VERSION=<version> PREVIOUS_VT_VERSION=<version> EXPECTED_VT_VERSION=<version>" >&2; exit 2; }
+	SOK="$(SOK)" CANDIDATE_REGISTRY="$(REGISTRY)" EXPECTED_TERMINAL_VERSION="$(EXPECTED_TERMINAL_VERSION)" PREVIOUS_VT_VERSION="$(PREVIOUS_VT_VERSION)" EXPECTED_VT_VERSION="$(EXPECTED_VT_VERSION)" node scripts/candidate-install-check.mjs
 
 # The checks of the ci workflow that a push needs: make test, make check, and the commit messages of the pushed range.
 # RANGE holds the commits of the pushed refs; the pre-push hook sets it, and it defaults to origin/main..HEAD.
