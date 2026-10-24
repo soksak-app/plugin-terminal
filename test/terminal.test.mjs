@@ -2077,7 +2077,7 @@ test("native insert callbacks preserve compatibility jamo instead of discarding 
     "every native insert must be preserved exactly unless the native input client identifies it as preedit");
 });
 
-test("Korean IME insertText commit clears an active preedit and keeps later typing live", async () => {
+test("a cleared Korean preedit commits insertText and keeps later typing live", async () => {
   FakeResizeObserver.reset();
   const fakeAttachImage = createFakeAttachImage();
   const fakeSidecar = createFakeSidecar();
@@ -2100,8 +2100,11 @@ test("Korean IME insertText commit clears an active preedit and keeps later typi
   regionReference._trigger("compose", {
     text: "한", selectedRange: { location: 1, length: 0 }, replacementRange: null, attributed: true,
   });
-  // NSTextInputClient.insertText는 native marked 상태를 지우지만 빈 compose event는 따로 보내지 않는다.
   regionReference._trigger("insert", { text: "한" });
+  // Korean partial commits are reported before the region reports the changed empty preedit.
+  regionReference._trigger("compose", {
+    text: "", selectedRange: null, replacementRange: null, attributed: false,
+  });
   regionReference._trigger("insert", { text: "글" });
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
@@ -2214,8 +2217,8 @@ test("an input method's edited syllables reach the PTY once and in order before 
   const insert = (text) => ({ type: "insert", text, replacementRange: null, attributed: false });
   const sequence = [
     insert("d"), insert("d"), insert("d"),
-    compose("ㅎ"), compose("하"), compose("한"), insert("한"),
-    compose("ㄱ"), compose("그"), compose("글"), insert("글"),
+    compose("ㅎ"), compose("하"), compose("한"), insert("한"), compose(""),
+    compose("ㄱ"), compose("그"), compose("글"), insert("글"), compose(""),
     compose(" "), insert(" "), compose(""),
     { type: "key", key: "Enter", shift: false, alt: false, ctrl: false },
   ];
@@ -2227,6 +2230,44 @@ test("an input method's edited syllables reach the PTY once and in order before 
   assert.deepEqual(written, ["d", "d", "d", "한", "글", " ", "<Enter>"],
     "only committed text reaches the PTY, once and in order, before the Enter key");
   assert.equal(expose.getStatus("terminal.compose").readFn().text, "", "no preedit remains after the commit");
+});
+
+test("a partial native insert preserves the remaining input-method preedit", async () => {
+  FakeResizeObserver.reset();
+  const fakeAttachImage = createFakeAttachImage();
+  const fakeSidecar = createFakeSidecar();
+  let regionReference;
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
+      regionReference = fakeAttachImage.function(view, name, sidecar);
+      return regionReference;
+    },
+    sidecar: fakeSidecar,
+    expose,
+    scale: 1,
+    window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  FakeResizeObserver.triggerAll();
+  openSession(fakeSidecar);
+
+  await fakeAttachImage.trigger("compose", { text: "ㅏㅏ", selectedRange: { location: 2, length: 0 }, cids: ["ime.1"] });
+  await fakeAttachImage.trigger("insert", { text: "ㅏ", replacementRange: null, attributed: false, cids: ["ime.2"] });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(expose.getStatus("terminal.compose").readFn().text, "ㅏㅏ",
+    "a committed prefix does not end the unchanged remaining preedit");
+  const inputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input");
+  assert.deepEqual(inputs.map(({ body }) => body.compose?.text ?? (body.bytes ? Buffer.from(body.bytes, "base64").toString("utf8") : null)),
+    ["ㅏㅏ", "ㅏ"], "a partial insert does not send an empty compose or duplicate the preedit");
+
+  await fakeAttachImage.trigger("compose", { text: "", selectedRange: null, replacementRange: null, cids: ["ime.3"] });
+  assert.equal(expose.getStatus("terminal.compose").readFn().text, "",
+    "an empty compose clears the preedit after the committed prefix is sent");
+  const afterCommit = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input");
+  assert.deepEqual(afterCommit.map(({ body }) => body.compose?.text ?? (body.bytes ? Buffer.from(body.bytes, "base64").toString("utf8") : null)),
+    ["ㅏㅏ", "ㅏ", ""], "the native insert arrives before its changed empty preedit");
 });
 
 test("accepting native marked text writes it to the PTY exactly once", async () => {

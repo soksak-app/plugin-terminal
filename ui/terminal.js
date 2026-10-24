@@ -688,20 +688,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     traceNative("native-insert", event);
     const cids = regionCids(event);
     if (cids === null) return;
-    let composeRequest = null;
-    if (compose.text) {
-      compose = { text: "", selectedRange: null, replacementRange: null, attributed: false };
-      session = { ...session, compose };
-      changed("session");
-      changed("compose");
-      composeRequest = enqueueInput({ type: "compose", ...compose }, cids);
-    }
+    // An insert can commit a prefix while the native region keeps the same preedit. Only a compose event changes that state.
     const insertRequest = enqueueInput({ type: "insert", text }, cids);
-    if (composeRequest) {
-      await Promise.all([observeInput(composeRequest), observeInput(insertRequest)]);
-    } else {
-      await observeInput(insertRequest);
-    }
+    await observeInput(insertRequest);
   });
 
   // 영역 key 이벤트: 특수 키와 수정자

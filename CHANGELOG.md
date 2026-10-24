@@ -6,6 +6,8 @@
 
 - P71: The test-build guard now checks SDK dependencies through parsed module imports instead of scanning raw test source text. Manifest package keys remain ordinary data, while actual SDK imports remain rejected. Red: `node --test test/build-test.test.mjs` failed both the manifest-data case and the actual-import case because the broad string guard ran before parsing. Green: the focused build-guard and manifest tests pass 16/16, and `node scripts/build-test.mjs` builds the test UI tree.
 
+- P70: A native insert can commit a prefix while the Korean input method keeps the same preedit, so no changed compose callback follows it. The terminal previously cleared that preedit on every insert and briefly hid the remaining input. Red: `a partial native insert preserves the remaining input-method preedit` fails on the unchanged handler with actual compose `""` instead of `"ㅏㅏ"`. Green: the handler keeps compose state until a compose event changes it; the same test verifies insert-before-empty-compose ordering, and six focused terminal IME tests pass. The correction is unreleased; P70-1 tracks the package and registry release.
+
 - P69: Terminal `0.0.15` now declares `engines.soksak` `^0.0.21` because published core `v0.0.20` requires `surface.module` and refuses its view manifest. Red: `test/core-version.test.mjs` fails with `">=0.0.11" !== "^0.0.21"`. Green: the same test passes 1/1, and current core `engines-check.js` accepts the range. No SDK pin, plugin version, archive or registry changed; publication remains pending a matching core release.
 
 - P68: Require VT sidecar 0.0.12 or later, which declares the required process display identity, and bump the terminal plugin to 0.0.15. Red: the manifest test rejected `^0.0.11`; Green: it passes with `^0.0.12`.
