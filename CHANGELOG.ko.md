@@ -4,6 +4,14 @@
 
 ## 미배포
 
+- P91-terminal: native-input marked-range 거부 assertion을 owner 오류 문구에
+  맞춘다. 덮어쓴 전체 test log에는 실패가 보존되지 않았다. Red: 집중 owner
+  test의 네 subcase가 모두 실패했다. 누락 field는 정확한 preedit key 검사에서
+  거부됐고 나머지는 `native input preedit markedRange`가 아닌 `IME markedRange`
+  접두어를 사용했다(`/tmp/terminal-P91-red.log`). Green: 같은 test 네 case가
+  모두 통과하며 compose status 불변과 sidecar request 부재도 확인한다
+  (`/tmp/terminal-P91-green.log`). Production validation은 바뀌지 않았다.
+
 - P90-terminal: 비동기 hash 계산 전에 수락한 native frame tuple을 캡처해
   terminal frame marker에 포함한다. 한 screen message에서 나온 두 native raster를
   구분할 수 있다. 집중 owner test 2/2가 통과했으며 runtime 검증은 남아 있다.

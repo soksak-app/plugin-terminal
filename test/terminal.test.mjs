@@ -2716,10 +2716,10 @@ test("native compose forwards the exact UTF-16 markedRange and explicit null", {
 
 test("native compose rejects missing and out-of-text markedRanges before status or queue changes", { timeout: 20000 }, async (t) => {
   const cases = [
-    ["missing", undefined, /markedRange is required/],
-    ["negative", { location: -1, length: 1 }, /markedRange must contain nonnegative integer location and length/],
-    ["outside text", { location: 1, length: 2 }, /markedRange must fit text in UTF-16 units/],
-    ["grapheme split", { location: 1, length: 1 }, /markedRange must align with grapheme boundaries/],
+    ["missing", undefined, /native input preedit must contain exactly attributed, markedRange, replacementRange, selectedRange, text/],
+    ["negative", { location: -1, length: 1 }, /IME markedRange must contain nonnegative integer location and length/],
+    ["outside text", { location: 1, length: 2 }, /IME markedRange must fit text in UTF-16 units/],
+    ["grapheme split", { location: 1, length: 1 }, /IME markedRange must align with grapheme boundaries/],
   ];
   for (const [name, markedRange, expectedError] of cases) {
     await t.test(name, { timeout: 5000 }, async () => {
@@ -2747,7 +2747,7 @@ test("native compose rejects missing and out-of-text markedRanges before status 
 
       await fakeAttachImage.triggerRaw("input", inputEvent([], event));
 
-      assert.match(expose.getStatus("terminal.session").readFn().error, new RegExp(`terminal input failed: native input preedit ${expectedError.source}`),
+      assert.match(expose.getStatus("terminal.session").readFn().error, new RegExp(`terminal input failed: ${expectedError.source}`),
         "the malformed native markedRange is reported");
       assert.deepEqual(expose.getStatus("terminal.compose").readFn(), before,
         "the malformed native markedRange does not update status");

@@ -4,6 +4,15 @@
 
 ## Unreleased
 
+- P91-terminal: Align the native-input marked-range rejection assertions with
+  the owner diagnostics. The overwritten broad test log did not preserve the
+  failures. Red: the focused owner test failed all four subcases because the
+  missing-field error came from the exact preedit-key check and the other
+  errors were prefixed `IME markedRange`, not `native input preedit markedRange`
+  (`/tmp/terminal-P91-red.log`). Green: the same test passes all four subcases
+  while checking the unchanged compose status and absence of a sidecar request
+  (`/tmp/terminal-P91-green.log`). Production validation is unchanged.
+
 - P90-terminal: Include the accepted native frame tuple in the terminal
   frame marker. Capture the tuple before asynchronous hash calculation so two
   native rasters from one screen message remain distinguishable. The focused
