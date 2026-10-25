@@ -4710,10 +4710,22 @@ test("a screen message is stored as the frame event with the hash of the golden 
     {
       // The session of the frame record is the session of the sidecar ("s1" of openSession), which its frame records name.
       session: "s1", segment: vector.message.segment, sequence: vector.message.sequence, rows: vector.message.rows,
-      cols: vector.message.cols, hash: vector.hash,
+      cols: vector.message.cols, frame: null, hash: vector.hash,
     },
     "debug",
   ], vector.name);
+});
+
+test("a frame record preserves the accepted native frame tuple before asynchronous hashing", async () => {
+  const lines = [];
+  const sidecar = await startScreenTerminal(lines);
+  const message = structuredClone(SCREEN_FRAME_PREEDIT);
+  const acceptedFrame = { ...message.frame };
+  sidecar.triggerEvent("test-session", message);
+  message.frame.generation += 1;
+  await framesStored(lines, 1);
+  const [event] = lines.filter(([name]) => name === "frame").slice(-1);
+  assert.deepEqual(event?.[1]?.frame, acceptedFrame);
 });
 
 test("valid copied screen messages do not leave a screen hash error in terminal.session", async () => {

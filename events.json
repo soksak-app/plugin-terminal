@@ -426,6 +426,32 @@
           "cols": {
             "type": "number"
           },
+          "frame": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "generation": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "raster": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "generation",
+              "raster",
+              "sequence"
+            ],
+            "additionalProperties": false
+          },
           "hash": {
             "type": "string"
           }
@@ -436,10 +462,11 @@
           "sequence",
           "rows",
           "cols",
+          "frame",
           "hash"
         ]
       },
-      "description": "The screen hash of a screen message of the sidecar: the session of the sidecar, the replay segment and the sequence of the message, the size of the grid and the SHA-256 of the screen as 64 lowercase hexadecimal characters."
+      "description": "The accepted native frame tuple or null for the sidecar screen message, its session, replay segment and message sequence, grid dimensions, and the screen SHA-256 as 64 lowercase hexadecimal characters."
     },
     "plugin.terminal.error": {
       "layer": "plugin",

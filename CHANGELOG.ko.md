@@ -4,6 +4,10 @@
 
 ## 미배포
 
+- P90-terminal: 비동기 hash 계산 전에 수락한 native frame tuple을 캡처해
+  terminal frame marker에 포함한다. 한 screen message에서 나온 두 native raster를
+  구분할 수 있다. 집중 owner test 2/2가 통과했으며 runtime 검증은 남아 있다.
+
 - P89-terminal: IME input trace에서 별도 screen-frame history를 제거한다.
   기존 performance trace는 event-size 정책에 따라 sidecar event body 전체를
   기록하며 수락된 frame의 DEBUG marker가 대응하는 session, segment, sequence를

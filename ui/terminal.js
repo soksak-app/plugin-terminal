@@ -1413,8 +1413,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       // The session of the sidecar, which its frame records name (docs/spec/replay.md#records in core).
       const { sequence, segment } = body;
       const { sessionId } = session;
+      const frame = body.frame === null ? null : {
+        generation: body.frame.generation, raster: body.frame.raster, sequence: body.frame.sequence,
+      };
       screenHash(message).then(
-        (hash) => runtime.log.debug("frame", { session: sessionId, segment, sequence, rows: message.rows, cols: message.cols, hash }),
+        (hash) => runtime.log.debug("frame", { session: sessionId, segment, sequence, rows: message.rows, cols: message.cols, frame, hash }),
         (error) => reportInputError(error, "screen"),
       );
       // 링크와 screen.read 는 글자, 폭, 링크만 쓴다. 색과 속성은 래스터가 그린다.

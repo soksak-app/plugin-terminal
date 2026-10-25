@@ -22,6 +22,11 @@ test("the catalog declares the layer plugin and events of the form plugin.termin
   assert.equal(catalog.schema, 3);
   assert.deepEqual(catalog.layers, ["plugin"]);
   assert.ok(Object.keys(catalog.events).length > 0);
+  const frame = catalog.events["plugin.terminal.frame"].fields;
+  assert.ok(frame.required.includes("frame"));
+  assert.deepEqual(frame.properties.frame.type, ["object", "null"]);
+  assert.deepEqual(frame.properties.frame.required, ["generation", "raster", "sequence"]);
+  assert.equal(frame.properties.frame.additionalProperties, false);
   for (const [name, event] of Object.entries(catalog.events)) {
     assert.match(name, /^plugin\.terminal\.[a-z_]+(\.[a-z_]+)*$/, name);
     assert.equal(event.layer, "plugin", name);

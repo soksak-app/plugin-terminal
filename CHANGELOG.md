@@ -4,6 +4,11 @@
 
 ## Unreleased
 
+- P90-terminal: Include the accepted native frame tuple in the terminal
+  frame marker. Capture the tuple before asynchronous hash calculation so two
+  native rasters from one screen message remain distinguishable. The focused
+  owner tests pass 2/2; runtime verification remains pending.
+
 - P89-terminal: Remove the parallel screen-frame history from the IME input
   trace. The existing performance trace records whole sidecar bodies under
   its event-size policy. The accepted-frame DEBUG marker supplies the matching
