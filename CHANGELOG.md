@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- F239-77-terminal: Complete local schema-3 catalog acceptance with the matching installed diagnostic cohort. The current SDK checks 11 sources with zero pending rules and 17 events; both host installations contain the exact source catalog and pass application log audits. Public publication remains separate.
+
 - P91-terminal: Align the native-input marked-range rejection assertions with
   the owner diagnostics. The overwritten broad test log did not preserve the
   failures. Red: the focused owner test failed all four subcases because the

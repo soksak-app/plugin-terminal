@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- F239-77-terminal: 일치하는 설치 diagnostic cohort로 로컬 schema-3 catalog acceptance를 완료한다. 현재 SDK가 source 11개와 pending rule 0개, event 17개를 검사하며 양쪽 host 설치본의 catalog가 source와 정확히 일치하고 application log audit을 통과한다. Public publication은 별도다.
+
 - P91-terminal: native-input marked-range 거부 assertion을 owner 오류 문구에
   맞춘다. 덮어쓴 전체 test log에는 실패가 보존되지 않았다. Red: 집중 owner
   test의 네 subcase가 모두 실패했다. 누락 field는 정확한 preedit key 검사에서
