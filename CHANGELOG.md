@@ -4,6 +4,14 @@
 
 ## Unreleased
 
+- F239-77-terminal: Convert the event catalog to schema 3 JSON Schema while
+  preserving event names, classes, levels, and required/optional field
+  semantics. Red: the core schema-3 reader reported schema and field-shape
+  findings for the schema-2 catalog. Green: the current core event check
+  accepts all 17 declarations and 20 emit sites; the focused catalog test and
+  current-core package check pass. Runtime acceptance requires a fresh install
+  with the schema-3 core and plugin cohort.
+
 - P87: Prepare terminal 0.0.21 as a local diagnostic candidate requiring VT
   `^0.0.17`. Red: the manifest check found the previous `^0.0.16` dependency.
   Green: the manifest case passes 1/1; official `candidate-pack` passes 52

@@ -4,6 +4,14 @@
 
 ## 미배포
 
+- F239-77-terminal: Event name, class, level과 필수/선택 field 의미를
+  유지하면서 event catalog를 schema 3 JSON Schema로 변환한다. Red: 현재
+  core schema-3 reader가 schema-2 catalog의 schema와 field 형식 문제를
+  보고했다. Green: 현재 core event check가 declaration 17개와 emit site
+  20개를 모두 허용하고 focused catalog test와 current-core package check가
+  통과한다. Runtime acceptance에는 schema-3 core와 plugin cohort의 새 설치가
+  필요하다.
+
 - P87: VT `^0.0.17`을 요구하는 terminal 0.0.21 local diagnostic candidate를
   준비한다. Red: manifest 검사에서 이전 의존 범위 `^0.0.16`을 확인했다.
   Green: manifest case 1/1이 통과하고 공식 `candidate-pack`은 copied case
