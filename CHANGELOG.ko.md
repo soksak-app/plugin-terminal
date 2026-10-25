@@ -4,6 +4,15 @@
 
 ## 미배포
 
+- P88-terminal: native 및 terminal input record와 함께 수락된 모든
+  screen-frame 상태를 bounded IME trace에 보존한다. Red: 변경 전 trace test는
+  유효한 screen message 뒤 frame history를 반환하지 않아 실패했다. Green:
+  focused trace test 1/1이 현재 frame seed, 수락한 frame snapshot, 정확한
+  cursor/render/row 상태와 공유 용량 overflow 누락 수를 검증한다. Manifest
+  test 12/12와 현재 core의 `make check`에서 복사 case, view, exposure, engines,
+  events, records(57개 파일)가 통과한다. Application이나 activation run은 하지
+  않았으며 core consumer 검증은 F239-134에 남아 있다.
+
 - F239-77-terminal: Event name, class, level과 필수/선택 field 의미를
   유지하면서 event catalog를 schema 3 JSON Schema로 변환한다. Red: 현재
   core schema-3 reader가 schema-2 catalog의 schema와 field 형식 문제를

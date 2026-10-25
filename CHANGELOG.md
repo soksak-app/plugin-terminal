@@ -4,6 +4,16 @@
 
 ## Unreleased
 
+- P88-terminal: Keep every accepted screen-frame state in the bounded IME
+  trace alongside native and terminal input records. Red: the unchanged trace
+  test failed because the trace returned no frame history after valid screen
+  messages. Green: the focused trace test passes 1/1 with a seeded current
+  frame, accepted frame snapshots, exact cursor/render/row state and an explicit
+  shared-capacity overflow count. The manifest test passes 12/12 and current-core
+  `make check` passes copied cases, view, exposure, engines, events and records
+  (57 files). No application or activation run was performed; core consumer
+  verification remains in F239-134.
+
 - F239-77-terminal: Convert the event catalog to schema 3 JSON Schema while
   preserving event names, classes, levels, and required/optional field
   semantics. Red: the core schema-3 reader reported schema and field-shape
