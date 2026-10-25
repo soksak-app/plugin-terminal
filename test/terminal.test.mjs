@@ -2935,18 +2935,7 @@ test("terminal.ime.trace records native transactions and terminal input, and rep
   FakeResizeObserver.triggerAll();
   openSession(fakeSidecar);
 
-  const screenAt = () => {
-    const frame = SCREEN_FRAME_PREEDIT.frame;
-    return {
-      ...structuredClone(SCREEN_FRAME_PREEDIT),
-      frame,
-      render: SCREEN_RENDER(frame),
-    };
-  };
-  fakeSidecar.triggerRaw("test-session", screenAt());
-
   await expose.getCommand("terminal.ime.trace")({ action: "start" });
-  fakeSidecar.triggerRaw("test-session", screenAt());
   const first = inputEvent([inputKey("Char", "d"), inputInsert("d")]);
   const second = inputEvent([], inputPreedit("ㅎ"));
   const third = inputEvent([inputInsert("한")]);
@@ -2957,21 +2946,13 @@ test("terminal.ime.trace records native transactions and terminal input, and rep
   await new Promise((resolve) => setImmediate(resolve));
   const result = await expose.getCommand("terminal.ime.trace")({ action: "stop" });
   assert.equal(result.overflow, false);
-  assert.deepEqual(result.frames.map(({ frame }) => frame), [screenAt().frame, screenAt().frame],
-    "the trace retains the seeded frame and every accepted frame after status updates can coalesce");
-  assert.deepEqual(result.frames.map(({ sequence, order }) => ({ sequence, order })), [
-    { sequence: 0, order: 0 }, { sequence: 1, order: 1 },
-  ], "frame snapshots retain their positions in the complete event order");
-  assert.equal(result.frames[0].rows[0].map(({ ch }) => ch).join(""), "good");
-  assert.equal(result.frames[0].render.frame.sequence, SCREEN_FRAME_PREEDIT.frame.sequence);
-  assert.deepEqual(result.frames.map(({ cursor }) => cursor.preedit), [
-    SCREEN_FRAME_PREEDIT.cursor.preedit, SCREEN_FRAME_PREEDIT.cursor.preedit,
-  ], "each frame keeps the preedit from its own screen message");
+  assert.equal(Object.hasOwn(result, "frames"), false,
+    "the IME input trace does not maintain a parallel screen-frame history");
   assert.deepEqual(result.entries.map(({ kind }) => kind), [
     "native-input", "terminal-input", "native-input", "terminal-input", "native-input", "terminal-input",
   ]);
   assert.deepEqual(result.entries[0], {
-    sequence: 0, order: 2, kind: "native-input", input: { actions: first.actions, preedit: first.preedit, errors: [] }, cids: first.cids,
+    sequence: 0, kind: "native-input", input: { actions: first.actions, preedit: first.preedit, errors: [] }, cids: first.cids,
   });
   assert.deepEqual(result.entries.filter(({ kind }) => kind === "native-input").map(({ input }) => input), [first, second, third]
     .map(({ actions, preedit, errors }) => ({ actions, preedit, errors })));
@@ -2981,10 +2962,6 @@ test("terminal.ime.trace records native transactions and terminal input, and rep
   const overflow = expose.getStatus("terminal.ime.trace").readFn();
   assert.equal(overflow.enabled, false);
   assert.equal(overflow.overflow, true);
-  assert.equal(overflow.entries.length + overflow.frames.length, 256,
-    "the trace stores exactly its shared record capacity");
-  assert.equal(overflow.omittedCount, 259,
-    "overflow counts the native input and terminal request records omitted after reaching capacity");
   const error = () => expose.getStatus("terminal.session").readFn().error;
   assert.equal(error(), "IME diagnostic trace capacity exceeded");
   openSession(fakeSidecar);

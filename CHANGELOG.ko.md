@@ -4,6 +4,15 @@
 
 ## 미배포
 
+- P89-terminal: IME input trace에서 별도 screen-frame history를 제거한다.
+  기존 performance trace는 event-size 정책에 따라 sidecar event body 전체를
+  기록하며 수락된 frame의 DEBUG marker가 대응하는 session, segment, sequence를
+  제공한다. Red: P88 상태에서 IME trace에 `frames` property가 노출되어 owner
+  test가 실패했다.
+  Green: frame observer와 bounded history를 제거한 뒤 같은 focused test가
+  통과하며 native/terminal input entry와 overflow 동작은 유지된다. 영향을 받는
+  diagnostic-manifest test 2개와 current-core `make check`가 통과한다.
+
 - P88-terminal: native 및 terminal input record와 함께 수락된 모든
   screen-frame 상태를 bounded IME trace에 보존한다. Red: 변경 전 trace test는
   유효한 screen message 뒤 frame history를 반환하지 않아 실패했다. Green:

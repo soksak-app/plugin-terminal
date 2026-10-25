@@ -4,6 +4,15 @@
 
 ## Unreleased
 
+- P89-terminal: Remove the parallel screen-frame history from the IME input
+  trace. The existing performance trace records whole sidecar bodies under
+  its event-size policy. The accepted-frame DEBUG marker supplies the matching
+  session, segment and sequence. Red: the owner test failed against P88
+  because the IME trace exposed a `frames` property. Green: the same focused test passes after the
+  frame observer and bounded history are removed; native and terminal input
+  entries and their overflow behavior remain unchanged. The two affected
+  diagnostic-manifest tests and current-core `make check` pass.
+
 - P88-terminal: Keep every accepted screen-frame state in the bounded IME
   trace alongside native and terminal input records. Red: the unchanged trace
   test failed because the trace returned no frame history after valid screen

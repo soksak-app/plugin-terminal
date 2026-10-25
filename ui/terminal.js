@@ -427,7 +427,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   let compose = session.compose;
   // 네이티브 입력 callback 과 터미널 입력 작업을 받는 함수. 진단 빌드의 진단 모듈만 등록한다.
   const inputObservers = new Set();
-  const screenObservers = new Set();
   // 진단 command terminal.screen.alter 가 다음 screen 메시지를 바꾸도록 요청했는지.
   let alterNextScreen = false;
   const pointerObservers = new Set();
@@ -437,16 +436,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   };
   const notifyInput = (entry) => {
     for (const fn of inputObservers) fn(entry);
-  };
-  const screenSnapshot = () => screenFrame === null ? null : JSON.parse(JSON.stringify({
-    frame: screenFrame,
-    rows: screen,
-    cols: session.cols,
-    cursor,
-    render: cursor.render,
-  }));
-  const notifyScreen = (snapshot) => {
-    for (const fn of screenObservers) fn(snapshot);
   };
   // The trace records each report-bearing input scope as one ordered transaction, including its final preedit and errors.
   const traceNative = (kind, event) => {
@@ -1469,7 +1458,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
           col, row, visible, ...(focused === undefined ? {} : { focused }), drawn, frame: body.frame,
           render: body.render, caret: body.cursor.caret, preedit: body.cursor.preedit ?? null,
         });
-        notifyScreen(screenSnapshot());
         if (resolveError("screen")) changed("session");
       }
       if (pendingScreenRead) {
@@ -1869,11 +1857,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         inputObservers.add(fn);
         return () => inputObservers.delete(fn);
       },
-      onScreen: (fn) => {
-        screenObservers.add(fn);
-        return () => screenObservers.delete(fn);
-      },
-      readScreen: screenSnapshot,
       onPointer: (fn) => {
         pointerObservers.add(fn);
         return () => pointerObservers.delete(fn);

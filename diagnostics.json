@@ -9,15 +9,13 @@
       },
       {
         "name": "terminal.ime.trace",
-        "description": "The explicitly enabled bounded IME input and accepted screen-frame trace.",
+        "description": "The explicitly enabled bounded IME callback and terminal-input diagnostic trace.",
         "schema": {
           "type": "object",
           "properties": {
             "enabled": { "type": "boolean" },
             "overflow": { "type": "boolean" },
-            "omittedCount": { "type": "integer" },
-            "entries": { "type": "array" },
-            "frames": { "type": "array" }
+            "entries": { "type": "array" }
           }
         }
       }
@@ -63,7 +61,7 @@
       },
       {
         "name": "terminal.ime.trace",
-        "description": "Starts or stops the bounded IME input and accepted screen-frame trace.",
+        "description": "Starts or stops the bounded real IME callback and terminal-input trace.",
         "params": {
           "type": "object",
           "properties": { "action": { "type": "string", "enum": ["start", "stop"] } }
@@ -73,9 +71,7 @@
           "properties": {
             "enabled": { "type": "boolean" },
             "overflow": { "type": "boolean" },
-            "omittedCount": { "type": "integer" },
-            "entries": { "type": "array" },
-            "frames": { "type": "array" }
+            "entries": { "type": "array" }
           }
         }
       }
