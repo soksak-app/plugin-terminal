@@ -81,6 +81,7 @@ export function createViewPage(_t, caseId, { scheme = "dark", start = START, dia
   const commandRuns = [];
   const bindings = [];
   const releaseBindings = [];
+  const frameObserver = { starts: 0, stops: 0 };
 
   const exposure = {
     async status(name, read, watch) { registrations.push({ kind: "status", name }); statuses.set(name, { read, watch }); },
@@ -141,7 +142,17 @@ export function createViewPage(_t, caseId, { scheme = "dark", start = START, dia
     },
     exposure,
     status: { report: (phase, error) => reports.push(["status", phase, error]) },
-    diagnostics: diagnostic ? { declaration: diagnosticManifest, attach: terminalDiagnostics.attach } : null,
+    diagnostics: diagnostic ? {
+      declaration: diagnosticManifest,
+      attach: terminalDiagnostics.attach,
+      startViewFrames({ log }) {
+        frameObserver.starts += 1;
+        log.trace("view.content_frame", {
+          sequence: 0, width: 640, height: 400, documentTimeOriginMs: 100, resizeAtMs: 10, frameTimeMs: 16,
+        });
+        return () => { frameObserver.stops += 1; };
+      },
+    } : null,
     tab: Object.fromEntries(["title", "footer", "directory", "notify"].map((name) => [name, (...args) => reports.push([name, ...args])])),
     origin: start.origin,
     project: start.project,
@@ -178,5 +189,6 @@ export function createViewPage(_t, caseId, { scheme = "dark", start = START, dia
     if (!handler) throw new Error("terminal command is not registered: " + params.name);
     return (await handler(params.params)) ?? null;
   };
-  return { window, context, report, sidecar, region, registrations, commands, regionCalls, places, reports, logs, received, commandRuns, bindings, exposureRequest, settle };
+  return { window, context, report, sidecar, region, registrations, commands, regionCalls, places, reports, logs, received,
+    statuses, commandRuns, bindings, frameObserver, exposureRequest, settle };
 }

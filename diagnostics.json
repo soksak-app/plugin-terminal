@@ -18,6 +18,14 @@
             "entries": { "type": "array" }
           }
         }
+      },
+      {
+        "name": "terminal.view.frames",
+        "description": "Whether explicit source document content-frame observation is active.",
+        "schema": {
+          "type": "object",
+          "properties": { "enabled": { "type": "boolean" } }
+        }
       }
     ],
     "commands": [
@@ -74,6 +82,21 @@
             "entries": { "type": "array" }
           }
         }
+      },
+      {
+        "name": "terminal.view.history",
+        "description": "Reads the current browser history length of this terminal view document.",
+        "params": { "type": "object", "properties": {} },
+        "result": { "type": "object", "properties": { "length": { "type": "integer" } } }
+      },
+      {
+        "name": "terminal.view.frames",
+        "description": "Starts or stops source document content-frame observation.",
+        "params": {
+          "type": "object",
+          "properties": { "action": { "type": "string", "enum": ["start", "stop"] } }
+        },
+        "result": { "type": "object", "properties": { "enabled": { "type": "boolean" } } }
       }
     ]
   }

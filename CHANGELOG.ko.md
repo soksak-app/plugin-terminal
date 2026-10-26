@@ -4,6 +4,14 @@
 
 ## 미배포
 
+- P49.2.1: 현재 view document history 길이와 source content-frame 관찰을 위한
+  명시적 진단 command를 추가한다. Observer는 요청에 따라 시작과 중지되고,
+  ResizeObserver와 다음 animation frame 뒤 document root 크기를 기록하며 frame
+  history를 보관하지 않는다. Red: 기존 구현에 command가 없어 owner test가
+  실패한다. Green: live history 읽기, observer lifecycle, source record를 확인하는
+  집중 view-diagnostics case 5개가 통과하고 manifest와 event catalog case도 통과한다.
+  Application 측정은 남아 있다.
+
 - F239-77-terminal: 일치하는 설치 diagnostic cohort로 로컬 schema-3 catalog acceptance를 완료한다. 현재 SDK가 source 11개와 pending rule 0개, event 17개를 검사하며 양쪽 host 설치본의 catalog가 source와 정확히 일치하고 application log audit을 통과한다. Public publication은 별도다.
 
 - P91-terminal: native-input marked-range 거부 assertion을 owner 오류 문구에

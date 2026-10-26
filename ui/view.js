@@ -44,8 +44,25 @@ if (window.sokTheme) applyTheme(window.sokTheme);
 bridge.runtime.theme(applyTheme);
 // The terminal reads the scale and the settings at its start, and the diagnostic declaration decides the exposure entries of
 // the page, so the page resolves all three before it starts anything.
-const [scale, settings, diagnostics] = await Promise.all([
+const [scale, settings, loadedDiagnostics] = await Promise.all([
   bridge.runtime.textSize.read(), bridge.runtime.settings.read(), loadDiagnostics(),
 ]);
+const observeViewDocumentFrames = loadedDiagnostics === null
+  ? null
+  : (await import("@soksak/plugin-api/diagnostic-view-frames")).observeViewDocumentFrames;
+const diagnostics = loadedDiagnostics === null ? null : {
+  ...loadedDiagnostics,
+  startViewFrames({ log }) {
+    return observeViewDocumentFrames({
+      document: window.document,
+      log,
+      ResizeObserver: window.ResizeObserver,
+      requestAnimationFrame: window.requestAnimationFrame.bind(window),
+      cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
+      now: window.performance.now.bind(window.performance),
+      timeOriginMs: window.performance.timeOrigin,
+    });
+  },
+};
 const { context } = createViewContext({ bridge, start, report, diagnostics, scale, settings });
 await mountPage(context, report);

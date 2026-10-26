@@ -20,7 +20,8 @@ const IME_TRACE_CAPACITY = 256;
  *   reportError     trace 출처의 세션 오류를 보고한다
  *   resolveError    trace 출처의 세션 오류를 지운다. 새 trace 를 시작하면 해소된다
  */
-export async function attach({ expose, updateCompose, onInput, onPointer, readPtyPending, alterNextScreen, reportError, resolveError }) {
+export async function attach({ expose, updateCompose, onInput, onPointer, readPtyPending, alterNextScreen,
+  readViewHistory, startViewFrames, viewLog, closing, reportError, resolveError }) {
   await attachPointerTrace({ expose, onPointer, reportError });
   let trace = { enabled: false, overflow: false, entries: [] };
   const watchers = new Set();
@@ -38,6 +39,20 @@ export async function attach({ expose, updateCompose, onInput, onPointer, readPt
     trace = { ...trace, entries: [...trace.entries, { sequence: trace.entries.length, ...entry }] };
     changed();
   });
+  let stopViewFrames = null;
+  let viewFrameState = { enabled: false };
+  const viewFrameWatchers = new Set();
+  const changedViewFrames = () => {
+    for (const fn of viewFrameWatchers) fn(viewFrameState);
+  };
+  const stopFrames = () => {
+    if (stopViewFrames === null) return;
+    stopViewFrames();
+    stopViewFrames = null;
+    viewFrameState = { enabled: false };
+    changedViewFrames();
+  };
+  closing?.addEventListener("abort", stopFrames, { once: true });
   await Promise.all([
     expose.status("terminal.ime.trace", () => trace, (fn) => {
       watchers.add(fn);
@@ -62,6 +77,36 @@ export async function attach({ expose, updateCompose, onInput, onPointer, readPt
       }
       changed();
       return trace;
+    }),
+    expose.status("terminal.view.frames", () => ({ ...viewFrameState }), (fn) => {
+      viewFrameWatchers.add(fn);
+      return () => viewFrameWatchers.delete(fn);
+    }),
+    expose.command("terminal.view.history", async () => {
+      if (typeof readViewHistory !== "function") throw new Error("terminal view history reader is unavailable");
+      const length = readViewHistory();
+      if (!Number.isSafeInteger(length) || length < 1) {
+        throw new Error(`terminal view document history length is invalid: ${JSON.stringify(length)}`);
+      }
+      return { length };
+    }),
+    expose.command("terminal.view.frames", async ({ action }) => {
+      if (action === "start") {
+        if (stopViewFrames === null) {
+          if (typeof startViewFrames !== "function") throw new Error("view frame observation adapter is unavailable");
+          if (typeof viewLog?.trace !== "function") throw new Error("view frame observation logger is unavailable");
+          const stop = await startViewFrames({ log: viewLog });
+          if (typeof stop !== "function") throw new TypeError("view frame observation adapter must return a stop function");
+          stopViewFrames = stop;
+          viewFrameState = { enabled: true };
+          changedViewFrames();
+        }
+      } else if (action === "stop") {
+        stopFrames();
+      } else {
+        throw new Error("terminal.view.frames action must be start or stop");
+      }
+      return { ...viewFrameState };
     }),
   ]);
 }

@@ -1865,6 +1865,15 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         return () => pointerObservers.delete(fn);
       },
       readPtyPending,
+      readViewHistory: () => window.history.length,
+      startViewFrames: diagnostics.startViewFrames,
+      viewLog: {
+        trace: (event, fields) => {
+          if (event !== "view.content_frame") throw new Error(`unexpected view frame event: ${String(event)}`);
+          return runtime.log.trace("view.content_frame", fields);
+        },
+      },
+      closing,
       alterNextScreen: () => {
         alterNextScreen = true;
       },

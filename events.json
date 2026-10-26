@@ -468,6 +468,26 @@
       },
       "description": "The accepted native frame tuple or null for the sidecar screen message, its session, replay segment and message sequence, grid dimensions, and the screen SHA-256 as 64 lowercase hexadecimal characters."
     },
+    "plugin.terminal.view.content_frame": {
+      "layer": "plugin",
+      "class": "frame",
+      "level": "trace",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "sequence": { "type": "integer", "minimum": 0 },
+          "width": { "type": "number", "minimum": 0 },
+          "height": { "type": "number", "minimum": 0 },
+          "documentTimeOriginMs": { "type": "number", "minimum": 0 },
+          "resizeAtMs": { "type": "number", "minimum": 0 },
+          "frameTimeMs": { "type": "number", "minimum": 0 }
+        },
+        "required": ["sequence", "width", "height", "documentTimeOriginMs", "resizeAtMs", "frameTimeMs"],
+        "additionalProperties": false
+      },
+      "description": "An explicitly observed content-box size after ResizeObserver and the next animation frame, with timestamps in the view document clock."
+    },
     "plugin.terminal.error": {
       "layer": "plugin",
       "class": "lifecycle",

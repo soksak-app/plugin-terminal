@@ -8,7 +8,7 @@ const catalog = JSON.parse(readFileSync(new URL("../events.json", import.meta.ur
 
 const LEVELS = ["error", "warn", "info", "debug", "trace"];
 const CLASSES = ["lifecycle", "input", "call", "io", "frame"];
-const TYPES = ["string", "number", "boolean", "array", "object", "null"];
+const TYPES = ["string", "number", "integer", "boolean", "array", "object", "null"];
 
 test("the manifest names the catalog, the release holds it and no emitter module remains", () => {
   assert.equal(manifest.events, "events.json");
