@@ -57,7 +57,9 @@ test("terminal view content-frame diagnostics start and stop the source observer
         width: 320,
         height: 200,
         documentTimeOriginMs: 100,
+        firstResizeAtMs: 8,
         resizeAtMs: 10,
+        resizeCount: 2,
         frameTimeMs: 16,
       });
       return () => { stops += 1; };
@@ -73,11 +75,37 @@ test("terminal view content-frame diagnostics start and stop the source observer
   assert.equal(starts, 1, "starting an active observer is idempotent");
   assert.deepEqual(output, [{
     event: "view.content_frame",
-    fields: { sequence: 0, width: 320, height: 200, documentTimeOriginMs: 100, resizeAtMs: 10, frameTimeMs: 16 },
+    fields: { sequence: 0, width: 320, height: 200, documentTimeOriginMs: 100,
+      firstResizeAtMs: 8, resizeAtMs: 10, resizeCount: 2, frameTimeMs: 16 },
   }]);
   assert.deepEqual(await measure({ action: "stop" }), { enabled: false });
   assert.deepEqual(await measure({ action: "stop" }), { enabled: false });
   assert.equal(stops, 1, "stopping an observer more than once does not stop it twice");
+});
+
+test("terminal view content-frame diagnostics reject invalid resize timing and counts", { timeout: 5000 }, async () => {
+  for (const [name, values] of [
+    ["first resize after latest resize", { firstResizeAtMs: 11, resizeAtMs: 10, resizeCount: 2, frameTimeMs: 16 }],
+    ["latest resize after frame", { firstResizeAtMs: 8, resizeAtMs: 17, resizeCount: 2, frameTimeMs: 16 }],
+    ["single resize with different first and latest times", { firstResizeAtMs: 8, resizeAtMs: 10, resizeCount: 1, frameTimeMs: 16 }],
+    ["missing first resize", { resizeAtMs: 10, resizeCount: 2, frameTimeMs: 16 }],
+    ["zero resize count", { firstResizeAtMs: 8, resizeAtMs: 10, resizeCount: 0, frameTimeMs: 16 }],
+    ["fractional resize count", { firstResizeAtMs: 8, resizeAtMs: 10, resizeCount: 1.5, frameTimeMs: 16 }],
+  ]) {
+    const f = fixture();
+    await attachViewDiagnostics(f, {
+      readViewHistory: () => 1,
+      startViewFrames({ log }) {
+        log.trace("view.content_frame", {
+          sequence: 0, width: 320, height: 200, documentTimeOriginMs: 100, ...values,
+        });
+        return () => {};
+      },
+      viewLog: { trace() {} },
+    });
+    await assert.rejects(f.commands.get("terminal.view.frames")({ action: "start" }),
+      /terminal view content-frame resize timing is invalid/, name);
+  }
 });
 
 test("terminal view frame diagnostics reject invalid actions and incomplete source adapters", { timeout: 5000 }, async () => {

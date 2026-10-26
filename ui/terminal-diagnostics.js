@@ -95,7 +95,22 @@ export async function attach({ expose, updateCompose, onInput, onPointer, readPt
         if (stopViewFrames === null) {
           if (typeof startViewFrames !== "function") throw new Error("view frame observation adapter is unavailable");
           if (typeof viewLog?.trace !== "function") throw new Error("view frame observation logger is unavailable");
-          const stop = await startViewFrames({ log: viewLog });
+          const stop = await startViewFrames({
+            log: {
+              trace(event, fields) {
+                if (event !== "view.content_frame") throw new Error(`unexpected view frame event: ${String(event)}`);
+                if (typeof fields !== "object" || fields === null
+                  || !Number.isFinite(fields.firstResizeAtMs) || fields.firstResizeAtMs < 0
+                  || !Number.isFinite(fields.resizeAtMs) || fields.resizeAtMs < fields.firstResizeAtMs
+                  || !Number.isInteger(fields.resizeCount) || fields.resizeCount < 1
+                  || (fields.resizeCount === 1 && fields.firstResizeAtMs !== fields.resizeAtMs)
+                  || !Number.isFinite(fields.frameTimeMs) || fields.frameTimeMs < fields.resizeAtMs) {
+                  throw new Error("terminal view content-frame resize timing is invalid");
+                }
+                return viewLog.trace(event, fields);
+              },
+            },
+          });
           if (typeof stop !== "function") throw new TypeError("view frame observation adapter must return a stop function");
           stopViewFrames = stop;
           viewFrameState = { enabled: true };

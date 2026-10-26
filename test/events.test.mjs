@@ -44,7 +44,7 @@ test("the catalog declares the layer plugin and events of the form plugin.termin
   }
 });
 
-test("content-frame catalog accepts the host surface context and rejects unknown fields", () => {
+test("content-frame catalog accepts resize timing and host surface fields and rejects unknown fields", { timeout: 5000 }, () => {
   const schema = catalog.events["plugin.terminal.view.content_frame"].fields;
   const validate = new Ajv2020({ allErrors: true }).compile(schema);
   const published = {
@@ -52,11 +52,17 @@ test("content-frame catalog accepts the host surface context and rejects unknown
     width: 453,
     height: 286,
     documentTimeOriginMs: 1793002476840.0002,
+    firstResizeAtMs: 1008,
     resizeAtMs: 1028,
+    resizeCount: 2,
     frameTimeMs: 1046,
     surface: "tab-kxackq"
   };
 
   assert.equal(validate(published), true, JSON.stringify(validate.errors));
+  assert.equal(validate(Object.fromEntries(Object.entries(published).filter(([key]) => key !== "firstResizeAtMs"))), false);
+  assert.equal(validate(Object.fromEntries(Object.entries(published).filter(([key]) => key !== "resizeCount"))), false);
+  assert.equal(validate({ ...published, resizeCount: 0 }), false);
+  assert.equal(validate({ ...published, resizeCount: 1.5 }), false);
   assert.equal(validate({ ...published, unlisted: true }), false);
 });

@@ -480,14 +480,16 @@
           "width": { "type": "number", "minimum": 0 },
           "height": { "type": "number", "minimum": 0 },
           "documentTimeOriginMs": { "type": "number", "minimum": 0 },
+          "firstResizeAtMs": { "type": "number", "minimum": 0 },
           "resizeAtMs": { "type": "number", "minimum": 0 },
+          "resizeCount": { "type": "integer", "minimum": 1 },
           "frameTimeMs": { "type": "number", "minimum": 0 },
           "surface": { "type": "string" }
         },
-        "required": ["sequence", "width", "height", "documentTimeOriginMs", "resizeAtMs", "frameTimeMs", "surface"],
+        "required": ["sequence", "width", "height", "documentTimeOriginMs", "firstResizeAtMs", "resizeAtMs", "resizeCount", "frameTimeMs", "surface"],
         "additionalProperties": false
       },
-      "description": "An explicitly observed content-box size after ResizeObserver and the next animation frame, with timestamps in the view document clock and the runtime surface identifier."
+      "description": "An explicitly observed content-box size after ResizeObserver and the next animation frame, with the first and latest resize times, resize count, frame time, and runtime surface identifier in the view document clock."
     },
     "plugin.terminal.error": {
       "layer": "plugin",

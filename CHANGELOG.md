@@ -4,6 +4,15 @@
 
 ## Unreleased
 
+- P93-terminal: Require `firstResizeAtMs`, `resizeAtMs`, `resizeCount` and
+  `frameTimeMs` in content-frame events. The diagnostic consumer rejects missing,
+  non-finite or out-of-order timestamps, invalid counts, and different first and
+  latest times when `resizeCount` is one, then forwards the original fields
+  without a fallback. Red: the unchanged catalog rejected the new fields and
+  the unchanged consumer accepted reversed timestamps and a one-count sample
+  with different first and latest times. Green: focused catalog and diagnostics
+  owner tests pass 3/3; current SDK `make check` passes all declared checks.
+
 - P92-terminal: Declare the runtime-injected `surface` field in
   `plugin.terminal.view.content_frame`. Red: the actual host-published event
   fixture failed `additionalProperties` because `surface` was absent from the

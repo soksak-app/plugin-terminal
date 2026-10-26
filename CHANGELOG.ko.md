@@ -4,6 +4,14 @@
 
 ## 미배포
 
+- P93-terminal: content-frame event에 `firstResizeAtMs`, `resizeAtMs`,
+  `resizeCount`, `frameTimeMs`를 요구한다. Diagnostic consumer는 누락, 유한하지
+  않은 값, 순서가 잘못된 timestamp, 유효하지 않은 count를 거부한다. `resizeCount`
+  가 1이면 첫 시각과 최신 시각이 같아야 한다. 이후 원래 fields를 fallback 없이
+  전달한다. Red: 변경 전 catalog는 새 field를 거부했고 consumer는 역순 timestamp와
+  잘못된 단일 resize sample을 수락했다. Green: 집중 catalog 및 diagnostics owner
+  test가 3/3 통과하고 현재 SDK `make check`의 선언된 검사가 모두 통과한다.
+
 - P92-terminal: `plugin.terminal.view.content_frame`에 runtime이 추가하는
   `surface` field를 선언한다. Red: `surface`가 schema에 없어 실제 host event
   fixture가 `additionalProperties` 검사에서 실패했다(`/tmp/terminal-P92-red.log`).

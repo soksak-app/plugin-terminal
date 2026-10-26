@@ -2,6 +2,8 @@
 
 [English](features.md)
 
+- [o] P93-terminal — P0, core F23 연결: 현재 view content-frame event에 `firstResizeAtMs`, `resizeAtMs`, `resizeCount`, `frameTimeMs`를 요구한다. Consumer는 `firstResizeAtMs <= resizeAtMs <= frameTimeMs`인 유한한 0 이상 timestamp와 양의 정수 `resizeCount`를 요구하며, count가 1이면 첫 timestamp와 최신 timestamp가 같아야 한다. 원래 fields object를 그대로 전달하고 legacy fallback은 사용하지 않는다. Red: 변경 전 catalog가 새 두 field를 거부했고, consumer는 역순 timestamp와 count가 1인데 시각이 다른 값을 수락했다. Green: 집중 catalog 및 diagnostics owner case가 누락 field, 잘못된 count, timestamp 순서, 단일 resize equality와 정확한 forwarding을 포함해 3/3 통과한다. 현재 SDK `make check`의 선언된 SDK 및 records 검사가 통과한다.
+
 - [o] P92-terminal — P0, core F239-136 연결: strict log validation이 view별 content-frame event를 수락하고 미선언 field는 거부하도록 runtime이 추가하는 `surface`를 `plugin.terminal.view.content_frame` schema에 선언한다. Red: 실제 host event fixture가 catalog에 `surface`가 없어 `additionalProperties` 검사에서 거부됐다(`/tmp/terminal-P92-red.log`). Green: Ajv 2020이 같은 payload를 검증하고 임의의 추가 field는 거부한다. `node --test test/events.test.mjs` 3/3, 현재 SDK의 event catalog 및 records 검사가 통과한다(`/tmp/terminal-P92-green.log`). Page producer와 runtime logging 동작은 변경하지 않았다.
 
 - [~] P90-terminal — P0, P89-terminal 및 core F239-134 연결: `plugin.terminal.frame`에 수락된 native frame tuple 또는 `null`을 포함해 한 screen message에서 나온 여러 native raster를 consumer가 구분하게 한다. 비동기 hash 전에 tuple을 캡처하고 기존 session, segment, message sequence, hash field를 유지한다. Red: 변경 전 소유 test는 유효한 no-raster screen marker에서 `frame` 누락으로 실패했고, real-frame fixture도 수락된 tuple을 식별하지 못해 실패했다(`/tmp/P90-terminal-red.log`, `/tmp/P90-terminal-frame-red.log`). Green: 두 집중 owner case가 통과한다(`/tmp/P90-terminal-green.log`). Runtime 검증은 남아 있다.
