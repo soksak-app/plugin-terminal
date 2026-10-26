@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
+import Ajv2020 from "ajv/dist/2020.js";
 
 const manifest = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
@@ -41,4 +42,21 @@ test("the catalog declares the layer plugin and events of the form plugin.termin
       for (const type of [property.type].flat()) assert.ok(TYPES.includes(type), `${name}.${field}: type ${type}`);
     }
   }
+});
+
+test("content-frame catalog accepts the host surface context and rejects unknown fields", () => {
+  const schema = catalog.events["plugin.terminal.view.content_frame"].fields;
+  const validate = new Ajv2020({ allErrors: true }).compile(schema);
+  const published = {
+    sequence: 0,
+    width: 453,
+    height: 286,
+    documentTimeOriginMs: 1793002476840.0002,
+    resizeAtMs: 1028,
+    frameTimeMs: 1046,
+    surface: "tab-kxackq"
+  };
+
+  assert.equal(validate(published), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ ...published, unlisted: true }), false);
 });

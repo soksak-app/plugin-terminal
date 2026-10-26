@@ -4,6 +4,14 @@
 
 ## Unreleased
 
+- P92-terminal: Declare the runtime-injected `surface` field in
+  `plugin.terminal.view.content_frame`. Red: the actual host-published event
+  fixture failed `additionalProperties` because `surface` was absent from the
+  schema (`/tmp/terminal-P92-red.log`). Green: the same payload validates and
+  an arbitrary extra field is rejected; the focused event test passes 3/3
+  (`/tmp/terminal-P92-green.log`). The current SDK event and records checks
+  pass. Producer and runtime behavior are unchanged.
+
 - P49.2.1: Add explicit diagnostic commands for the current view document history length and source content-frame observation. The observer starts and stops on request, records the document root size after ResizeObserver and the next animation frame, and retains no frame history. Red: the owning tests fail because the commands are absent. Green: the five focused view-diagnostics cases pass, including live history reads, explicit observer lifecycle and emitted source records; manifest and event catalog cases pass. Application measurements remain pending.
 
 - F239-77-terminal: Complete local schema-3 catalog acceptance with the matching installed diagnostic cohort. The current SDK checks 11 sources with zero pending rules and 17 events; both host installations contain the exact source catalog and pass application log audits. Public publication remains separate.

@@ -4,6 +4,13 @@
 
 ## 미배포
 
+- P92-terminal: `plugin.terminal.view.content_frame`에 runtime이 추가하는
+  `surface` field를 선언한다. Red: `surface`가 schema에 없어 실제 host event
+  fixture가 `additionalProperties` 검사에서 실패했다(`/tmp/terminal-P92-red.log`).
+  Green: 같은 payload가 유효하고 임의의 추가 field는 거부되며 집중 event test가
+  3/3 통과한다(`/tmp/terminal-P92-green.log`). 현재 SDK의 event와 records 검사도
+  통과한다. Producer와 runtime 동작은 바뀌지 않았다.
+
 - P49.2.1: 현재 view document history 길이와 source content-frame 관찰을 위한
   명시적 진단 command를 추가한다. Observer는 요청에 따라 시작과 중지되고,
   ResizeObserver와 다음 animation frame 뒤 document root 크기를 기록하며 frame
