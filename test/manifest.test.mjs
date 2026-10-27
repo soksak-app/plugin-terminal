@@ -94,6 +94,12 @@ test("diagnostics.json declares the entries its module registers and is not publ
   }
 });
 
+test("diagnostics.json declares the fixed source clock resolution with the supported enum keyword", { timeout: 5000 }, () => {
+  const resolution = diagnostics.exposes.commands.find(({ name }) => name === "terminal.view.frames")
+    .result.properties.sourceClock.properties.sourceResolutionMs;
+  assert.deepEqual(resolution, { type: "number", enum: [1] });
+});
+
 test("the diagnostic entries inject preedit and record the IME trace", () => {
   const names = (kind) => diagnostics.exposes[kind].map((entry) => entry.name).sort();
   assert.deepEqual(names("status"), ["terminal.ime.trace", "terminal.pointer.trace", "terminal.view.frames"]);

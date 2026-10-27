@@ -40,6 +40,7 @@ export async function attach({ expose, updateCompose, onInput, onPointer, readPt
     changed();
   });
   let stopViewFrames = null;
+  let readViewSourceClock = null;
   let viewFrameState = { enabled: false };
   const viewFrameWatchers = new Set();
   const changedViewFrames = () => {
@@ -49,6 +50,7 @@ export async function attach({ expose, updateCompose, onInput, onPointer, readPt
     if (stopViewFrames === null) return;
     stopViewFrames();
     stopViewFrames = null;
+    readViewSourceClock = null;
     viewFrameState = { enabled: false };
     changedViewFrames();
   };
@@ -92,10 +94,14 @@ export async function attach({ expose, updateCompose, onInput, onPointer, readPt
     }),
     expose.command("terminal.view.frames", async ({ action }) => {
       if (action === "start") {
-        if (stopViewFrames === null) {
+        const starting = stopViewFrames === null;
+        let stop;
+        let readSourceClock;
+        let sourceClock;
+        if (starting) {
           if (typeof startViewFrames !== "function") throw new Error("view frame observation adapter is unavailable");
           if (typeof viewLog?.trace !== "function") throw new Error("view frame observation logger is unavailable");
-          const stop = await startViewFrames({
+          const started = await startViewFrames({
             log: {
               trace(event, fields) {
                 if (event !== "view.content_frame") throw new Error(`unexpected view frame event: ${String(event)}`);
@@ -111,11 +117,33 @@ export async function attach({ expose, updateCompose, onInput, onPointer, readPt
               },
             },
           });
-          if (typeof stop !== "function") throw new TypeError("view frame observation adapter must return a stop function");
+          stop = started?.stop;
+          readSourceClock = started?.readSourceClock;
+          sourceClock = started?.sourceClock;
+          if (typeof stop !== "function") {
+            throw new TypeError("view frame observation adapter must return a stop function and source clock");
+          }
+          if (typeof readSourceClock !== "function") {
+            stop();
+            throw new TypeError("view frame observation adapter must return a source clock reader");
+          }
+        } else {
+          sourceClock = readViewSourceClock();
+        }
+        if (typeof sourceClock !== "object" || sourceClock === null
+          || !Number.isFinite(sourceClock.documentTimeOriginMs) || sourceClock.documentTimeOriginMs < 0
+          || !Number.isFinite(sourceClock.sourceNowMs) || sourceClock.sourceNowMs < 0
+          || sourceClock.sourceResolutionMs !== 1) {
+          if (starting && typeof stop === "function") stop();
+          throw new TypeError("view frame observation adapter returned an invalid source clock");
+        }
+        if (starting) {
           stopViewFrames = stop;
+          readViewSourceClock = readSourceClock;
           viewFrameState = { enabled: true };
           changedViewFrames();
         }
+        return { ...viewFrameState, sourceClock: { ...sourceClock } };
       } else if (action === "stop") {
         stopFrames();
       } else {

@@ -148,9 +148,19 @@ export function createViewPage(_t, caseId, { scheme = "dark", start = START, dia
       startViewFrames({ log }) {
         frameObserver.starts += 1;
         log.trace("view.content_frame", {
-          sequence: 0, width: 640, height: 400, documentTimeOriginMs: 100, resizeAtMs: 10, frameTimeMs: 16,
+          sequence: 0, width: 640, height: 400, documentTimeOriginMs: 100,
+          firstResizeAtMs: 10, resizeAtMs: 10, resizeCount: 1, frameTimeMs: 16,
         });
-        return () => { frameObserver.stops += 1; };
+        const readSourceClock = () => ({
+          documentTimeOriginMs: window.performance.timeOrigin,
+          sourceNowMs: window.performance.now(),
+          sourceResolutionMs: 1,
+        });
+        return {
+          stop: () => { frameObserver.stops += 1; },
+          sourceClock: readSourceClock(),
+          readSourceClock,
+        };
       },
     } : null,
     tab: Object.fromEntries(["title", "footer", "directory", "notify"].map((name) => [name, (...args) => reports.push([name, ...args])])),

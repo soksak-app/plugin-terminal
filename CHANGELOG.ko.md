@@ -4,6 +4,18 @@
 
 ## 미배포
 
+- P94-terminal: 성공한 `terminal.view.frames` 시작 응답에 view document의
+  `performance.timeOrigin`, 즉시 읽은 `performance.now()`, 고정된 WebKit 정밀도
+  상한 1 ms를 `sourceClock`으로 새로 반환한다. Red: 변경 전 owner는 observer stop
+  function만 받았고, 통제된 clock이 8.25 ms에서 12.5 ms로 진행된 뒤 반복 start도
+  이전 값을 반환했으며 diagnostic declaration의 미지원 `const`도 거부됐다.
+  Green: mounted view 자체 clock 검사를 포함한 view-diagnostics case 일곱 개와
+  manifest case 열세 개가 통과한다. 반복 start는 observer를 다시 시작하지 않고
+  anchor를 갱신한다. `validateDiagnostics`는 `enum: [1]`을 수락하고 workspace SDK
+  check 여섯 단계도 통과한다. Status와 stop 응답은 유지한다. Diagnostic candidate
+  `0.0.21`은 SHA-256
+  `34cc314d35ed433398f1efa0dac47dc5edd63f83bcfad6fd669999b6a4efc6e0`로 pack에 성공한다.
+
 - P93-terminal: content-frame event에 `firstResizeAtMs`, `resizeAtMs`,
   `resizeCount`, `frameTimeMs`를 요구한다. Diagnostic consumer는 누락, 유한하지
   않은 값, 순서가 잘못된 timestamp, 유효하지 않은 count를 거부한다. `resizeCount`

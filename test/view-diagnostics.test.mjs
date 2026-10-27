@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { attach } from "../build/test/ui/terminal-diagnostics.js";
+import { startViewDocumentFrames } from "../build/test/ui/view-diagnostics.js";
 import { createViewPage } from "./view-host.mjs";
 import { mountPage } from "../build/test/ui/terminal-view.js";
 
@@ -15,6 +16,40 @@ function fixture() {
   };
   return { commands, statuses, records, exposed };
 }
+
+test("view frame start anchors the clock of the observed view document", { timeout: 5000 }, () => {
+  const order = [];
+  let nowMs = 12.5;
+  const viewWindow = {
+    document: {},
+    performance: {
+      timeOrigin: 1234,
+      now() { order.push("now"); return nowMs; },
+    },
+    ResizeObserver: function ResizeObserver() {},
+    requestAnimationFrame(callback) { return callback; },
+    cancelAnimationFrame() {},
+  };
+  let observed;
+  const stop = () => {};
+  const started = startViewDocumentFrames({
+    viewWindow,
+    log: {},
+    observe(options) { order.push("observe"); observed = options; return stop; },
+  });
+
+  assert.equal(started.stop, stop);
+  assert.equal(typeof started.readSourceClock, "function");
+  assert.deepEqual(started.sourceClock,
+    { documentTimeOriginMs: 1234, sourceNowMs: 12.5, sourceResolutionMs: 1 });
+  assert.deepEqual(order, ["now", "observe"]);
+  assert.equal(observed.document, viewWindow.document);
+  assert.equal(observed.timeOriginMs, viewWindow.performance.timeOrigin);
+  nowMs = 16.75;
+  assert.deepEqual(started.readSourceClock(), {
+    documentTimeOriginMs: 1234, sourceNowMs: 16.75, sourceResolutionMs: 1,
+  });
+});
 
 async function attachViewDiagnostics(f, options = {}) {
   await attach({
@@ -48,6 +83,8 @@ test("terminal view content-frame diagnostics start and stop the source observer
   const output = [];
   let starts = 0;
   let stops = 0;
+  let sourceNowMs = 8.25;
+  const readSourceClock = () => ({ documentTimeOriginMs: 1000, sourceNowMs, sourceResolutionMs: 1 });
   await attachViewDiagnostics(f, {
     readViewHistory: () => 1,
     startViewFrames({ log }) {
@@ -62,7 +99,7 @@ test("terminal view content-frame diagnostics start and stop the source observer
         resizeCount: 2,
         frameTimeMs: 16,
       });
-      return () => { stops += 1; };
+      return { stop: () => { stops += 1; }, sourceClock: readSourceClock(), readSourceClock };
     },
     viewLog: { trace: (event, fields) => output.push({ event, fields }) },
   });
@@ -70,8 +107,9 @@ test("terminal view content-frame diagnostics start and stop the source observer
   assert.equal(typeof measure, "function", "the terminal view frame command is registered");
   assert.deepEqual(await measure({ action: "stop" }), { enabled: false });
   assert.equal(starts, 0, "view-frame observation is disabled by default");
-  assert.deepEqual(await measure({ action: "start" }), { enabled: true });
-  assert.deepEqual(await measure({ action: "start" }), { enabled: true });
+  assert.deepEqual(await measure({ action: "start" }), { enabled: true, sourceClock: readSourceClock() });
+  sourceNowMs = 12.5;
+  assert.deepEqual(await measure({ action: "start" }), { enabled: true, sourceClock: readSourceClock() });
   assert.equal(starts, 1, "starting an active observer is idempotent");
   assert.deepEqual(output, [{
     event: "view.content_frame",
@@ -126,11 +164,18 @@ test("closing the terminal view stops an explicitly started content-frame observ
   let stops = 0;
   await attachViewDiagnostics(f, {
     readViewHistory: () => 1,
-    startViewFrames: () => () => { stops += 1; },
+    startViewFrames: () => ({
+      stop: () => { stops += 1; },
+      sourceClock: { documentTimeOriginMs: 1000, sourceNowMs: 8.25, sourceResolutionMs: 1 },
+      readSourceClock: () => ({ documentTimeOriginMs: 1000, sourceNowMs: 8.25, sourceResolutionMs: 1 }),
+    }),
     viewLog: { trace() {} },
     closing: closing.signal,
   });
-  assert.deepEqual(await f.commands.get("terminal.view.frames")({ action: "start" }), { enabled: true });
+  assert.deepEqual(await f.commands.get("terminal.view.frames")({ action: "start" }), {
+    enabled: true,
+    sourceClock: { documentTimeOriginMs: 1000, sourceNowMs: 8.25, sourceResolutionMs: 1 },
+  });
   closing.abort();
   assert.equal(stops, 1);
   assert.deepEqual(await f.statuses.get("terminal.view.frames").read(), { enabled: false });
@@ -153,7 +198,15 @@ test("the mounted terminal view reads its live history and emits source content-
   host.window.history.pushState({}, "", "#second");
   assert.deepEqual(await history(), { length: host.window.history.length });
   assert.deepEqual(await host.statuses.get("terminal.view.frames").read(), { enabled: false });
-  assert.deepEqual(await frames("start"), { enabled: true });
+  const sourceNowBefore = host.window.performance.now();
+  const startedFrames = await frames("start");
+  const sourceNowAfter = host.window.performance.now();
+  assert.equal(startedFrames.enabled, true);
+  assert.equal(startedFrames.sourceClock.documentTimeOriginMs, host.window.performance.timeOrigin);
+  assert.equal(startedFrames.sourceClock.sourceResolutionMs, 1);
+  assert.ok(startedFrames.sourceClock.sourceNowMs >= sourceNowBefore
+    && startedFrames.sourceClock.sourceNowMs <= sourceNowAfter,
+  `sourceNowMs ${startedFrames.sourceClock.sourceNowMs} is outside the view-clock observation interval`);
   assert.equal(host.frameObserver.starts, 1);
   assert.equal(host.logs.filter(({ event }) => event === "plugin.terminal.view.content_frame").length, 1);
   assert.deepEqual(await host.statuses.get("terminal.view.frames").read(), { enabled: true });

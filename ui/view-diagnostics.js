@@ -18,3 +18,22 @@ export async function loadDiagnostics(pageHref = window.location.href) {
   const declaration = await response.json();
   return { declaration, attach: (await import("./terminal-diagnostics.js")).attach };
 }
+
+export function startViewDocumentFrames({ viewWindow, observe, log }) {
+  const readSourceClock = () => ({
+    documentTimeOriginMs: viewWindow.performance.timeOrigin,
+    sourceNowMs: viewWindow.performance.now(),
+    sourceResolutionMs: 1,
+  });
+  const sourceClock = readSourceClock();
+  const stop = observe({
+    document: viewWindow.document,
+    log,
+    ResizeObserver: viewWindow.ResizeObserver,
+    requestAnimationFrame: viewWindow.requestAnimationFrame.bind(viewWindow),
+    cancelAnimationFrame: viewWindow.cancelAnimationFrame.bind(viewWindow),
+    now: viewWindow.performance.now.bind(viewWindow.performance),
+    timeOriginMs: viewWindow.performance.timeOrigin,
+  });
+  return { stop, sourceClock, readSourceClock };
+}

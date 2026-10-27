@@ -8,7 +8,7 @@ import { createViewBridge } from "@soksak/plugin-api/view";
 import { mountPage, startValues } from "./terminal-view.js";
 
 import { createReporter } from "./view-log.js";
-import { loadDiagnostics } from "./view-diagnostics.js";
+import { loadDiagnostics, startViewDocumentFrames } from "./view-diagnostics.js";
 import { createViewContext } from "./view-context.js";
 
 /** Sets the theme on the root of the page, as the theme script of the view and each later theme message carry it. */
@@ -53,14 +53,10 @@ const observeViewDocumentFrames = loadedDiagnostics === null
 const diagnostics = loadedDiagnostics === null ? null : {
   ...loadedDiagnostics,
   startViewFrames({ log }) {
-    return observeViewDocumentFrames({
-      document: window.document,
+    return startViewDocumentFrames({
+      viewWindow: window,
+      observe: observeViewDocumentFrames,
       log,
-      ResizeObserver: window.ResizeObserver,
-      requestAnimationFrame: window.requestAnimationFrame.bind(window),
-      cancelAnimationFrame: window.cancelAnimationFrame.bind(window),
-      now: window.performance.now.bind(window.performance),
-      timeOriginMs: window.performance.timeOrigin,
     });
   },
 };

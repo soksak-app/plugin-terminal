@@ -96,7 +96,14 @@
           "type": "object",
           "properties": { "action": { "type": "string", "enum": ["start", "stop"] } }
         },
-        "result": { "type": "object", "properties": { "enabled": { "type": "boolean" } } }
+        "result": { "type": "object", "properties": {
+          "enabled": { "type": "boolean" },
+          "sourceClock": { "type": "object", "properties": {
+            "documentTimeOriginMs": { "type": "number" },
+            "sourceNowMs": { "type": "number" },
+            "sourceResolutionMs": { "type": "number", "enum": [1] }
+          } }
+        } }
       }
     ]
   }

@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- P94-terminal: Return a fresh `sourceClock` in every successful `terminal.view.frames` start reply, using the view document's `performance.timeOrigin`, an immediate `performance.now()` reading and the fixed 1 ms WebKit resolution bound. Red: the unchanged owner receives only the observer stop function; repeated start returns 8.25 ms after a controlled clock advances to 12.5 ms; the diagnostic declaration's `const` keyword is rejected by the public SDK validator. Green: all seven view-diagnostics and 13 manifest owner tests pass; repeated start refreshes the anchor without restarting observation, `validateDiagnostics` accepts `enum: [1]`, and the six workspace SDK checks pass. Status and stop replies are unchanged. Diagnostic candidate `0.0.21` packs with SHA-256 `34cc314d35ed433398f1efa0dac47dc5edd63f83bcfad6fd669999b6a4efc6e0`.
+
 - P93-terminal: Require `firstResizeAtMs`, `resizeAtMs`, `resizeCount` and
   `frameTimeMs` in content-frame events. The diagnostic consumer rejects missing,
   non-finite or out-of-order timestamps, invalid counts, and different first and
