@@ -75,8 +75,7 @@ test("a registered terminal command reaches its handler", async (t) => {
   assert.equal(answer, null);
   const input = host.sidecar.sent.find(({ body }) => body.operation === "input");
   assert.equal(input.id, START.surface, "the input travels to the session of the surface");
-  // terminal.input names the payload bytes, and the session sends the text base64 encoded as the input message carries it.
-  assert.equal(Buffer.from(input.body.bytes, "base64").toString(), "bHM=");
+  assert.deepEqual(input.body.actions, [{ type: "insert", text: "bHM=", replacementRange: null, attributed: false }]);
 });
 
 test("terminal.close detaches the image region before it ends the sidecar session", async (t) => {
@@ -121,19 +120,24 @@ test("a build without a diagnostic declaration registers the declared entries on
 test("terminal input and send records carry the sidecar correlation identifiers", async (t) => {
   const host = createViewPage(t, "log-cids");
   const records = [];
-  const { createViewLog } = await import("../build/test/ui/view-log.js");
-  host.context.runtime.log = createViewLog({ request: async (command, params) => { records.push({ command, params }); } });
+  host.context.runtime.log = Object.fromEntries(["error", "warn", "info", "debug", "trace"].map((level) => [level,
+    (event, fields, options) => records.push({ level, event, fields: typeof fields === "function" ? fields() : fields, cids: options?.cids })]));
   await mountView(host);
   host.sidecar.trigger(START.surface, { event: "state", sessionId: "s1", cols: 80, rows: 24, cellWidth: 8, cellHeight: 16 });
   await host.settle();
-  host.region.trigger("insert", { text: "ls", cids: ["native-input-49-5"] });
+  host.region.trigger("input", {
+    type: "input",
+    actions: [{ type: "insert", text: "ls", replacementRange: null, attributed: false }],
+    preedit: { text: "", markedRange: null, selectedRange: { location: 0, length: 0 }, replacementRange: null, attributed: false },
+    errors: [], cids: ["native-input-49-5"],
+  });
   await host.settle();
   const input = host.sidecar.sent.find(({ body }) => body.operation === "input");
   assert.ok(input.cids.length > 0, "input has a real correlation chain");
   for (const event of ["input", "send"]) {
-    const record = records.find(({ command, params }) => command === "runtime.log" && params.event === event && (event !== "send" || params.fields.body.operation === "input"));
+    const record = records.find((record) => record.event === event && (event !== "send" || record.fields.body.operation === "input"));
     assert.ok(record, event + " record reaches the view route");
-    assert.deepEqual(record.params.cids, input.cids, event + " retains correlation identifiers");
+    assert.deepEqual(record.cids, input.cids, event + " retains correlation identifiers");
   }
 });
 

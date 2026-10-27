@@ -116,6 +116,9 @@ function fakeSource(module) {
   for (const [name] of Object.entries(module.exports)) {
     lines.push((name === "screenHash" ? "export async function " : "export function ") + name + "(value) { return invoke(" + JSON.stringify(name) + ", value); }");
   }
+  for (const name of module.fixtureExports ?? []) {
+    lines.push("export function " + name + "() { return Object.freeze({}); }");
+  }
   return lines.join("\n") + "\n";
 }
 const modules = new Map(table.modules.map((module, index) => [module.specifier, { ...module, file: path.join(outputRoot, "fakes", "sdk-" + index + ".mjs") }]));
@@ -189,7 +192,7 @@ function visit(file) {
       const module = modules.get(item.specifier);
       if (!module) throw new Error("unlisted SDK import reached from UI: " + item.specifier + " in " + path.relative(root, file));
       if (item.names.length === 0) throw new Error("SDK import must name contract exports: " + item.specifier + " in " + path.relative(root, file));
-      for (const name of item.names) if (!Object.hasOwn(module.exports, name)) {
+      for (const name of item.names) if (!Object.hasOwn(module.exports, name) && !module.fixtureExports?.includes(name)) {
         throw new Error("unlisted SDK export " + item.specifier + "#" + name + " in " + path.relative(root, file));
       }
       let relative = path.relative(path.dirname(file), module.file).split(path.sep).join("/");

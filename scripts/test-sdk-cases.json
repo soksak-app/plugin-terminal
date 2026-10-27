@@ -6,6 +6,7 @@
       "exports": {
         "shellQuotePath": "quote"
       },
+      "fixtureExports": ["createExpose"],
       "caseCopies": [
         {
           "id": "clipboard.shell-quote-path.with-spaces",

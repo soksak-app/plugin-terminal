@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- P95-terminal: Remove the terminal-owned `runtime.log` request adapter and use the view bridge logger directly, preserving event fields and correlation identifiers. Route page errors through `runtime.error` before asynchronous setup; report refused error routes without depending on a logger promise. Red: the unchanged owner test observed no bridge logger call and one terminal-owned `runtime.log` request. Green: the focused view-context, module, diagnostics and page tests pass 24/24, including the void logger and rejected error-route cases. The test tree builds 9 reachable modules with 2 contract fakes.
+
 - P94-terminal: Return a fresh `sourceClock` in every successful `terminal.view.frames` start reply, using the view document's `performance.timeOrigin`, an immediate `performance.now()` reading and the fixed 1 ms WebKit resolution bound. Red: the unchanged owner receives only the observer stop function; repeated start returns 8.25 ms after a controlled clock advances to 12.5 ms; the diagnostic declaration's `const` keyword is rejected by the public SDK validator. Green: all seven view-diagnostics and 13 manifest owner tests pass; repeated start refreshes the anchor without restarting observation, `validateDiagnostics` accepts `enum: [1]`, and the six workspace SDK checks pass. Status and stop replies are unchanged. Diagnostic candidate `0.0.21` packs with SHA-256 `34cc314d35ed433398f1efa0dac47dc5edd63f83bcfad6fd669999b6a4efc6e0`.
 
 - P93-terminal: Require `firstResizeAtMs`, `resizeAtMs`, `resizeCount` and

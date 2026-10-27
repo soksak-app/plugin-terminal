@@ -7,9 +7,8 @@
 import { createViewBridge } from "@soksak/plugin-api/view";
 import { mountPage, startValues } from "./terminal-view.js";
 
-import { createReporter } from "./view-log.js";
 import { loadDiagnostics, startViewDocumentFrames } from "./view-diagnostics.js";
-import { createViewContext } from "./view-context.js";
+import { createViewContext, createViewErrorReporter } from "./view-context.js";
 
 /** Sets the theme on the root of the page, as the theme script of the view and each later theme message carry it. */
 function applyTheme(theme) {
@@ -33,13 +32,26 @@ function installPageErrors(report) {
 // The page: the start values, the bridge over the injected channel, the theme of the document, and the terminal in the
 // shadow root of the page body.
 const start = startValues();
-const losses = [];
-const bridge = createViewBridge({ handler: window.webkit.messageHandlers["sok-view"], report: (event) => losses.push(event) });
-const report = createReporter(bridge.calls);
-for (const event of losses.splice(0)) {
-  report(`view calls of terminal: ${event.kind} ${event.status}${event.reason === undefined ? "" : `: ${event.reason}`}`);
-}
+const pendingBridgeReports = [];
+let reportBridgeEvent = (event) => pendingBridgeReports.push(event);
+const bridge = createViewBridge({
+  handler: window.webkit.messageHandlers["sok-view"],
+  report: (event) => reportBridgeEvent(event),
+});
+const report = createViewErrorReporter(bridge.runtime);
 installPageErrors(report);
+const reportBridgeFailure = (event) => {
+  const details = { ...event };
+  if (details.error instanceof Error) details.error = { name: details.error.name, message: details.error.message };
+  const text = `view bridge: ${JSON.stringify(details)}`;
+  // runtime.error uses this callback only after its own call fails; logging through runtime.log here would recurse.
+  if (event?.kind === "open-calls") console.debug(text);
+  else console.error(text);
+};
+reportBridgeEvent = reportBridgeFailure;
+for (const event of pendingBridgeReports.splice(0)) {
+  reportBridgeFailure(event);
+}
 if (window.sokTheme) applyTheme(window.sokTheme);
 bridge.runtime.theme(applyTheme);
 // The terminal reads the scale and the settings at its start, and the diagnostic declaration decides the exposure entries of

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { attach } from "../build/test/ui/terminal-diagnostics.js";
-import { startViewDocumentFrames } from "../build/test/ui/view-diagnostics.js";
+import { loadDiagnostics, startViewDocumentFrames } from "../build/test/ui/view-diagnostics.js";
 import { createViewPage } from "./view-host.mjs";
 import { mountPage } from "../build/test/ui/terminal-view.js";
 
@@ -16,6 +16,18 @@ function fixture() {
   };
   return { commands, statuses, records, exposed };
 }
+
+test("the diagnostics declaration of a build without it is not an error, and any other failed status is refused", { timeout: 5000 }, async () => {
+  const fetched = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => ({ ok: false, status: 404 });
+    assert.equal(await loadDiagnostics("sok://terminal/ui/terminal.html"), null);
+    globalThis.fetch = async () => ({ ok: false, status: 500 });
+    await assert.rejects(loadDiagnostics("sok://terminal/ui/terminal.html"), /answered 500/);
+  } finally {
+    globalThis.fetch = fetched;
+  }
+});
 
 test("view frame start anchors the clock of the observed view document", { timeout: 5000 }, () => {
   const order = [];

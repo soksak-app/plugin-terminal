@@ -4,6 +4,8 @@
 
 ## 미배포
 
+- P95-terminal: terminal 소유 `runtime.log` request adapter를 제거하고 view bridge logger를 직접 사용해 event fields와 correlation ID를 보존한다. 비동기 setup 전에 page 오류를 `runtime.error`로 전달하고, logger promise에 의존하지 않고 거부된 오류 경로를 기록한다. Red: 변경 전 owner test는 bridge logger 호출이 없고 terminal 소유 `runtime.log` request가 하나 발생함을 확인했다. Green: void logger와 거부된 error route를 포함한 집중 view-context, module, diagnostics, page test가 24/24 통과한다. 테스트 UI tree는 reachable module 9개와 contract fake 2개로 빌드된다.
+
 - P94-terminal: 성공한 `terminal.view.frames` 시작 응답에 view document의
   `performance.timeOrigin`, 즉시 읽은 `performance.now()`, 고정된 WebKit 정밀도
   상한 1 ms를 `sourceClock`으로 새로 반환한다. Red: 변경 전 owner는 observer stop

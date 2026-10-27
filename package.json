@@ -23,7 +23,6 @@
     "ui/view-exposes.js",
     "ui/view-diagnostics.js",
     "ui/view-exposure-port.js",
-    "ui/view-log.js",
     "ui/view-sidecar.js",
     "ui/terminal-view.js",
     "ui/terminal.js"

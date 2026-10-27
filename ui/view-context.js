@@ -2,7 +2,6 @@
 // is imported, so the assembly of the context is in this module, which a test can import.
 import { createExpose } from "@soksak/plugin-api";
 import { createExposurePort } from "./view-exposure-port.js";
-import { createViewLog } from "./view-log.js";
 import { viewClipboard } from "./view-clipboard.js";
 import { SIDECAR, viewSidecar } from "./view-sidecar.js";
 import { viewExposes } from "./view-exposes.js";
@@ -85,8 +84,21 @@ export function createViewContext({ bridge, start, report, diagnostics = null, s
         },
         links: { open: (url) => calls.request("runtime.links.open", url) },
         clipboard: viewClipboard(calls),
-        log: createViewLog(calls),
+        log: runtime.log,
       },
     },
+  };
+}
+
+/** Reports a page error through the view error route and records a refusal without depending on a logger promise. */
+export function createViewErrorReporter(runtime) {
+  return (text) => {
+    try {
+      Promise.resolve(runtime.error("view", text)).catch((error) => {
+        console.error(`runtime.error view ${error?.message ?? error}`);
+      });
+    } catch (error) {
+      console.error(`runtime.error view ${error?.message ?? error}`);
+    }
   };
 }
