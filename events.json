@@ -512,24 +512,6 @@
         ]
       },
       "description": "An error that the terminal shows in its session status; source names where it came from."
-    },
-    "plugin.terminal.report": {
-      "layer": "plugin",
-      "class": "call",
-      "level": "error",
-      "fields": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-          "text": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "text"
-        ]
-      },
-      "description": "The page of the view failed: an error or a rejection of the page, or a refused call of the view channel; text states the error."
     }
   }
 }
