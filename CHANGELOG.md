@@ -4,6 +4,16 @@
 
 ## Unreleased
 
+- P98-terminal: Pin the SDK dependency and release workflow checkout to core
+  API 0.0.21 and update the view-start hash to
+  `e62bb03d1e02ac5f340ac05e1bf29d12665b0f859bade9446560de7d9058a42a`. Red:
+  before the core commit was public, `make check` reached its implicit package
+  install and received a 404. Green: after publication, lockfile-only resolution
+  fetched the source and recorded version 0.0.21 and tarball integrity; offline
+  frozen lockfile-only validation passes. The existing view-check and
+  engines-check pass, and the copied contract checker passes 52 cases. The
+  local SDK symlink is preserved. No pack or release was run.
+
 - P97-terminal: Align the copied view-start SHA-256 and event catalog with the current SDK. Update `view-check.json` to the current `view-start.js` hash and remove `plugin.terminal.report`, whose producer was removed when page errors switched to `runtime.error` in P95-terminal. Red: the old hash was rejected and `make check` found the unused event declaration. Green: current-SDK `make check` passes the view literal, package validators, event catalog and 52 copied cases. Candidate packing was not repeated.
 
 - P95-terminal: Remove the terminal-owned `runtime.log` request adapter and use the view bridge logger directly, preserving event fields and correlation identifiers. Route page errors through `runtime.error` before asynchronous setup; report refused error routes without depending on a logger promise. Red: the unchanged owner test observed no bridge logger call and one terminal-owned `runtime.log` request. Green: the focused view-context, module, diagnostics and page tests pass 24/24, including the void logger and rejected error-route cases. The test tree builds 9 reachable modules with 2 contract fakes.
