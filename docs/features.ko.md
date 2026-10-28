@@ -2,7 +2,9 @@
 
 [English](features.md)
 
-- [o] P98-terminal — P1, core F239-263 연계: Terminal SDK와 release workflow checkout을 core API 0.0.21에 고정하고 `view-check.json`의 `viewStartSha256`을 `e62bb03d1e02ac5f340ac05e1bf29d12665b0f859bade9446560de7d9058a42a`로 설정한다. 개발용 기존 SDK symlink를 유지한다. Red: core source가 공개되기 전에 `make check`가 내부 package install을 실행해 404를 받았다. 공개 후 lockfile-only resolution이 고정 source를 가져와 version 0.0.21과 tarball integrity를 기록했다. Green: offline frozen lockfile-only 검사가 통과하고 기존 view-check 및 engines-check, copied contract 52개 검사가 통과한다. 로컬 SDK symlink는 유지된다. Pack과 release는 실행하지 않았다.
+- [o] P98-terminal — P1, core F239-263 연계: Terminal SDK source와 release workflow checkout을 core API 0.0.21에 고정하고 `view-check.json`을 일치하는 `viewStartSha256` `e62bb03d1e02ac5f340ac05e1bf29d12665b0f859bade9446560de7d9058a42a`로 설정한다. Lockfile-only resolution은 SDK version 0.0.21과 fetched tarball integrity를 기록하고 offline frozen lockfile-only 검사가 통과한다. 기존 view-check와 engines-check, copied contract 52개 검사가 통과한다. Pack과 release는 실행하지 않았다.
+
+- [o] P98-1-terminal — P1, P98-terminal 후속: P98 기록을 공개된 SDK source, lockfile resolution, 소유 검사 결과에 맞춰 바로잡는다. 공개 전 setup 실패와 로컬 환경 내용은 제품 기록에서 제거한다. Documentation 및 records 검사가 통과한다.
 
 - [o] P97-terminal — P1, core F239-240 연결: 현재 SDK consumer contract에 맞게 Terminal의 copied view-start SHA-256과 event catalog를 정렬한다. `view-check.json`을 `29010247a058570913b2e9beaf1fc2f8154709f8bc6de49e8f97d0a6f8304bd8`로 설정하고 P95-terminal에서 page 오류를 `runtime.error`로 옮기며 producer가 없어진 `plugin.terminal.report` 선언을 제거한다. Red: 이전 SHA `d96923ada1f03a2af97f8e09ee32bc323ec72f235fffc1d4519f6f641db1dffc`가 거부됐고 `make check`가 사용되지 않는 report 선언도 발견했다. Green: 현재 SDK의 `make check`에서 view literal, package validator, event catalog, copied case 52개가 통과한다. Candidate pack은 재실행하지 않았다.
 

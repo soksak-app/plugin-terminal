@@ -4,14 +4,17 @@
 
 ## 미배포
 
+- P98-1-terminal: P98 기록을 공개된 SDK source, frozen lockfile 검사와
+  owner-check 결과에 맞춘다. Setup 실패와 로컬 환경 내용은 제품 기록에서
+  제거한다. Documentation 및 records 검사가 통과한다.
+
 - P98-terminal: SDK dependency와 release workflow checkout을 core API 0.0.21에
   고정하고 view-start hash를
   `e62bb03d1e02ac5f340ac05e1bf29d12665b0f859bade9446560de7d9058a42a`로 갱신한다.
-  Red: core commit이 공개되기 전 `make check`가 내부 package install을 실행해
-  404를 받았다. Green: 공개 후 lockfile-only resolution이 source를 가져와
-  version 0.0.21과 tarball integrity를 기록했고 offline frozen lockfile-only
-  검사가 통과한다. 기존 view-check, engines-check와 copied contract 52개 검사도
-  통과한다. 기존 local SDK symlink를 보존한다. Pack과 release는 실행하지 않았다.
+  Lockfile-only resolution은 version 0.0.21과 fetched tarball integrity를
+  기록하고 offline frozen lockfile-only 검사가 통과한다. 기존 view-check와
+  engines-check, copied contract 52개 검사도 통과한다. Pack과 release는
+  실행하지 않았다.
 
 - P97-terminal: current SDK에 맞춰 copied view-start SHA-256과 event catalog를 정렬한다. `view-check.json`을 현재 `view-start.js` hash로 갱신하고 P95-terminal에서 page 오류가 `runtime.error`로 이동하며 producer가 사라진 `plugin.terminal.report`를 제거한다. Red: 이전 hash가 거부됐고 `make check`가 사용되지 않는 event 선언을 발견했다. Green: 현재 SDK의 `make check`에서 view literal, package validator, event catalog, copied case 52개가 통과한다. Candidate pack은 재실행하지 않았다.
 
