@@ -4,6 +4,10 @@
 
 ## 미배포
 
+- P99-terminal: 필수 `caret` field를 가진 cursor 오류 기대 문장과,
+  idle composition인 file drop의 기대 composition을 바로잡아 `make test`가
+  통과하게 한다.
+
 - P98-1-terminal: P98 기록을 공개된 SDK source, frozen lockfile 검사와
   owner-check 결과에 맞춘다. Setup 실패와 로컬 환경 내용은 제품 기록에서
   제거한다. Documentation 및 records 검사가 통과한다.

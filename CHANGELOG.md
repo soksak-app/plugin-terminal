@@ -4,6 +4,10 @@
 
 ## Unreleased
 
+- P99-terminal: Correct the expected cursor error text, which now carries
+  the required `caret` field, and the expected composition of a file drop,
+  which is the idle composition, so that `make test` passes.
+
 - P98-1-terminal: Correct the P98 record to describe the published SDK
   source, frozen lockfile validation and owner-check results. Remove setup
   failure and local environment details from the product record. Documentation

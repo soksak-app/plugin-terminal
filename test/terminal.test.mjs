@@ -411,7 +411,7 @@ const RESOLVED_ERRORS = [
   ["session", { event: "session", sessionId: "" }, "terminal input failed: invalid persistent session event"],
   ["theme", { event: "theme", mode: "sepia" }, "terminal input failed: invalid theme acknowledgement from sidecar"],
   ["screen", { event: "screen", lines: [""], cursor: { col: -0.5, row: 0, visible: true, focused: false, shape: "Block", blinking: false } },
-    "terminal input failed: invalid screen cursor from sidecar: {\"col\":-0.5,\"row\":0,\"visible\":true,\"focused\":false,\"shape\":\"Block\",\"blinking\":false}"],
+    "terminal input failed: invalid screen cursor from sidecar: {\"col\":-0.5,\"row\":0,\"visible\":true,\"focused\":false,\"shape\":\"Block\",\"blinking\":false,\"caret\":null}"],
 ];
 
 for (const [kind, invalid, message] of RESOLVED_ERRORS) {
@@ -1048,7 +1048,7 @@ test("terminal file drop quotes local URLs and sends one non-executing paste", a
   await fakeExpose.getCommand("terminal.drop")({ urls: ["file:///tmp/dropped%20file.txt", "file:///tmp/quote%27name.txt"] });
 
   assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body), [
-    { operation: "input", actions: [inputInsert("'/tmp/dropped file.txt' '/tmp/quote'\\''name.txt'")], preedit: inputPreedit() },
+    { operation: "input", actions: [inputInsert("'/tmp/dropped file.txt' '/tmp/quote'\\''name.txt'")], preedit: { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false } },
   ]);
 });
 
