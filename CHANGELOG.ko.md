@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- F275-terminal: `make install`이 고정된 의존성을 설치한다. 시험, 검사, build는 더 이상 설치하지 않는다.
 - F274-terminal: pre-push hook은 push가 게시하는 commit message만 검사한다. 시험과 검사는 CI가 실행한다.
 - P100-terminal: Contract 검사는 SDK `files` 목록이 적은 폴더 아래의
   파일을 npm처럼 공개된 것으로 읽는다.

@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- F275-terminal: `make install` installs the locked dependencies; the tests, checks and builds no longer install.
 - F274-terminal: The pre-push hook checks only the commit messages that a push publishes; CI runs the tests and checks.
 - P100-terminal: The contract check reads a file under a folder that the
   SDK `files` list names as published, as npm publishes it.
