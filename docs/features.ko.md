@@ -2,6 +2,8 @@
 
 [English](features.md)
 
+- [o] P100-terminal — P1, core F239-283 연결: SDK의 공개 파일을 npm과 같이 읽는다. 입력: `scripts/check-test-cases.mjs`는 SDK의 `files` 목록이 contract 파일 이름을 그대로 적을 때만 공개된 것으로 보았지만 core SDK는 이제 `contract/` 폴더를 공개하므로 `make check`가 `API package does not publish contract file contract/clipboard.json`으로 실패했다. 완료: `files`가 파일이나 그 파일을 담은 폴더를 적으면 공개된 것이다. Red: 현재 SDK에서 `make check`가 그 문장으로 실패했다. Green: `make check`가 통과한다.
+
 - [o] P99-terminal — P1: P83과 P86의 production 변경이 낡게 남긴 두 시험 기대값을 바로잡아 `make test`가 통과하게 한다. 입력: P83은 `cursor.caret`을 필수 nullable field로 만들었고 `test/screen-message.mjs`는 모든 cursor에 `caret: null`을 넣으므로 보고되는 잘못된 cursor에 `"caret":null`이 있지만, `an invalid screen event error is cleared only by the next valid screen event`의 기대 오류 문장에는 없었다. P86은 file drop 시험이 선택 범위가 있는 `inputPreedit()`를 기대하게 바꿨지만, drop은 저장된 idle composition을 보내며 그 `selectedRange`는 같은 commit의 두 paste 시험이 기대하는 대로 `null`이다. Red: 바뀌지 않은 기대값에서 `node --test test/`가 이 두 시험에서 실패했다. Green: 기대 오류 문장에 `"caret":null`이 들어가고 drop 시험은 idle composition을 기대한다. `node scripts/build-test.mjs && node --test test/`가 245/245 통과한다.
 
 - [o] P98-terminal — P1, core F239-263 연계: Terminal SDK source와 release workflow checkout을 core API 0.0.21에 고정하고 `view-check.json`을 일치하는 `viewStartSha256` `e62bb03d1e02ac5f340ac05e1bf29d12665b0f859bade9446560de7d9058a42a`로 설정한다. Lockfile-only resolution은 SDK version 0.0.21과 fetched tarball integrity를 기록하고 offline frozen lockfile-only 검사가 통과한다. 기존 view-check와 engines-check, copied contract 52개 검사가 통과한다. Pack과 release는 실행하지 않았다.

@@ -4,6 +4,9 @@
 
 ## 미배포
 
+- P100-terminal: Contract 검사는 SDK `files` 목록이 적은 폴더 아래의
+  파일을 npm처럼 공개된 것으로 읽는다.
+
 - P99-terminal: 필수 `caret` field를 가진 cursor 오류 기대 문장과,
   idle composition인 file drop의 기대 composition을 바로잡아 `make test`가
   통과하게 한다.

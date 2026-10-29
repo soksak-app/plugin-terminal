@@ -4,6 +4,9 @@
 
 ## Unreleased
 
+- P100-terminal: The contract check reads a file under a folder that the
+  SDK `files` list names as published, as npm publishes it.
+
 - P99-terminal: Correct the expected cursor error text, which now carries
   the required `caret` field, and the expected composition of a file drop,
   which is the idle composition, so that `make test` passes.

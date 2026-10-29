@@ -8,7 +8,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const apiDir = path.resolve(process.env.CORE_PLUGIN_API_DIR || path.join(root, "node_modules", "@soksak", "plugin-api"));
 const table = JSON.parse(fs.readFileSync(path.join(root, "scripts", "test-sdk-cases.json"), "utf8"));
 const packageJson = JSON.parse(fs.readFileSync(path.join(apiDir, "package.json"), "utf8"));
-const packagedFiles = new Set(packageJson.files || []);
+// npm publishes a file that `files` names and every file under a folder that `files` names, as `contract/` or `contract`.
+const packagedEntries = (packageJson.files || []).map((entry) => entry.replace(/\/$/, ""));
+const isPackaged = (file) => packagedEntries.some((entry) => file === entry || file.startsWith(entry + "/"));
 let caseCount = 0;
 let exportCount = 0;
 
@@ -17,7 +19,7 @@ for (const module of table.modules) {
   if (!module.specifier || !module.contractFile || !Array.isArray(module.caseCopies) || !module.exports) {
     throw new Error("malformed test contract table module");
   }
-  if (!packagedFiles.has(module.contractFile)) throw new Error("API package does not publish contract file " + module.contractFile);
+  if (!isPackaged(module.contractFile)) throw new Error("API package does not publish contract file " + module.contractFile);
   const contractPath = path.join(apiDir, module.contractFile);
   if (!fs.existsSync(contractPath)) throw new Error("published API contract is missing: " + contractPath);
   const published = JSON.parse(fs.readFileSync(contractPath, "utf8"));
