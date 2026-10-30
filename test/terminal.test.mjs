@@ -770,10 +770,15 @@ test("wheel input is sent as whole scroll lines at the pointer cell and the scre
   view._trigger("wheel", { deltaY: 2, deltaMode: 1, clientX: 20, clientY: 40 });
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(scrolls(), [
-    { operation: "scroll", lines: 3, col: 2, row: 2 },
-    { operation: "scroll", lines: -1, col: 2, row: 2 },
-    { operation: "scroll", lines: -2, col: 2, row: 2 },
+    { operation: "scroll", lines: 3, col: 2, row: 2, shift: false },
+    { operation: "scroll", lines: -1, col: 2, row: 2, shift: false },
+    { operation: "scroll", lines: -2, col: 2, row: 2, shift: false },
   ]);
+
+  // A wheel gesture with Shift sends shift true; the carry of -0.25 lines plus 2 lines leaves 1 whole line.
+  view._trigger("wheel", { deltaY: -32, deltaMode: 0, clientX: 20, clientY: 40, shiftKey: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(scrolls().slice(3), [{ operation: "scroll", lines: 1, col: 2, row: 2, shift: true }]);
 
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], cursor: { col: 0, row: 0, visible: false, focused: false, shape: "Block", blinking: false },
     scrollback: { offset: 3, history: 40 } });

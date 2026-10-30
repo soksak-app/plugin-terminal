@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- P104: 휠 스크롤마다 `shift`를 보낸다. Shift를 누르고 있으면 true인 boolean이므로, 마우스 보고가 켜진 동안에도 VT sidecar가 Shift로 viewport를 스크롤할 수 있다. 수정 전 코드에서는 `test/terminal.test.mjs`의 `wheel input is sent as whole scroll lines at the pointer cell and the screen reports scrollback`가 scroll body에 `shift`가 없어서 실패했고, 수정 후에는 Shift가 없으면 `shift: false`, 있으면 `shift: true`로 통과한다. `make test`는 node test 249개 중 249개를, `make check`는 검사 전체를 통과한다. `shift`를 적용하는 sidecar는 S108을 담은 VT release이며 그 release는 아직 없으므로, 그 release가 게시되기 전까지 `plugin.json`은 `^0.0.17` 최소 버전을 유지하고 이전 sidecar는 `shift`를 무시한다.
 - P67: Korean 기록이 English 기록과 같은 사실을 담는다. checklist가 P64를 담고, P46 changelog 항목이 `terminal.cursor`를 code로 적으며, 0.0.11 changelog section이 P37을 담는다.
 - P10: release workflow가 검증됐다. tag `v0.0.10`부터 `v0.0.14`까지 각각 `release.yml`을 성공으로 실행해 plugin archive를 게시했다.
 - P90-terminal: Runtime 검증이 끝났다. core F239-134의 consumer가 각 `plugin.terminal.frame` record에 `frame`을 요구하고, retained capture의 replay가 retained source 103개를 모두 그 tuple로 join한다.

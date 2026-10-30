@@ -1095,7 +1095,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     const rect = view.getBoundingClientRect();
     const col = Math.min(cols - 1, Math.max(0, Math.floor((event.clientX - rect.left) / cellWidth)));
     const row = Math.min(rows - 1, Math.max(0, Math.floor((event.clientY - rect.top) / cellHeight)));
-    observeInput(terminal.send(id, { operation: "scroll", lines, col, row }));
+    observeInput(terminal.send(id, { operation: "scroll", lines, col, row, shift: event.shiftKey === true }));
   };
   view.addEventListener("wheel", scrollWheel, { passive: false });
 

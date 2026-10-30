@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P104: Each wheel scroll sends `shift`, a boolean that is true while Shift is held, so the VT sidecar can scroll the viewport with Shift while mouse reporting is on. The test `wheel input is sent as whole scroll lines at the pointer cell and the screen reports scrollback` failed on the unchanged code because the scroll bodies had no `shift`, and passes with `shift: false` without Shift and `shift: true` with Shift. `make test` passes 249 of 249 node tests and `make check` passes. The sidecar that applies `shift` is the VT release containing S108, which no release has yet; `plugin.json` keeps the `^0.0.17` minimum until that release is published, and an older sidecar ignores `shift`.
 - P67: The Korean records carry the same facts as the English records: the checklist carries P64, the P46 changelog entry formats `terminal.cursor` as code, and the 0.0.11 changelog section carries P37.
 - P10: The release workflow is verified: the tags `v0.0.10` to `v0.0.14` each ran `release.yml` to success and published the plugin archive.
 - P90-terminal: The runtime verification is complete: the consumer of core F239-134 requires `frame` on each `plugin.terminal.frame` record, and its replay of the retained capture joins all 103 retained sources by that tuple.
