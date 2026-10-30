@@ -605,7 +605,7 @@ test("terminal.input command sends an insert action with current preedit", async
   assert.deepEqual(inputMessage.body.preedit, { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false });
 });
 
-test("terminal.paste reads explicit user text once and sends one insert transaction", async () => {
+test("terminal.paste reads explicit user text once and sends it as one paste request, which the sidecar brackets by the terminal mode", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
   const fakeExpose = createFakeExpose();
@@ -629,8 +629,7 @@ test("terminal.paste reads explicit user text once and sends one insert transact
   await paste();
 
   assert.deepEqual(clipboardCalls, ["text"]);
-  assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body.operation), ["input"]);
-  assert.deepEqual(fakeSidecar.getMessages()[0].body.actions, [inputInsert("printf 'user paste'\n")]);
+  assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body), [{ operation: "paste", text: "printf 'user paste'\n" }]);
 });
 
 test("a session opens the shell that the shell setting names", async () => {
@@ -676,8 +675,7 @@ test("the region's paste action runs terminal.paste once", async () => {
   await attach.trigger("action", { type: "action", name: "paste" });
 
   assert.deepEqual(clipboardCalls, ["text"]);
-  assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body.operation), ["input"]);
-  assert.deepEqual(fakeSidecar.getMessages()[0].body.actions, [inputInsert("echo pasted")]);
+  assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body), [{ operation: "paste", text: "echo pasted" }]);
 });
 
 test("terminal.paste waits for the copy of the released selection", async () => {
@@ -708,7 +706,7 @@ test("terminal.paste waits for the copy of the released selection", async () => 
 
   const paste = fakeExpose.getCommand("terminal.paste");
   let pasted = null;
-  const pasting = paste().then(() => { pasted = fakeSidecar.getMessages().at(-1).body.actions[0].text; });
+  const pasting = paste().then(() => { pasted = fakeSidecar.getMessages().at(-1).body.text; });
   await new Promise((resolve) => setImmediate(resolve));
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(pasted, null, "the paste read the clipboard before the copy of the released selection arrived");
@@ -975,7 +973,7 @@ test("terminal.paste quotes file URLs without adding an executable newline", asy
 
   assert.deepEqual(clipboardCalls, ["text", "fileURLs"]);
   assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body), [
-    { operation: "input", actions: [inputInsert("'/tmp/a b.txt' '/tmp/quote'\\''name.txt'")], preedit: { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false } },
+    { operation: "paste", text: "'/tmp/a b.txt' '/tmp/quote'\\''name.txt'" },
   ]);
 });
 
@@ -1008,7 +1006,7 @@ test("terminal.paste persists a PNG and sends its owned shell path once", async 
   assert.deepEqual(clipboardCalls, ["text", "fileURLs", "png"]);
   assert.deepEqual(persisted, [[0, 255, 1]]);
   assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body), [
-    { operation: "input", actions: [inputInsert("'/config/clipboard/pasted-image.png'")], preedit: { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false } },
+    { operation: "paste", text: "'/config/clipboard/pasted-image.png'" },
   ]);
 });
 
@@ -1048,7 +1046,7 @@ test("terminal file drop quotes local URLs and sends one non-executing paste", a
   await fakeExpose.getCommand("terminal.drop")({ urls: ["file:///tmp/dropped%20file.txt", "file:///tmp/quote%27name.txt"] });
 
   assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body), [
-    { operation: "input", actions: [inputInsert("'/tmp/dropped file.txt' '/tmp/quote'\\''name.txt'")], preedit: { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false } },
+    { operation: "paste", text: "'/tmp/dropped file.txt' '/tmp/quote'\\''name.txt'" },
   ]);
 });
 

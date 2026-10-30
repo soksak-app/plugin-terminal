@@ -704,7 +704,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   };
   const sendPaste = async (text) => {
     if (typeof text !== "string" || text.length === 0) throw new Error("terminal paste text is empty");
-    await enqueueInput({ type: "input", actions: [{ type: "insert", text, replacementRange: null, attributed: false }], preedit: compose });
+    // A paste is the paste request of the sidecar, which brackets it when the program turned bracketed paste on; it keeps
+    // its place in the order of the inputs.
+    await enqueueInput({ type: "paste", text });
     return null;
   };
   const dropFileURLs = (value) => {
@@ -805,9 +807,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   });
   const recoverInputTail = () => undefined;
 
-  const inputBody = (entry) => ({ operation: "input", actions: entry.actions, preedit: entry.preedit });
+  const inputBody = (entry) => (entry.type === "paste"
+    ? { operation: "paste", text: entry.text }
+    : { operation: "input", actions: entry.actions, preedit: entry.preedit });
   const sendEntry = async (entry, cids) => {
-    if (entry.type === "input") {
+    if (entry.type === "input" || entry.type === "paste") {
       await terminal.send(id, inputBody(entry), cids);
     } else {
       throw new Error(`unknown terminal input type: ${entry.type}`);

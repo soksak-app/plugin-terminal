@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- P101: `terminal.paste`와 `terminal.drop`이 다시 VT sidecar의 paste 요청을 보내서, program이 bracketed paste를 켜면 paste가 괄호로 감싸진다. P86은 그것을 입력한 글로 보냈다.
 - F275-terminal: `make install`이 고정된 의존성을 설치한다. 시험, 검사, build는 더 이상 설치하지 않는다.
 - F274-terminal: pre-push hook은 push가 게시하는 commit message만 검사한다. 시험과 검사는 CI가 실행한다.
 - P100-terminal: Contract 검사는 SDK `files` 목록이 적은 폴더 아래의

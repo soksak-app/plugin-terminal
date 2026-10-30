@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P101: `terminal.paste` and `terminal.drop` send the paste request of the VT sidecar again, so a paste is bracketed when the program turned bracketed paste on; P86 had sent it as typed text.
 - F275-terminal: `make install` installs the locked dependencies; the tests, checks and builds no longer install.
 - F274-terminal: The pre-push hook checks only the commit messages that a push publishes; CI runs the tests and checks.
 - P100-terminal: The contract check reads a file under a folder that the
