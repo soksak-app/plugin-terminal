@@ -1592,6 +1592,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       session = { ...session, pointer: body.shape };
       if (!session.link) view.style.cursor = pointerStyle();
       changed("session");
+    } else if (body.event === "mouse.cursor.dirty") {
+      // The sidecar's mouse cursor state changed. The view pointer is a function of the hovered link and the
+      // program pointer shape, so the page applies that function again instead of keeping the previous value.
+      view.style.cursor = session.link ? "pointer" : pointerStyle();
     } else if (body.event === "notification") {
       if (typeof body.message !== "string" || body.message.length === 0) {
         reportInputError(new Error("invalid notification event from sidecar"));

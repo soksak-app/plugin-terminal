@@ -3358,6 +3358,28 @@ test("an OSC 22 pointer event sets the view cursor and the session pointer", asy
   assert.equal(view.style.cursor, "", "the default pointer returns the page cursor");
 });
 
+test("a mouse cursor dirty event re-applies the view pointer without an unknown sidecar record", async () => {
+  FakeResizeObserver.reset();
+  const log = capturedLog();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  const view = createFakeView();
+  await startTerminal({
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose,
+    window: { TextEncoder: FakeTextEncoder }, runtime: log.runtime,
+  });
+  openSession(fakeSidecar);
+  fakeSidecar.triggerEvent("test-session", { event: "pointer", shape: "crosshair" });
+  view.style.cursor = "text";
+  fakeSidecar.triggerEvent("test-session", { event: "mouse.cursor.dirty" });
+  assert.equal(view.style.cursor, "crosshair", "the dirty event leaves the view pointer at the program pointer shape");
+  assert.deepEqual(log.records.filter(([event]) => event === "sidecar.unknown"), [],
+    "mouse.cursor.dirty is a known event and writes no unknown-event record");
+  assert.equal(fakeExpose.getStatus("terminal.session").readFn().unsupported.includes("mouse.cursor.dirty"), false,
+    "mouse.cursor.dirty is not listed as unsupported");
+});
+
 test("a sequence the engine rejected is recorded in the session without a surface error", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
