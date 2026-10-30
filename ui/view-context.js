@@ -1,7 +1,7 @@
 // The surface context of the terminal view page (core docs/spec/plugins.md#view-surfaces). The page module view.js runs host calls when it
 // is imported, so the assembly of the context is in this module, which a test can import.
 import { createExpose } from "@soksak/plugin-api";
-import { createExposurePort } from "./view-exposure-port.js";
+import { createExposurePort, withBridgeCommands } from "./view-exposure-port.js";
 import { viewClipboard } from "./view-clipboard.js";
 import { SIDECAR, viewSidecar } from "./view-sidecar.js";
 import { viewExposes } from "./view-exposes.js";
@@ -40,7 +40,8 @@ export function createViewContext({ bridge, start, report, diagnostics = null, s
       // The view of a surface ends with it, so the page has no signal of the removal; the default of the terminal never aborts.
       closing: new AbortController().signal,
       composition: { create: (elements) => bridge.composition.create(elements) },
-      exposure: createExpose(createExposurePort({ bridge, runtime, releaseOf, report }), () => viewExposes(start)),
+      exposure: withBridgeCommands(createExpose(createExposurePort({ bridge, runtime, releaseOf, report }), () => viewExposes(start)),
+        bridge.commands),
       diagnostics,
       // The state of the surface is the state that the workbench keeps, so the page reports no phase; a failed terminal is
       // the error of the tab (core docs/spec/native-surfaces.md#view-surfaces, view calls).

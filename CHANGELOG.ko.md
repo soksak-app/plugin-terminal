@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- P102: terminal view의 command가 view bridge의 `commands.register`로 handler를 등록하고, exposure port는 command에 대해 자기 선언을 보내지 않는다. core는 view command의 전달된 `command.run`을 view에 command request로 보내고 bridge는 자기 handler로만 답하므로, 전에는 terminal command마다 `view command <name> is not registered`로 답했다. 검증: `test/view-exposure-port.test.mjs`가 변경 전에는 port의 `runtime.command.register` 요청을 읽었고 변경 후 통과한다.
 - P101: `terminal.paste`와 `terminal.drop`이 다시 VT sidecar의 paste 요청을 보내서, program이 bracketed paste를 켜면 paste가 괄호로 감싸진다. P86은 그것을 입력한 글로 보냈다.
 - F275-terminal: `make install`이 고정된 의존성을 설치한다. 시험, 검사, build는 더 이상 설치하지 않는다.
 - F274-terminal: pre-push hook은 push가 게시하는 commit message만 검사한다. 시험과 검사는 CI가 실행한다.
