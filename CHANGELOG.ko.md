@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- P67: Korean 기록이 English 기록과 같은 사실을 담는다. checklist가 P64를 담고, P46 changelog 항목이 `terminal.cursor`를 code로 적으며, 0.0.11 changelog section이 P37을 담는다.
 - P10: release workflow가 검증됐다. tag `v0.0.10`부터 `v0.0.14`까지 각각 `release.yml`을 성공으로 실행해 plugin archive를 게시했다.
 - P90-terminal: Runtime 검증이 끝났다. core F239-134의 consumer가 각 `plugin.terminal.frame` record에 `frame`을 요구하고, retained capture의 replay가 retained source 103개를 모두 그 tuple로 join한다.
 - P103: VT sidecar가 `mouse.cursor.dirty`를 보내면 page가 view 커서를 다시 적용한다. 그래서 마우스 모드가 바뀌거나 viewport가 스크롤될 때마다 `warn`으로 `sidecar.unknown`을 쓰지 않는다.
@@ -290,7 +291,7 @@
 
 ## 0.0.13 (2026-10-14)
 
-- P46: terminal.cursor의 drawn preedit(P45)을 담은 version 0.0.13을 release한다. tag `v0.0.13`이 `terminal-0.0.13.tgz`를 게시한다.
+- P46: `terminal.cursor`의 drawn preedit(P45)을 담은 version 0.0.13을 release한다. tag `v0.0.13`이 `terminal-0.0.13.tgz`를 게시한다.
 - P45: `terminal.cursor`가 `screen` event의 `cursor.preedit`에 service가 그린 preedit을 담는다(없으면 null). 다른 형태의 preedit은 잘못된 screen cursor로 거부된다.
 
 ## 0.0.12 (2026-10-14)
@@ -302,12 +303,12 @@
 ## 0.0.11 (2026-10-13)
 
 - P41: event 계약(P30), screen hash(P32), wheel 기록(P38.1), context menu(P39)를 담은 version 0.0.11을 release한다. tag `v0.0.11`이 `terminal-0.0.11.tgz`를 게시한다.
-
 - P39: `surface.menu`가 제목 `복사`의 `terminal.copy`와 제목 `붙여넣기`의 `terminal.paste`를 나열하므로, terminal을 오른쪽 클릭하면 둘이 열린다.
 - P40: `make test`가 record 검사 `soksak-records`를 실행하고, CI가 push된 각 commit message의 형식을 `soksak-commits`로 검사한다.
 - P32.2: test가 `@soksak/plugin-api/screen-hash`를 설치된 core release 0.0.11에서 import한다. core checkout에서 그 module을 찾던 hook은 지웠다.
 - P30.5: `@soksak/plugin-api`를 core release 0.0.11에서 받고 `engines.soksak`은 `>=0.0.11`이므로, manifest member `events`가 받아들여지고 `make test`가 설치된 의존성의 event 가드를 실행한다.
 - P38.1: 표면이 각 wheel 제스처를 이동량, 칸 높이, 보내는 줄, 남은 이동과 함께 `plugin.terminal.wheel`로 기록하므로, scroll을 보내지 않는 제스처도 log에 남는다.
+- P37: paste가 자기 표면의 마지막 selection 해제의 복사를 기다린다. sidecar는 그 해제를 보이는 raster 뒤에 복사를 보내므로, 해제 뒤의 paste가 그 선택의 text를 돌려준다.
 - P36: 화면 행의 cell이 screen message에서 켜진 속성 flag를 이름으로 담는다.
 - P35: 화면 행의 빈 칸과 넓은 글자의 이어지는 칸은 `ch`가 없으므로, 읽는 쪽이 다시 그 폭을 공백으로 센다.
 - P33: `test/census.test.mjs`가 event도 이유도 없는 발생 source가 이 repository의 guard에서 실패함을 보인다.

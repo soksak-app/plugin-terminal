@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P67: The Korean records carry the same facts as the English records: the checklist carries P64, the P46 changelog entry formats `terminal.cursor` as code, and the 0.0.11 changelog section carries P37.
 - P10: The release workflow is verified: the tags `v0.0.10` to `v0.0.14` each ran `release.yml` to success and published the plugin archive.
 - P90-terminal: The runtime verification is complete: the consumer of core F239-134 requires `frame` on each `plugin.terminal.frame` record, and its replay of the retained capture joins all 103 retained sources by that tuple.
 - P103: The page applies the view cursor again when the VT sidecar sends `mouse.cursor.dirty`, so the event no longer writes `sidecar.unknown` at `warn` on every mouse mode change or viewport scroll.
