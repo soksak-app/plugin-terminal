@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- P10: The release workflow is verified: the tags `v0.0.10` to `v0.0.14` each ran `release.yml` to success and published the plugin archive.
 - P90-terminal: The runtime verification is complete: the consumer of core F239-134 requires `frame` on each `plugin.terminal.frame` record, and its replay of the retained capture joins all 103 retained sources by that tuple.
 - P103: The page applies the view cursor again when the VT sidecar sends `mouse.cursor.dirty`, so the event no longer writes `sidecar.unknown` at `warn` on every mouse mode change or viewport scroll.
 - P102: A command of the terminal view registers its handler through `commands.register` of the view bridge, and the exposure port sends no declaration of its own for a command; core sends a forwarded `command.run` of a view command to the view as a command request, which the bridge answers only from its handlers, so every terminal command answered `view command <name> is not registered`. Validation: `test/view-exposure-port.test.mjs` read a `runtime.command.register` request of the port before the change and passes after it.
