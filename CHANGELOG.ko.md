@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- P90-terminal: Runtime 검증이 끝났다. core F239-134의 consumer가 각 `plugin.terminal.frame` record에 `frame`을 요구하고, retained capture의 replay가 retained source 103개를 모두 그 tuple로 join한다.
 - P103: VT sidecar가 `mouse.cursor.dirty`를 보내면 page가 view 커서를 다시 적용한다. 그래서 마우스 모드가 바뀌거나 viewport가 스크롤될 때마다 `warn`으로 `sidecar.unknown`을 쓰지 않는다.
 - P102: terminal view의 command가 view bridge의 `commands.register`로 handler를 등록하고, exposure port는 command에 대해 자기 선언을 보내지 않는다. core는 view command의 전달된 `command.run`을 view에 command request로 보내고 bridge는 자기 handler로만 답하므로, 전에는 terminal command마다 `view command <name> is not registered`로 답했다. 검증: `test/view-exposure-port.test.mjs`가 변경 전에는 port의 `runtime.command.register` 요청을 읽었고 변경 후 통과한다.
 - P101: `terminal.paste`와 `terminal.drop`이 다시 VT sidecar의 paste 요청을 보내서, program이 bracketed paste를 켜면 paste가 괄호로 감싸진다. P86은 그것을 입력한 글로 보냈다.
