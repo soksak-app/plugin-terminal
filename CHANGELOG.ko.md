@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- F336-terminal: 0.0.24판은 core 0.0.25가 필요하다.
 - F326-terminal: version 0.0.23은 core `^0.0.24`를 요구하고 core `v0.0.24`의 plugin API release file과 `sok`를 쓴다.
 - F324-terminal: version 0.0.22은 core `^0.0.23`을 요구하고, core `v0.0.23`의 plugin API release file을 쓰며, core `v0.0.23` Tauri host application zip 안의 `sok`로 release를 pack한다.
 - F272-terminal: `main`에 push하면 tag가 없을 때 `soksak-release-gate`로 선언된 version을 core release `v0.0.21`의 `sok`와 함께 release한다. `@soksak/plugin-api`에 대한 의존은 그 release의 pack 파일이다. 어떤 workflow도 core를 checkout하지 않는다.
