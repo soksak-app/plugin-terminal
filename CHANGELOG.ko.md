@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- F326-terminal: version 0.0.23은 core `^0.0.24`를 요구하고 core `v0.0.24`의 plugin API release file과 `sok`를 쓴다.
 - F324-terminal: version 0.0.22은 core `^0.0.23`을 요구하고, core `v0.0.23`의 plugin API release file을 쓰며, core `v0.0.23` Tauri host application zip 안의 `sok`로 release를 pack한다.
 - F272-terminal: `main`에 push하면 tag가 없을 때 `soksak-release-gate`로 선언된 version을 core release `v0.0.21`의 `sok`와 함께 release한다. `@soksak/plugin-api`에 대한 의존은 그 release의 pack 파일이다. 어떤 workflow도 core를 checkout하지 않는다.
 - P104: 휠 스크롤마다 `shift`를 보낸다. Shift를 누르고 있으면 true인 boolean이므로, 마우스 보고가 켜진 동안에도 VT sidecar가 Shift로 viewport를 스크롤할 수 있다. 수정 전 코드에서는 `test/terminal.test.mjs`의 `wheel input is sent as whole scroll lines at the pointer cell and the screen reports scrollback`가 scroll body에 `shift`가 없어서 실패했고, 수정 후에는 Shift가 없으면 `shift: false`, 있으면 `shift: true`로 통과한다. `make test`는 node test 249개 중 249개를, `make check`는 검사 전체를 통과한다. `shift`를 적용하는 sidecar는 S108을 담은 VT release이며 그 release는 아직 없으므로, 그 release가 게시되기 전까지 `plugin.json`은 `^0.0.17` 최소 버전을 유지하고 이전 sidecar는 `shift`를 무시한다.
