@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- F272-terminal: A push to `main` releases the declared version through `soksak-release-gate` when its tag is absent, with the `sok` of the core release `v0.0.21`, and the dependency on `@soksak/plugin-api` is the packed release file of that release; no workflow checks out core.
 - P104: Each wheel scroll sends `shift`, a boolean that is true while Shift is held, so the VT sidecar can scroll the viewport with Shift while mouse reporting is on. The test `wheel input is sent as whole scroll lines at the pointer cell and the screen reports scrollback` failed on the unchanged code because the scroll bodies had no `shift`, and passes with `shift: false` without Shift and `shift: true` with Shift. `make test` passes 249 of 249 node tests and `make check` passes. The sidecar that applies `shift` is the VT release containing S108, which no release has yet; `plugin.json` keeps the `^0.0.17` minimum until that release is published, and an older sidecar ignores `shift`.
 - P67: The Korean records carry the same facts as the English records: the checklist carries P64, the P46 changelog entry formats `terminal.cursor` as code, and the 0.0.11 changelog section carries P37.
 - P10: The release workflow is verified: the tags `v0.0.10` to `v0.0.14` each ran `release.yml` to success and published the plugin archive.
