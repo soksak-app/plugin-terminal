@@ -17,16 +17,28 @@ function fixture() {
   return { commands, statuses, records, exposed };
 }
 
-test("the diagnostics declaration of a build without it is not an error, and any other failed status is refused", { timeout: 5000 }, async () => {
+test("a release view has no diagnostic declaration in its start values and requests no file", { timeout: 5000 }, async () => {
   const fetched = globalThis.fetch;
+  const requests = [];
   try {
-    globalThis.fetch = async () => ({ ok: false, status: 404 });
-    assert.equal(await loadDiagnostics("sok://terminal/ui/terminal.html"), null);
-    globalThis.fetch = async () => ({ ok: false, status: 500 });
-    await assert.rejects(loadDiagnostics("sok://terminal/ui/terminal.html"), /answered 500/);
+    globalThis.fetch = async (url) => { requests.push(String(url)); return { ok: false, status: 404 }; };
+    assert.equal(await loadDiagnostics({ surface: "terminal-1", diagnostics: null }), null);
   } finally {
     globalThis.fetch = fetched;
   }
+  assert.deepEqual(requests, []);
+});
+
+test("a diagnostic view loads the declaration of its start values and its attach function", { timeout: 5000 }, async () => {
+  const declaration = { module: "ui/terminal-diagnostics.js", exposes: {} };
+  const loaded = await loadDiagnostics({ surface: "terminal-1", diagnostics: declaration });
+  assert.deepEqual(loaded.declaration, declaration);
+  assert.equal(loaded.attach, attach);
+});
+
+test("start values without a diagnostic declaration are refused with an error that names them", { timeout: 5000 }, async () => {
+  await assert.rejects(loadDiagnostics({ surface: "terminal-1" }),
+    /^Error: the start values of the terminal view have no diagnostics: window\.sokSurface \{surface, params, origin, project, declarations, diagnostics\} carries it$/);
 });
 
 test("view frame start anchors the clock of the observed view document", { timeout: 5000 }, () => {

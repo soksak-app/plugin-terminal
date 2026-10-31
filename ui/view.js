@@ -57,7 +57,7 @@ bridge.runtime.theme(applyTheme);
 // The terminal reads the scale and the settings at its start, and the diagnostic declaration decides the exposure entries of
 // the page, so the page resolves all three before it starts anything.
 const [scale, settings, loadedDiagnostics] = await Promise.all([
-  bridge.runtime.textSize.read(), bridge.runtime.settings.read(), loadDiagnostics(),
+  bridge.runtime.textSize.read(), bridge.runtime.settings.read(), loadDiagnostics(start),
 ]);
 const observeViewDocumentFrames = loadedDiagnostics === null
   ? null

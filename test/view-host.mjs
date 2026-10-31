@@ -13,6 +13,7 @@ export const START = Object.freeze({
   origin: Object.freeze({ directory: null }),
   project: null,
   declarations: Object.freeze(manifest.exposes),
+  diagnostics: null,
 });
 
 const settingsValues = () => ({
