@@ -6,6 +6,7 @@
 - F355-4-terminal: `make pack OUT=<folder>` writes the release with `pnpm pack`, and release.yml no longer downloads a core release, because core 0.0.25 installs the `pnpm pack` file of a plugin and has no `sok plugin pack`. The release holds `diagnostics.json` and its module, which only a diagnostic build reads, and `@soksak/plugin-api` is pinned to the core release `v0.0.25`.
 ## Unreleased
 
+- F364-terminal: `engines.soksak` is `^0.0.28`, and the version is 0.0.28. Red: the core version test failed on `^0.0.27`. Green: it passes.
 - F361-terminal: The plugin requires VT `^0.0.19`, and the version is 0.0.27. Red: the manifest test failed on `^0.0.18`. Green: it passes.
 - F360-terminal: `engines.soksak` is `^0.0.27`, so core 0.0.27 installs the plugin, and the version is 0.0.26. Red: `the terminal package requires only core 0.0.27` failed on `^0.0.26`. Green: it passes.
 - F355-3-4-terminal: The checks come from the records kit and events kit releases instead of the plugin API of core; the view, exposure, engines and case copy checks, `view-check.json` and `CORE_PLUGIN_API_DIR` are removed, because the application validates the manifest at installation and the registry check compares the exposed names with each listed core. Red: `the checks come from the kit releases, and no check reads the plugin API of core` failed. Green: it passes, and `make test` and `make check` pass.
