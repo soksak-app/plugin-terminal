@@ -9,7 +9,7 @@ const SCREEN_MESSAGES = JSON.parse(readFileSync(new URL("./fixtures/screen-messa
 const SCREEN_MESSAGE = SCREEN_MESSAGES.vectors[0];
 const SCREEN_FRAME_PREEDIT = JSON.parse(readFileSync(new URL("../scripts/test-sdk-cases.json", import.meta.url), "utf8"))
   .modules.find(({ specifier }) => specifier === "@soksak/plugin-api/screen-hash")
-  .caseCopies.find(({ id }) => id === "screen.message.frame-preedit").steps[0].message.value;
+  .caseCopies.find(({ id }) => id === "screen.message.frame-preedit").steps[0].apply.message;
 SCREEN_FRAME_PREEDIT.cursor = { ...SCREEN_FRAME_PREEDIT.cursor,
   caret: { row: SCREEN_FRAME_PREEDIT.cursor.row, col: SCREEN_FRAME_PREEDIT.cursor.col } };
 const SCREEN_RENDER = (frame = SCREEN_FRAME_PREEDIT.frame) => ({
@@ -27,7 +27,7 @@ const SCREEN_RENDER = (frame = SCREEN_FRAME_PREEDIT.frame) => ({
 });
 const SCREEN_HASH_CASES = JSON.parse(readFileSync(new URL("../scripts/test-sdk-cases.json", import.meta.url), "utf8"))
   .modules.find(({ specifier }) => specifier === "@soksak/plugin-api/screen-hash").caseCopies;
-const SCREEN_CARET_MESSAGE = SCREEN_HASH_CASES.find(({ id }) => id === "screen.message.frame-preedit").steps[0].message.value;
+const SCREEN_CARET_MESSAGE = SCREEN_HASH_CASES.find(({ id }) => id === "screen.message.frame-preedit").steps[0].apply.message;
 const P74_SCREEN_MESSAGE_IDS = [
   "screen.message.letter-x-cursor-hidden",
   "screen.message.scrollback-offset-3",
@@ -358,7 +358,8 @@ test("native image errors remain visible after later session state updates", asy
 
 /** 오류 수명 검사용 터미널. 세션을 연 뒤 영역, 사이드카, 공개 항목을 반환한다. */
 // 설정이 보내는 글꼴과 커서 정책을 뺀 세션 메시지. 글꼴과 커서 메시지는 각자의 테스트가 검사한다.
-const sessionMessages = (sidecar) => sidecar.getMessages().filter(({ body }) => !["font", "cursor"].includes(body.operation));
+// The session requests without the font, cursor and screen read messages of the bootstrap.
+const sessionMessages = (sidecar) => sidecar.getMessages().filter(({ body }) => !["font", "cursor", "screen.read"].includes(body.operation));
 
 async function errorTerminal() {
   const attach = createFakeAttachImage();
@@ -1548,8 +1549,8 @@ test("a cell of the screen names each attribute flag of the message that is set"
   const cell = (grapheme, attributes) => ({ grapheme, width: 1, fg: null, bg: null, attributes });
   // The flags of the screen hash (docs/spec/replay.md#screen-hash in core): bold 01, dim 02, italic 04, underline 08, blink 10,
   // inverse 20, hidden 40, strikethrough 80.
-  sidecar.triggerEvent("test-session", { event: "screen", sequence: 1, segment: "b1", rows: 1, cols: 3, cursor: { row: 0, col: 0, visible: true },
-    cells: [cell("Z", 0x2d), cell("Y", 0xd2), cell("N", 0)] });
+  sidecar.triggerEvent("test-session", { event: "screen", sequence: 1, segment: "b1", number: 1, base: true, rows: 1, cols: 3,
+    cursor: { row: 0, col: 0, visible: true }, cells: [cell("Z", 0x2d), cell("Y", 0xd2), cell("N", 0)] });
   const [row] = expose.getStatus("terminal.screen").readFn();
   assert.deepEqual(row, [
     { ch: "Z", width: 1, bold: true, italic: true, underline: true, inverse: true },
@@ -4765,7 +4766,7 @@ test("valid copied screen messages do not leave a screen hash error in terminal.
   for (const id of P74_SCREEN_MESSAGE_IDS) {
     const testCase = SCREEN_HASH_CASES.find(({ id: candidate }) => candidate === id);
     assert.ok(testCase, `missing copied public message case ${id}`);
-    const source = testCase.steps[0].message.value;
+    const source = testCase.steps[0].apply.message;
     const message = { ...source, cursor: { ...source.cursor, caret: null }, render: null };
     sidecar.triggerRaw("test-session", message);
   }
@@ -4774,6 +4775,80 @@ test("valid copied screen messages do not leave a screen hash error in terminal.
   const screenErrors = lines.filter(([name, fields]) => name === "error" && fields.source === "screen");
   assert.equal(screenErrors.length, 0, JSON.stringify(screenErrors));
   assert.equal(expose.getStatus("terminal.session").readFn().error, undefined);
+});
+
+// The message of a published apply case as the sidecar sends it to a surface without an image.
+const applyCaseMessage = (id) => {
+  const { message } = SCREEN_HASH_CASES.find(({ id: candidate }) => candidate === id).steps[0].apply;
+  return { ...message, cursor: { ...message.cursor, caret: null }, render: null };
+};
+const caseHash = (id) => SCREEN_HASH_CASES.find(({ id: candidate }) => candidate === id).steps[0].output.hash;
+const screenText = (expose) => expose.getStatus("terminal.screen").readFn().map((row) => row.map((cell) => cell.ch ?? " ").join(""));
+const screenReads = (sidecar) => sidecar.getMessages().filter(({ body }) => body.operation === "screen.read").length;
+
+async function startChangeTerminal(lines) {
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
+    window: { TextEncoder: FakeTextEncoder }, runtime: { log: recorder(lines) },
+  });
+  openSession(sidecar);
+  return { sidecar, expose };
+}
+
+test("a change form replaces the rows that it carries in the screen that the view holds and hashes", async () => {
+  const lines = [];
+  const { sidecar, expose } = await startChangeTerminal(lines);
+  sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.full-two-rows"));
+  await framesStored(lines, 1);
+  assert.deepEqual(screenText(expose), ["ab", "cd"]);
+  sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.change-one-row"));
+  await framesStored(lines, 2);
+  assert.deepEqual(screenText(expose), ["ab", "xy"]);
+  assert.deepEqual(lines.filter(([name]) => name === "frame").map(([, fields]) => fields.hash),
+    [caseHash("screen.hash.two-rows.sha256"), caseHash("screen.hash.two-rows-changed.sha256")]);
+  assert.deepEqual(lines.filter(([name]) => name === "error"), []);
+});
+
+test("the view reads the screen when it opens a session and refuses a change before the full form that answers the read", async () => {
+  const lines = [];
+  const { sidecar, expose } = await startChangeTerminal(lines);
+  assert.equal(screenReads(sidecar), 1, "the view reads the screen when it opens the session");
+  const operations = sidecar.getMessages().map(({ body }) => body.operation);
+  assert.ok(operations.indexOf("open") < operations.indexOf("screen.read"), JSON.stringify(operations));
+  sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.change-one-row"));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(lines.filter(([name]) => name === "error"), [], "a change before the full form is expected after the read");
+  assert.deepEqual(lines.filter(([name]) => name === "screen.refused").map(([, fields]) => fields), [{ number: 2, previous: 1 }]);
+  assert.deepEqual(screenText(expose), []);
+  sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.full-two-rows"));
+  await framesStored(lines, 1);
+  assert.deepEqual(screenText(expose), ["ab", "cd"]);
+  assert.equal(screenReads(sidecar), 1);
+});
+
+test("a refused change reports its error, reads the screen and refuses the changes until the full form", async () => {
+  const lines = [];
+  const { sidecar, expose } = await startChangeTerminal(lines);
+  sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.full-two-rows"));
+  await framesStored(lines, 1);
+  sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.refuses-unfollowed-change"));
+  await new Promise((resolve) => setImmediate(resolve));
+  const errors = lines.filter(([name]) => name === "error").map(([, fields]) => fields.message);
+  assert.equal(errors.length, 1, JSON.stringify(errors));
+  assert.match(errors[0], /a change of previous 3 does not follow number 1/);
+  assert.equal(screenReads(sidecar), 2, "the refusal reads the screen again");
+  sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.change-one-row"));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(screenText(expose), ["ab", "cd"], "a change before the full form leaves the screen");
+  assert.deepEqual(lines.filter(([name]) => name === "screen.refused").map(([, fields]) => fields), [{ number: 2, previous: 1 }]);
+  assert.equal(lines.filter(([name]) => name === "error").length, 1);
+  sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.full-two-rows"));
+  await framesStored(lines, 2);
+  sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.change-one-row"));
+  await framesStored(lines, 3);
+  assert.deepEqual(screenText(expose), ["ab", "xy"]);
 });
 
 test("terminal.screen.alter changes the next screen message before the page hashes it, as a change on the way would", async () => {

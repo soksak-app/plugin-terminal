@@ -1,5 +1,5 @@
 import { shellQuotePath } from "@soksak/plugin-api";
-import { screenFromMessage, screenHash } from "@soksak/plugin-api/screen-hash";
+import { applyScreenMessage, screenHash } from "@soksak/plugin-api/screen-hash";
 
 // 터미널 표면의 부팅과 동작을 처리한다.
 //
@@ -336,10 +336,28 @@ function normalizeCursorPolicy(value) {
  */
 // 첫 칸의 bold 속성을 뒤집은 screen 메시지. 진단 command terminal.screen.alter 가 사이드카와 페이지 사이의 변경을 흉내 낸다.
 // 속성은 어느 칸에서나 유효하므로 바뀐 메시지도 검사를 통과하고 다른 화면으로 hash 된다. 칸이 없는 메시지는 그대로다.
+// The change form carries its cells in the rows of changed, so the first cell of its first changed row is altered.
 function alteredScreen(body) {
-  if (!Array.isArray(body.cells) || body.cells.length === 0 || !Number.isInteger(body.cells[0]?.attributes)) return body;
-  const [first, ...rest] = body.cells;
-  return { ...body, cells: [{ ...first, attributes: first.attributes ^ 0x01 }, ...rest] };
+  const cells = body.base === false ? (Array.isArray(body.changed) ? body.changed[0]?.cells : undefined) : body.cells;
+  if (!Array.isArray(cells) || cells.length === 0 || !Number.isInteger(cells[0]?.attributes)) return body;
+  const [first, ...rest] = cells;
+  const altered = [{ ...first, attributes: first.attributes ^ 0x01 }, ...rest];
+  if (body.base !== false) return { ...body, cells: altered };
+  const [row, ...rows] = body.changed;
+  return { ...body, changed: [{ ...row, cells: altered }, ...rows] };
+}
+
+// The row of the row model for the cells of one screen row: the text, width and link of each cell and its attribute flags by name.
+// A blank cell and the continuation cell of a wide character have no text; a reader counts its width as spaces.
+function screenRow(cells) {
+  return cells.map((cell) => {
+    const flags = {};
+    for (const [bit, name] of ATTRIBUTE_FLAGS) if (cell.attributes & bit) flags[name] = true;
+    return {
+      ...(cell.grapheme === "" ? {} : { ch: cell.grapheme }), width: cell.width, ...flags,
+      ...(cell.link === undefined ? {} : { link: cell.link }),
+    };
+  });
 }
 
 // screen 메시지의 attributes byte 의 flag 와 그 이름(core docs/spec/replay.md#screen-hash).
@@ -1261,6 +1279,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   const bootstrapSession = async () => {
     applyTitle();
     await openSession();
+    // The view holds no screen of the session it opens or reattaches to, so it reads the full form.
+    await readScreen();
     if (lastTheme) await setTheme(lastTheme.scheme, lastTheme.tokens);
     requested = null;
     await setFont(settings.read()["font.family"]).catch((error) => {
@@ -1284,6 +1304,16 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
 
   // screen.read 응답을 기다리는 resolver
   let pendingScreenRead = null;
+  // The result of applyScreenMessage for the last applied screen message, which a change applies to
+  // (docs/spec/persistent-services.md#screen-message in core).
+  let heldScreen = null;
+  // Set from a screen read of the view until the full form that answers it: a change before it does not follow the screen that
+  // the view holds and is refused.
+  let screenReadAwaited = false;
+  const readScreen = () => {
+    screenReadAwaited = true;
+    return terminal.send(id, { operation: "screen.read" });
+  };
   // pty.pending 측정 응답을 기다리는 resolver. 진단 명령이 한 번에 하나만 요청한다.
   let pendingPtyRead = null;
 
@@ -1376,16 +1406,20 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         setError("sidecar", `sidecar connection failed${reason}`);
       }
     } else if (body.event === "screen") {
+      if (body.base === false && screenReadAwaited) {
+        runtime.log.debug("screen.refused", { number: body.number, previous: body.previous });
+        return;
+      }
       // 진단 command terminal.screen.alter 가 요청한 변경은 메시지를 검사하고 hash 하기 전에, 중간에 바뀐 것처럼 적용한다.
       if (alterNextScreen) {
         alterNextScreen = false;
         body = alteredScreen(body);
       }
-      // screen 이벤트를 처리한다. screen.read 응답이나 화면 변화 알림.
-      // 메시지가 화면을 모두 담으므로(docs/spec/terminal-runtime.md in core) 메시지는 항상 검사하고, frame 이벤트의 hash 는
-      // 메시지만으로 계산한다. screenHash 는 SHA-256 이라 비동기이므로 fields 는 builder 가 아니라 hash 가 나온 뒤의 객체다.
-      // 거부된 메시지는 screen 출처의 오류이고 처리하지 않는다.
-      let message;
+      // A screen message is the full form or a change of the screen that the view holds (docs/spec/persistent-services.md#screen-message
+      // in core). The view checks each message, applies it to the held screen and hashes the full screen that results; screenHash is
+      // asynchronous, so the fields are the object after the hash. A refused message is an error of the screen source; a refused change
+      // also reads the screen, because the screen that the view holds no longer follows the sidecar.
+      let applied;
       try {
         // The cursor is part of each screen message (docs/spec/replay.md), so a message without it is refused before any update.
         const { col, row, visible, focused, shape, blinking } = body.cursor ?? {};
@@ -1407,11 +1441,16 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         // render is a terminal consumer field; the SDK screen hash owns the
         // screen-message projection and does not include raster diagnostics.
         const { render: _render, ...hashMessage } = body;
-        message = screenFromMessage(hashMessage);
+        // A full form does not follow a screen, so it applies without the held one.
+        applied = applyScreenMessage(body.base === true ? null : heldScreen, hashMessage);
       } catch (error) {
         reportInputError(error, "screen");
+        if (body.base === false) readScreen().catch((readError) => reportInputError(readError, "screen"));
         return;
       }
+      heldScreen = applied;
+      if (body.base === true) screenReadAwaited = false;
+      const message = applied.screen;
       // frame 기록은 gate 없이 runtime.log.debug 로 넘기며, 저장 여부는 event log 의 writer 가 class 로 정한다(docs/spec/logging.md).
       // 페이지는 log level 을 읽지 않는다. screenHash 는 비동기이므로 fields 는 hash 가 나온 뒤의 객체다.
       // The session of the sidecar, which its frame records name (docs/spec/replay.md#records in core).
@@ -1425,17 +1464,14 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         (error) => reportInputError(error, "screen"),
       );
       // 링크와 screen.read 는 글자, 폭, 링크만 쓴다. 색과 속성은 래스터가 그린다.
-      screen = body.cells.reduce((rows, cell, index) => {
-        if (index % body.cols === 0) rows.push([]);
-        // 빈 칸과 넓은 글자의 이어지는 칸은 글자가 없다. 읽는 쪽은 그 폭을 공백으로 센다. 켜진 속성 flag 는 이름으로 담는다.
-        const flags = {};
-        for (const [bit, name] of ATTRIBUTE_FLAGS) if (cell.attributes & bit) flags[name] = true;
-        rows[rows.length - 1].push({
-          ...(cell.grapheme === "" ? {} : { ch: cell.grapheme }), width: cell.width, ...flags,
-          ...(cell.link === undefined ? {} : { link: cell.link }),
-        });
-        return rows;
-      }, []);
+      // The full form gives every row, and a change replaces only the rows that it carries.
+      if (body.base === true) {
+        screen = [];
+        for (let start = 0; start < body.cells.length; start += body.cols) screen.push(screenRow(body.cells.slice(start, start + body.cols)));
+      } else {
+        screen = screen.slice();
+        for (const change of body.changed) screen[change.row] = screenRow(change.cells);
+      }
       screenFrame = body.frame;
       changed("screen");
       if (typeof body.background === "string" && body.background !== terminalBackground) {
@@ -1467,7 +1503,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         });
         if (resolveError("screen")) changed("session");
       }
-      if (pendingScreenRead) {
+      // The sidecar answers a screen read with the full form.
+      if (pendingScreenRead && body.base === true) {
         pendingScreenRead({ rows: screen, frame: screenFrame });
         pendingScreenRead = null;
       }

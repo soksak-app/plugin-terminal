@@ -1,9 +1,9 @@
 // Builds the `screen` message of core (docs/spec/terminal-runtime.md#screen-message) from the compact form that the tests write:
-// `lines` holds a string or a row of `{ ch, width, link }` per row, and `sequence`, `segment`, `rows`, `cols` and `cursor` are
-// filled in when absent. A message without the `frame` key gets the null frame of a surface without an image; a `frame` key
-// that is present is passed on unchanged, undefined included. The builder supplies the current
-// presentation caret from the raw coordinate only for ordinary legacy test fixtures; tests of
-// the required wire field use triggerRaw and provide or omit caret explicitly.
+// `lines` holds a string or a row of `{ ch, width, link }` per row, and `sequence`, `segment`, `number`, `base`, `rows`, `cols`
+// and `cursor` are filled in when absent, so the built message is the full form. A message without the `frame` key gets the null
+// frame of a surface without an image; a `frame` key that is present is passed on unchanged, undefined included. The builder
+// supplies the current presentation caret from the raw coordinate only for ordinary legacy test fixtures; tests of the required
+// wire field use triggerRaw and provide or omit caret explicitly.
 const DEFAULT_CURSOR = { visible: false, row: 0, col: 0, focused: false, shape: "Block", blinking: false };
 
 export function screenMessage(compact) {
@@ -33,5 +33,5 @@ export function screenMessage(compact) {
       });
     }
   }
-  return { sequence: 1, segment: "b1", ...rest, rows, cols, cursor, cells };
+  return { sequence: 1, segment: "b1", number: 1, base: true, ...rest, rows, cols, cursor, cells };
 }

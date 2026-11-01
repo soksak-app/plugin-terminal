@@ -403,6 +403,28 @@
       },
       "description": "An event of the image region with its type and its whole body, before the terminal handles it."
     },
+    "plugin.terminal.screen.refused": {
+      "layer": "plugin",
+      "class": "frame",
+      "level": "debug",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "number"
+          },
+          "previous": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "number",
+          "previous"
+        ]
+      },
+      "description": "A change form arrived while the view awaited the full form that answers its screen read, and the view refused it; number and previous are the members of the change."
+    },
     "plugin.terminal.frame": {
       "layer": "plugin",
       "class": "frame",

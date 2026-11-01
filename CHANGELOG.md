@@ -6,6 +6,7 @@
 - F355-4-terminal: `make pack OUT=<folder>` writes the release with `pnpm pack`, and release.yml no longer downloads a core release, because core 0.0.25 installs the `pnpm pack` file of a plugin and has no `sok plugin pack`. The release holds `diagnostics.json` and its module, which only a diagnostic build reads, and `@soksak/plugin-api` is pinned to the core release `v0.0.25`.
 ## Unreleased
 
+- F374-5-3-terminal: The view applies each `screen` message with `applyScreenMessage`, so the change form of VT S114 replaces only the rows it carries; the view reads the screen after it opens or reattaches a session and after a refused change, refuses the changes before the full form that answers the read and writes `plugin.terminal.screen.refused` for each. The test API answers the `apply` cases of core.
 - F367-terminal: `engines.soksak` is `^0.0.29`, and the version is 0.0.29. Red: the core version test failed on `^0.0.28`. Green: it passes.
 - F364-terminal: `engines.soksak` is `^0.0.28`, and the version is 0.0.28. Red: the core version test failed on `^0.0.27`. Green: it passes.
 - F361-terminal: The plugin requires VT `^0.0.19`, and the version is 0.0.27. Red: the manifest test failed on `^0.0.18`. Green: it passes.

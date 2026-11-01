@@ -6,6 +6,8 @@
         "event": "screen",
         "sequence": 2,
         "segment": "b1",
+        "number": 1,
+        "base": true,
         "rows": 1,
         "cols": 1,
         "cursor": {
