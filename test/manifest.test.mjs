@@ -86,11 +86,12 @@ test("registered terminal exposures match manifest declarations", () => {
   assert.deepEqual(registrations(`${viewSource}\n${terminalSource}`), declarations(manifest.exposes));
 });
 
-test("diagnostics.json declares the entries its module registers and is not published", () => {
+// Every release holds the diagnostic declaration and its module, and only a diagnostic build reads them (core docs/spec/plugins.md).
+test("diagnostics.json declares the entries its module registers and is published", () => {
   const source = readFileSync(new URL(`../${diagnostics.module}`, import.meta.url), "utf8");
   assert.deepEqual(registrations(source), declarations(diagnostics.exposes));
   for (const path of ["diagnostics.json", diagnostics.module]) {
-    assert.equal(pkg.files.some((entry) => path === entry || path.startsWith(`${entry}/`)), false, `${path} is published`);
+    assert.equal(pkg.files.some((entry) => path === entry || path.startsWith(`${entry}/`)), true, `${path} is not published`);
   }
 });
 

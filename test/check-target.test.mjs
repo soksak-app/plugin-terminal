@@ -83,10 +83,10 @@ test("check runs every validator from the selected SDK directory", () => {
   }
 });
 
-test("pack runs check before the plugin pack command", () => {
+test("pack runs check before pnpm pack", () => {
   const output = make("-n", "pack", "OUT=/tmp/terminal-check-package");
   const check = output.indexOf("exposure-check.js");
-  const pack = output.indexOf("plugin pack . /tmp/terminal-check-package");
+  const pack = output.indexOf("pnpm pack --pack-destination /tmp/terminal-check-package");
   assert.ok(check >= 0, "pack omitted the check prerequisites");
   assert.ok(pack > check, "pack ran before check");
 });

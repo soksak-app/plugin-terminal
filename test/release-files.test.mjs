@@ -42,15 +42,14 @@ test("every relative import of a ui page resolves to a file of the release", () 
     for (const specifier of specifiers) {
       const target = new URL(specifier, new URL(`ui/${name}`, root));
       const path = target.pathname.slice(new URL(".", root).pathname.length);
-      // The diagnostic module is staged only in diagnostic builds, and its declaration is the only exception.
-      if (path === diagnostics.module) continue;
       if (!listed(path)) unresolved.push(`ui/${name} -> ${path}`);
     }
   }
   assert.deepEqual(unresolved, []);
 });
 
-test("the diagnostic module is the only unlisted import target and is not published", () => {
-  assert.equal(listed(diagnostics.module), false);
-  assert.equal(listed("diagnostics.json"), false);
+// Every release holds the diagnostic declaration and its module, and only a diagnostic build reads them (core docs/spec/plugins.md).
+test("the release holds the diagnostic module and its declaration", () => {
+  assert.equal(listed(diagnostics.module), true);
+  assert.equal(listed("diagnostics.json"), true);
 });

@@ -2,6 +2,7 @@
 
 [English](CHANGELOG.md)
 
+- F355-4-terminal: `make pack OUT=<folder>`는 `pnpm pack`으로 release를 쓰고, release.yml은 더 이상 core release를 내려받지 않는다. core 0.0.25는 plugin의 `pnpm pack` 파일을 설치하고 `sok plugin pack`이 없기 때문이다. release는 진단 build만 읽는 `diagnostics.json`과 그 module을 담고, `@soksak/plugin-api`는 core release `v0.0.25`에 pin된다.
 ## 미배포
 
 - F342-terminal: view의 exposure port는 watch 중인 status 값을 core `createExpose`가 요구하는 `changed(name, value, version)`으로 보낸다. port에 이것이 없어서 `createExpose`가 `createExpose requires the port changed function`을 던졌다. 테스트 `the exposure port sends each watched status value through the changed call of the view bridge`는 변경 전 port에서 `AssertionError: core createExpose requires the port changed function`으로 실패했고, port의 `changed`로 통과한다.

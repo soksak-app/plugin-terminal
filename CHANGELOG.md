@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- F355-4-terminal: `make pack OUT=<folder>` writes the release with `pnpm pack`, and release.yml no longer downloads a core release, because core 0.0.25 installs the `pnpm pack` file of a plugin and has no `sok plugin pack`. The release holds `diagnostics.json` and its module, which only a diagnostic build reads, and `@soksak/plugin-api` is pinned to the core release `v0.0.25`.
 ## Unreleased
 
 - F342-terminal: The exposure port of the view sends each watched status value through `changed(name, value, version)`, which core `createExpose` requires; the port lacked it, so `createExpose` threw `createExpose requires the port changed function`. The test `the exposure port sends each watched status value through the changed call of the view bridge` failed on the unchanged port with `AssertionError: core createExpose requires the port changed function` and passes with the port's `changed`.
