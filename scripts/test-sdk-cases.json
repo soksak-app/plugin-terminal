@@ -2,7 +2,6 @@
   "modules": [
     {
       "specifier": "@soksak/plugin-api",
-      "contractFile": "contract/clipboard.json",
       "exports": {
         "shellQuotePath": "quote"
       },
@@ -64,7 +63,6 @@
     },
     {
       "specifier": "@soksak/plugin-api/screen-hash",
-      "contractFile": "contract/screen-hash.json",
       "exports": {
         "screenFromMessage": "message",
         "screenHash": "hash"
