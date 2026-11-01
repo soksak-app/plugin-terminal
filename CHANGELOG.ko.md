@@ -6,6 +6,7 @@
 - F355-4-terminal: `make pack OUT=<folder>`는 `pnpm pack`으로 release를 쓰고, release.yml은 더 이상 core release를 내려받지 않는다. core 0.0.25는 plugin의 `pnpm pack` 파일을 설치하고 `sok plugin pack`이 없기 때문이다. release는 진단 build만 읽는 `diagnostics.json`과 그 module을 담고, `@soksak/plugin-api`는 core release `v0.0.25`에 pin된다.
 ## 미배포
 
+- F367-terminal: `engines.soksak`은 `^0.0.29`이고, version은 0.0.29다. Red: core version test가 `^0.0.28`에서 실패했다. Green: 통과한다.
 - F364-terminal: `engines.soksak`은 `^0.0.28`이고, version은 0.0.28다. Red: core version test가 `^0.0.27`에서 실패했다. Green: 통과한다.
 - F361-terminal: plugin은 VT `^0.0.19`를 요구하고, version은 0.0.27이다. Red: manifest test가 `^0.0.18`에서 실패했다. Green: 통과한다.
 - F360-terminal: `engines.soksak`는 `^0.0.27`이므로 core 0.0.27이 plugin을 설치하며, version은 0.0.26다. Red: `the terminal package requires only core 0.0.27`가 `^0.0.26`에서 실패했다. Green: 통과한다.
