@@ -1,6 +1,6 @@
 {
   "name": "@soksak/plugin-terminal",
-  "version": "0.0.24",
+  "version": "0.0.25",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.24.0",
@@ -11,7 +11,7 @@
     "url": "git+https://github.com/soksak-app/plugin-terminal.git"
   },
   "engines": {
-    "soksak": "^0.0.25"
+    "soksak": "^0.0.26"
   },
   "files": [
     "plugin.json",
@@ -33,7 +33,7 @@
     "test": "node scripts/build-test.mjs && node --test test/"
   },
   "devDependencies": {
-    "@soksak/plugin-api": "https://github.com/soksak-app/core/releases/download/v0.0.25/soksak-plugin-api-0.0.25.tgz",
+    "@soksak/plugin-api": "https://github.com/soksak-app/core/releases/download/v0.0.26/soksak-plugin-api-0.0.26.tgz",
     "acorn": "^8.19.0",
     "ajv": "8.20.0",
     "jsdom": "^30.1.1"
