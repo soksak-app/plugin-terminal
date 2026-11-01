@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- F342-terminal: The exposure port of the view sends each watched status value through `changed(name, value, version)`, which core `createExpose` requires; the port lacked it, so `createExpose` threw `createExpose requires the port changed function`. The test `the exposure port sends each watched status value through the changed call of the view bridge` failed on the unchanged port with `AssertionError: core createExpose requires the port changed function` and passes with the port's `changed`.
 - F336-terminal: Version 0.0.24 requires core 0.0.25.
 - F326-terminal: Version 0.0.23 requires core `^0.0.24` and uses the plugin API release file and the `sok` of core `v0.0.24`.
 - F324-terminal: Version 0.0.22 requires core `^0.0.23`, uses the plugin API release file of core `v0.0.23`, and packs its release with the `sok` inside the core `v0.0.23` application zip of the Tauri host.

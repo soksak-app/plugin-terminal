@@ -9,7 +9,7 @@ test("the exposure port of the view reports a refused reply through the page rep
   const requests = [];
   const bridge = {
     calls: { request: async (command, params) => { requests.push([command, params]); return null; } },
-    exposure: { register: async () => null, reply: async () => { throw new Error("the host refused the reply"); } },
+    exposure: { register: async () => null, reply: async () => { throw new Error("the host refused the reply"); }, changed: async () => null },
   };
   const port = createExposurePort({
     bridge, runtime: { native: { on: () => () => {} } }, releaseOf: () => {}, report: (text) => records.push(text),
@@ -19,11 +19,29 @@ test("the exposure port of the view reports a refused reply through the page rep
   assert.deepEqual(records, ["exposure: exposure reply 4: the host refused the reply"]);
 });
 
+test("the exposure port sends each watched status value through the changed call of the view bridge", async () => {
+  const sent = [];
+  const bridge = {
+    calls: { request: async () => null },
+    exposure: {
+      register: async () => null,
+      reply: async () => null,
+      changed: async (name, value, version) => { sent.push([name, value, version]); },
+    },
+  };
+  const exposurePort = createExposurePort({ bridge, runtime: { native: { on: () => () => {} } }, releaseOf: () => {}, report: () => {} });
+  // core createExpose requires port.changed, and a watched status leaves the view only through it (core
+  // docs/spec/native-surfaces.md#view-surfaces, view exposure).
+  assert.equal(typeof exposurePort.changed, "function", "core createExpose requires the port changed function");
+  await exposurePort.changed("terminal.session", { state: "ready" }, 1);
+  assert.deepEqual(sent, [["terminal.session", { state: "ready" }, 1]]);
+});
+
 test("the exposure port sends no declaration of a command, and a command of the view registers its handler in the bridge", async () => {
   const requests = [];
   const bridge = {
     calls: { request: async (command, params) => { requests.push([command, params]); return null; } },
-    exposure: { register: async () => null, reply: async () => null },
+    exposure: { register: async () => null, reply: async () => null, changed: async () => null },
   };
   const exposurePort = createExposurePort({ bridge, runtime: { native: { on: () => () => {} } }, releaseOf: () => {}, report: () => {} });
   // Core sends a forwarded command.run of a registered view command to the view as a command request, which the bridge answers

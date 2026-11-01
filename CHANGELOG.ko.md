@@ -4,6 +4,7 @@
 
 ## 미배포
 
+- F342-terminal: view의 exposure port는 watch 중인 status 값을 core `createExpose`가 요구하는 `changed(name, value, version)`으로 보낸다. port에 이것이 없어서 `createExpose`가 `createExpose requires the port changed function`을 던졌다. 테스트 `the exposure port sends each watched status value through the changed call of the view bridge`는 변경 전 port에서 `AssertionError: core createExpose requires the port changed function`으로 실패했고, port의 `changed`로 통과한다.
 - F336-terminal: 0.0.24판은 core 0.0.25가 필요하다.
 - F326-terminal: version 0.0.23은 core `^0.0.24`를 요구하고 core `v0.0.24`의 plugin API release file과 `sok`를 쓴다.
 - F324-terminal: version 0.0.22은 core `^0.0.23`을 요구하고, core `v0.0.23`의 plugin API release file을 쓰며, core `v0.0.23` Tauri host application zip 안의 `sok`로 release를 pack한다.

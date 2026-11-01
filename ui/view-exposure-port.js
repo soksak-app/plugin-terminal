@@ -1,7 +1,7 @@
 // The exposure port of the terminal view, which core createExpose takes (core docs/spec/native-surfaces.md#view-surfaces, view exposure).
 
 /**
- * Returns the port {register, onRequest, reply, report} of the view.
+ * Returns the port {register, onRequest, reply, changed, report} of the view.
  *
  *     bridge     createViewBridge() of @soksak/plugin-api/view
  *     runtime    the runtime of the bridge, whose native.on delivers the exposure requests
@@ -16,6 +16,8 @@ export function createExposurePort({ bridge, runtime, releaseOf, report }) {
     register: (kind, name) => kind === "command" ? Promise.resolve() : bridge.exposure.register(kind, name),
     onRequest: (fn) => { releaseOf(runtime.native.on("exposure-request", (data) => fn(data))); },
     reply: (id, payload) => bridge.exposure.reply(id, payload),
+    // A watched status leaves the view only through this call, which the view bridge sends as a native call of the changed name.
+    changed: (name, value, version) => bridge.exposure.changed(name, value, version),
     // A reply that the host refuses is written to the application log.
     report: (text) => report(`exposure: ${text}`),
   };

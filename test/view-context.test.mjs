@@ -17,7 +17,7 @@ function bridgeWith({ log, error }) {
       error,
     },
     composition: { create() {} },
-    exposure: { register() {}, reply() {} },
+    exposure: { register() {}, reply() {}, changed() {} },
   };
   return { bridge, requests };
 }
