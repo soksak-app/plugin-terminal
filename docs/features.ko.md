@@ -1,5 +1,6 @@
 # 기능
 
+- [o] F387-terminal — P0, core F387 연결: plugin은 `engines.soksak` `^0.0.31`를 선언하므로 core release 0.0.31이 그것을 설치하며, version은 0.0.33다. 입력: `engines.soksak`은 core 0.0.30만 허용하는 `^0.0.30`이었다. 기대: `engines.soksak`은 `^0.0.31`이고 release run이 `v0.0.33`을 게시한다. 결과: core version test가 `^0.0.30`에서 실패했고(Red) 통과하며(Green), `make check`가 통과한다.
 - [o] S120-terminal — P0, VT S120 연결: plugin은 image region이 그리지 않는 terminal에 아무것도 그리지 않는 VT `^0.0.22`를 요구하고, version은 0.0.32이다. Red: manifest test가 `^0.0.21`에서 실패했다. Green: 통과한다. 결과: release run이 `v0.0.32`를 게시했고, registry가 그것을 올렸다(G70).
 - [o] S118-terminal — P0, VT S118 연결: plugin은 각 shell integration 설치를 자기 임시 파일로 쓰는 VT `^0.0.21`을 요구하므로 함께 열리는 terminal이 각각 시작하고, version은 0.0.31이다. Red: manifest test가 `^0.0.20`에서 실패했다. Green: 통과한다. 결과: release run이 `v0.0.31`을 게시했고, registry가 그것을 올렸다(G69).
 - [o] F378-terminal — P0, core F378 연결: plugin은 view bridge에 `runtime.log.levels`가 있는 `engines.soksak` `^0.0.30`(F374-6-2)과 변경 형식을 보내는 VT `^0.0.20`(F374-5-3-terminal)을 선언하고, version은 0.0.30이다. Red: core version test가 `^0.0.29`에서, manifest test가 `^0.0.19`에서 실패했다. Green: 둘 다 통과한다. 결과: release run이 `v0.0.30`을 게시했다.
