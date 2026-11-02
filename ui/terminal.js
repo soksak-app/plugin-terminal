@@ -1451,18 +1451,21 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       heldScreen = applied;
       if (body.base === true) screenReadAwaited = false;
       const message = applied.screen;
-      // frame 기록은 gate 없이 runtime.log.debug 로 넘기며, 저장 여부는 event log 의 writer 가 class 로 정한다(docs/spec/logging.md).
-      // 페이지는 log level 을 읽지 않는다. screenHash 는 비동기이므로 fields 는 hash 가 나온 뒤의 객체다.
-      // The session of the sidecar, which its frame records name (docs/spec/replay.md#records in core).
-      const { sequence, segment } = body;
-      const { sessionId } = session;
-      const frame = body.frame === null ? null : {
-        generation: body.frame.generation, raster: body.frame.raster, sequence: body.frame.sequence,
-      };
-      screenHash(message).then(
-        (hash) => runtime.log.debug("frame", { session: sessionId, segment, sequence, rows: message.rows, cols: message.cols, frame, hash }),
-        (error) => reportInputError(error, "screen"),
-      );
+      // The writer stores the frame record only while the class frame stores debug, so the page hashes the screen only then; the level
+      // is not a gate, and the writer still decides (docs/spec/native-surfaces.md#view-surfaces in core). screenHash 는 비동기이므로
+      // fields 는 hash 가 나온 뒤의 객체다.
+      if (["debug", "trace"].includes(runtime.log.levels().frame)) {
+        // The session of the sidecar, which its frame records name (docs/spec/replay.md#records in core).
+        const { sequence, segment } = body;
+        const { sessionId } = session;
+        const frame = body.frame === null ? null : {
+          generation: body.frame.generation, raster: body.frame.raster, sequence: body.frame.sequence,
+        };
+        screenHash(message).then(
+          (hash) => runtime.log.debug("frame", { session: sessionId, segment, sequence, rows: message.rows, cols: message.cols, frame, hash }),
+          (error) => reportInputError(error, "screen"),
+        );
+      }
       // 링크와 screen.read 는 글자, 폭, 링크만 쓴다. 색과 속성은 래스터가 그린다.
       // The full form gives every row, and a change replaces only the rows that it carries.
       if (body.base === true) {

@@ -74,7 +74,7 @@ const SHELL_SETTINGS = {
 };
 // The sinks of a surface, which startTerminal requires: a tab that records nothing, a text scale of 1, a log that drops its records,
 // a signal that never aborts, a report that drops its text, and the origin of a tab with no directory.
-const NO_LOG = Object.fromEntries([["enabled", () => false], ...["error", "warn", "info", "debug", "trace"].map((level) => [level, () => {}])]);
+const NO_LOG = Object.fromEntries([["levels", () => ({ lifecycle: "off", input: "off", call: "off", io: "off", frame: "off" })], ...["error", "warn", "info", "debug", "trace"].map((level) => [level, () => {}])]);
 const sinks = () => ({
   reportSurfaceError: () => {},
   tab: { title() {}, footer() {}, directory() {}, notify() {} },
@@ -241,7 +241,10 @@ function createFakeAttachImage() {
  */
 function recorder(lines) {
   lines.builders = new Set();
-  return Object.fromEntries([...["error", "warn", "info", "debug", "trace"].map((level) => [level, (name, fields, options = {}) => {
+  // The stored level of each class (runtime.log.levels of the view bridge): every class stores every level unless the test sets
+  // lines.levels.
+  const levels = () => lines.levels ?? { lifecycle: "trace", input: "trace", call: "trace", io: "trace", frame: "trace" };
+  return Object.fromEntries([["levels", levels], ...["error", "warn", "info", "debug", "trace"].map((level) => [level, (name, fields, options = {}) => {
     assert.ok(!name.startsWith("plugin."), `the log adds the prefix plugin.terminal., got ${name}`);
     if (typeof fields === "function") lines.builders.add(name);
     lines.push([name, JSON.parse(JSON.stringify(typeof fields === "function" ? fields() : fields)), level, options.cids]);
@@ -4742,6 +4745,19 @@ test("a screen message is stored as the frame event with the hash of the golden 
   ], vector.name);
 });
 
+test("a screen message is not hashed and writes no frame record while the class frame does not store debug", async () => {
+  // The writer would not store the record, so the page skips the hash that the record carries (docs/spec/native-surfaces.md in core).
+  const lines = [];
+  lines.levels = { lifecycle: "error", input: "error", call: "error", io: "error", frame: "error" };
+  const sidecar = await startScreenTerminal(lines);
+  sidecar.triggerEvent("test-session", SCREEN_MESSAGE.message);
+  for (let turn = 0; turn < 100; turn++) await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(lines.filter(([name]) => name === "frame"), [], "the page hashed a screen whose frame record the writer would refuse");
+  lines.levels = { ...lines.levels, frame: "debug" };
+  sidecar.triggerEvent("test-session", SCREEN_MESSAGE.message);
+  await framesStored(lines, 1);
+});
+
 test("a frame record preserves the accepted native frame tuple before asynchronous hashing", async () => {
   const lines = [];
   const sidecar = await startScreenTerminal(lines);
@@ -4873,14 +4889,6 @@ test("terminal.screen.alter changes the next screen message before the page hash
   assert.equal(hashes[1], vector.hash, "only the next message is altered");
 });
 
-test("a screen message reaches the event log as a frame record without a level gate in the page", async () => {
-  // The writer of the event log decides whether the record is stored by its class; the page reads no level.
-  const lines = [];
-  const sidecar = await startScreenTerminal(lines);
-  sidecar.triggerEvent("test-session", SCREEN_MESSAGE.message);
-  await framesStored(lines, 1);
-});
-
 test("malformed screen rows, columns, cells, and segment are refused with debug logging disabled", async () => {
   const lines = [];
   const sidecar = createFakeSidecar();
@@ -4924,7 +4932,8 @@ function capturedLog() {
   const records = [];
   const log = Object.fromEntries(["error", "warn", "info", "debug", "trace"].map((level) => [level,
     (event, fields) => records.push([event, JSON.parse(JSON.stringify(typeof fields === "function" ? fields() : fields)), level])]));
-  return { records, runtime: { log: { ...log, enabled: () => true } } };
+  const levels = () => ({ lifecycle: "trace", input: "trace", call: "trace", io: "trace", frame: "trace" });
+  return { records, runtime: { log: { ...log, levels } } };
 }
 
 const pageOptions = (sidecar = createFakeSidecar()) => ({
