@@ -6,6 +6,7 @@
 - F355-4-terminal: `make pack OUT=<folder>`는 `pnpm pack`으로 release를 쓰고, release.yml은 더 이상 core release를 내려받지 않는다. core 0.0.25는 plugin의 `pnpm pack` 파일을 설치하고 `sok plugin pack`이 없기 때문이다. release는 진단 build만 읽는 `diagnostics.json`과 그 module을 담고, `@soksak/plugin-api`는 core release `v0.0.25`에 pin된다.
 ## 미배포
 
+- P105: drag는 pointer 아래 칸이 바뀔 때만 move를 보내고, 선택 갱신이 기다리는 동안의 move는 그 갱신의 점을 바꾼다. 그래서 응답이 늦어도 빠른 drag의 하이라이트가 pointer보다 뒤처지지 않는다. Red: 새 drag test가 칸 6개에서 move 40개로 실패했다. Green: 이 test와 `pnpm test`가 통과한다.
 - F374-6-2: view는 `runtime.log.levels().frame`이 `debug`를 저장할 때만 화면의 hash를 계산하고 frame record를 쓴다. 그래서 writer가 거부할 record의 화면은 hash 비용이 없다. event log의 test fake는 없어진 `enabled` 대신 `levels`를 준다. Red: 새 frame test가 실패했다. Green: 이 test와 `pnpm test`가 통과한다.
 - F374-5-3-terminal: view는 각 `screen` 메시지를 `applyScreenMessage`로 적용하므로 VT S114의 변경 형식은 그것이 담은 행만 바꾼다. view는 세션을 열거나 다시 붙은 뒤와 거절한 변경 뒤에 화면을 읽고, 그 읽기에 답하는 전체 형식 전의 변경을 거절하며 각각에 `plugin.terminal.screen.refused`를 쓴다. test API는 core의 `apply` case에 답한다.
 - F367-terminal: `engines.soksak`은 `^0.0.29`이고, version은 0.0.29다. Red: core version test가 `^0.0.28`에서 실패했다. Green: 통과한다.

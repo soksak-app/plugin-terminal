@@ -1371,6 +1371,36 @@ test("terminal pointer drag sends one complete selection gesture to the sidecar"
   assert.deepEqual(messages[5], { inputId: messages[5].inputId, operation: "mouse", phase: "up", x: 42, y: 12, pressed: false, shift: false, alt: false, ctrl: false });
 });
 
+test("a fast drag whose replies are slow keeps one selection update waiting and moves only on a cell change", async () => {
+  // A drag sends its requests in one order, each after the reply to the one before. While a reply is slow, the moves of a drag must
+  // not accumulate: the page keeps the latest point of the waiting update and reports a move only when the cell under the pointer
+  // changes (cells of 8 by 16 CSS pixels).
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar({ delay: (body) => body.operation === "selection.start" ? 20 : 0 });
+  const view = createFakeView();
+  await startTerminal({
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: createFakeExpose(),
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(fakeSidecar);
+  fakeSidecar.reset();
+
+  view._trigger("pointerdown", { button: 0, pointerId: 4, clientX: 10, clientY: 12 });
+  for (let x = 11; x <= 50; x++) view._trigger("pointermove", { pointerId: 4, clientX: x, clientY: 12 });
+  view._trigger("pointerup", { pointerId: 4, clientX: 50, clientY: 12 });
+  await new Promise((resolve) => setTimeout(resolve, 60));
+
+  const bodies = fakeSidecar.getMessages().map(({ body }) => body);
+  const moves = bodies.filter((body) => body.operation === "mouse" && body.phase === "move").map((body) => Math.floor(body.x / 8));
+  assert.deepEqual(moves, [...new Set(moves)], `a move was reported again in the same cell: ${moves}`);
+  assert.deepEqual(moves, [2, 3, 4, 5, 6], "each cell change of the drag is reported once");
+  const updates = bodies.filter((body) => body.operation === "selection.update").map((body) => body.x);
+  assert.ok(updates.length <= 2, `the updates of the drag accumulated while a reply was slow: ${updates.length}`);
+  assert.equal(updates.at(-1), 50, "the last update carries the latest point");
+  assert.equal(bodies.at(-2).operation, "selection.end");
+});
+
 test("a failed pointer capture does not leave terminal selection ownership stuck", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
@@ -1485,7 +1515,10 @@ test("a drag that leaves the view selects to the nearest edge point", async () =
 
   view._trigger("pointerdown", { button: 0, pointerId: 9, clientX: 44, clientY: 20 });
   view._trigger("pointermove", { pointerId: 9, clientX: -30, clientY: 20 });
+  // A move while the update before it waits changes that update, so each move waits for the update before it to be sent.
+  await new Promise((resolve) => setImmediate(resolve));
   view._trigger("pointermove", { pointerId: 9, clientX: 900, clientY: 700 });
+  await new Promise((resolve) => setImmediate(resolve));
   view._trigger("pointerup", { pointerId: 9, clientX: -30, clientY: -5 });
   await new Promise((resolve) => setImmediate(resolve));
 
