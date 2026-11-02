@@ -6,6 +6,7 @@
 - F355-4-terminal: `make pack OUT=<folder>` writes the release with `pnpm pack`, and release.yml no longer downloads a core release, because core 0.0.25 installs the `pnpm pack` file of a plugin and has no `sok plugin pack`. The release holds `diagnostics.json` and its module, which only a diagnostic build reads, and `@soksak/plugin-api` is pinned to the core release `v0.0.25`.
 ## Unreleased
 
+- S120-terminal: VT is `^0.0.22`, which draws nothing for a terminal whose image region is not drawing, and the version is 0.0.32. Red: the manifest test failed on `^0.0.21`. Green: it passes.
 - S118-terminal: VT is `^0.0.21`, which writes each shell integration install through its own temporary file, and the version is 0.0.31. Red: the manifest test failed on `^0.0.20`. Green: it passes.
 - F378-terminal: `engines.soksak` is `^0.0.30`, VT is `^0.0.20`, and the version is 0.0.30. Red: the core version and manifest tests failed on the earlier ranges. Green: they pass.
 - P105: A drag reports a move only when the cell under the pointer changes, and a move while a selection update waits changes the point of that update, so the highlight of a fast drag no longer falls behind the pointer when replies are slow. Red: the new drag test failed with 40 moves in 6 cells. Green: it and `pnpm test` pass.
