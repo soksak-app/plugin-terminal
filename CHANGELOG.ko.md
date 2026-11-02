@@ -2,6 +2,7 @@
 
 [English](CHANGELOG.md)
 
+- F389-terminal: `engines.soksak`은 `^0.0.32`이고, version은 0.0.34다. image 영역은 core 0.0.32가 요구하는 `present` `copy`를 선언한다. Red: core version test가 `^0.0.31`에서 실패했다. Green: 통과한다.
 - F387-terminal: `engines.soksak`은 `^0.0.31`이고, version은 0.0.33다. Red: core version test가 `^0.0.30`에서 실패했다. Green: 통과한다.
 - F355-7-terminal: 0.0.25판은 plugin release의 `pnpm pack` 형태를 설치하는 첫 core release인 core `^0.0.26`과 VT `^0.0.18`을 요구한다.
 - F355-4-terminal: `make pack OUT=<folder>`는 `pnpm pack`으로 release를 쓰고, release.yml은 더 이상 core release를 내려받지 않는다. core 0.0.25는 plugin의 `pnpm pack` 파일을 설치하고 `sok plugin pack`이 없기 때문이다. release는 진단 build만 읽는 `diagnostics.json`과 그 module을 담고, `@soksak/plugin-api`는 core release `v0.0.25`에 pin된다.

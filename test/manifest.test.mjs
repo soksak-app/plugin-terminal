@@ -27,7 +27,7 @@ test("the package publishes the manifest and the view page", () => {
 
 test("the local transaction candidate requires the VT input transaction contract", () => {
   assert.equal(manifest.dependencies["@soksak/sidecar-vt-alacritty"], "^0.0.22");
-  assert.equal(pkg.version, "0.0.33");
+  assert.equal(pkg.version, "0.0.34");
 });
 
 test("compose and cursor preedit schemas use the supported range keywords", () => {
@@ -122,4 +122,10 @@ test("the context menu of the surface copies and pastes", () => {
   for (const { command } of manifest.surface.menu) {
     assert.ok(manifest.exposes.commands.some((entry) => entry.name === command), `${command} is not declared`);
   }
+});
+
+test("the image region declares the copy presentation mode", { timeout: 1000 }, () => {
+  const [region] = manifest.surface.composition.regions;
+  assert.equal(region.kind, "image");
+  assert.equal(region.present, "copy");
 });

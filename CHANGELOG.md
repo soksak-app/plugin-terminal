@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- F389-terminal: `engines.soksak` is `^0.0.32`, and the version is 0.0.34. Its image region declares `present` `copy`, which core 0.0.32 requires. Red: the core version test failed on `^0.0.31`. Green: it passes.
 - F387-terminal: `engines.soksak` is `^0.0.31`, and the version is 0.0.33. Red: the core version test failed on `^0.0.30`. Green: it passes.
 - F355-7-terminal: Version 0.0.25 requires core `^0.0.26`, the first core release that installs the `pnpm pack` form of a plugin release, and VT `^0.0.18`.
 - F355-4-terminal: `make pack OUT=<folder>` writes the release with `pnpm pack`, and release.yml no longer downloads a core release, because core 0.0.25 installs the `pnpm pack` file of a plugin and has no `sok plugin pack`. The release holds `diagnostics.json` and its module, which only a diagnostic build reads, and `@soksak/plugin-api` is pinned to the core release `v0.0.25`.

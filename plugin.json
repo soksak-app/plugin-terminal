@@ -18,6 +18,7 @@
           "name": "view",
           "kind": "image",
           "sidecar": "@soksak/sidecar-vt-alacritty",
+          "present": "copy",
           "input": "dom"
         }
       ],
