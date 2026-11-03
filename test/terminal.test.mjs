@@ -2268,6 +2268,45 @@ test("screen events publish the raw cursor and move the input-method caret to it
     "an incomplete cursor is reported as an error");
 });
 
+test("a view event publishes the cursor of its frame, moves the input-method caret and reports the scrollback", async () => {
+  FakeResizeObserver.reset();
+  const fakeAttachImage = createFakeAttachImage();
+  const fakeSidecar = createFakeSidecar();
+  let regionReference;
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: (view, name, sidecar) => {
+      regionReference = fakeAttachImage.function(view, name, sidecar);
+      return regionReference;
+    },
+    sidecar: fakeSidecar,
+    expose,
+    scale: 1,
+    window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  FakeResizeObserver.triggerAll();
+  openSession(fakeSidecar);
+  const frame = { generation: 1, raster: 1, sequence: 4 };
+  const cursor = { col: 3, row: 1, visible: true, focused: true, shape: "Block", blinking: false, blinkVisible: true, caret: { row: 1, col: 3 } };
+
+  fakeSidecar.triggerRaw("test-session", { event: "view", frame, cursor, scrollback: { offset: 0, history: 12 } });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const status = expose.getStatus("terminal.cursor").readFn();
+  assert.deepEqual({ col: status.col, row: status.row, visible: status.visible, caret: status.caret, frame: status.frame, render: status.render },
+    { col: 3, row: 1, visible: true, caret: { row: 1, col: 3 }, frame, render: null });
+  assert.deepEqual(regionReference._caret, { x: 24, y: 16, width: 8, height: 16 }, "the input-method caret follows the caret of the frame");
+  assert.deepEqual(expose.getStatus("terminal.session").readFn().scrollback, { offset: 0, history: 12 });
+
+  fakeSidecar.triggerRaw("test-session", { event: "view", frame: { ...frame, sequence: 5 }, cursor: { ...cursor, caret: { row: 50, col: 0 } },
+    scrollback: { offset: 0, history: 13 } });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(expose.getStatus("terminal.cursor").readFn().frame, frame, "a caret outside the grid does not replace the cursor");
+  assert.deepEqual(expose.getStatus("terminal.session").readFn().scrollback, { offset: 0, history: 12 }, "a refused view changes no scrollback");
+  assert.match(expose.getStatus("terminal.session").readFn().error ?? "", /invalid view/, "a refused view is reported as an error");
+});
+
 test("screen rejects a missing caret before changing screen and cursor status", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();

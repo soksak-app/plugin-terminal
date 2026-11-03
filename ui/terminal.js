@@ -1533,6 +1533,46 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         pendingScreenRead({ rows: screen, frame: screenFrame });
         pendingScreenRead = null;
       }
+    } else if (body.event === "view") {
+      // The sidecar sends no screen for a frame; the view event of a drawn frame carries its cursor with the caret and its
+      // scrollback when either changes (docs/spec/vt-core.md of the sidecar). The view checks the whole event before it
+      // changes a status.
+      try {
+        const { col, row, visible, focused, shape, blinking } = body.cursor ?? {};
+        const cursorIsObject = body.cursor !== null && typeof body.cursor === "object" && !Array.isArray(body.cursor);
+        if (!cursorIsObject || !Number.isInteger(col) || !Number.isInteger(row) || typeof visible !== "boolean" ||
+          (focused !== undefined && typeof focused !== "boolean") || (blinking !== undefined && typeof blinking !== "boolean") ||
+          (shape !== undefined && !DRAWN_SHAPE_KEYS.has(shape))) {
+          throw new Error(`invalid view cursor from sidecar: ${JSON.stringify(body.cursor)}`);
+        }
+        const preeditFailure = preeditError(body.cursor.preedit);
+        if (preeditFailure !== null) throw new Error(`invalid view cursor preedit from sidecar: ${preeditFailure}`);
+        if (body.frame === null || !isScreenFrame(body.frame)) throw new Error(`invalid view frame from sidecar: ${JSON.stringify(body.frame)}`);
+        const caretFailure = screenCaretError(body.cursor, session.rows, session.cols, body.frame);
+        if (caretFailure !== null) throw new Error(`invalid view cursor caret from sidecar: ${caretFailure}`);
+        const { offset, history } = body.scrollback ?? {};
+        if (!Number.isInteger(offset) || !Number.isInteger(history) || offset < 0 || history < 0) {
+          throw new Error(`invalid view scrollback from sidecar: ${JSON.stringify(body.scrollback)}`);
+        }
+      } catch (error) {
+        reportInputError(error, "view");
+        return;
+      }
+      const { offset, history } = body.scrollback;
+      if (offset !== session.scrollback.offset || history !== session.scrollback.history) {
+        session = { ...session, scrollback: { offset, history } };
+        changed("session");
+        drawScrollbar();
+      }
+      const { col, row, visible, focused, shape, blinking } = body.cursor;
+      const drawn = { ...cursor.drawn };
+      if (shape !== undefined) drawn.shape = DRAWN_SHAPES[shape] ?? shape;
+      if (blinking !== undefined) drawn.blinking = blinking;
+      applyCursor(body.cursor, {
+        col, row, visible, ...(focused === undefined ? {} : { focused }), drawn, frame: body.frame,
+        render: null, caret: body.cursor.caret, preedit: body.cursor.preedit ?? null,
+      });
+      if (resolveError("view")) changed("session");
     } else if (body.event === "cursor") {
       try {
         const policy = normalizeCursorPolicy(body);
