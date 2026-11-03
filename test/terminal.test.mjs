@@ -254,8 +254,9 @@ function recorder(lines) {
 /**
  * 가짜 sidecar 구현.
  */
-function createFakeSidecar({ delay = () => 0 } = {}) {
+function createFakeSidecar({ delay = () => null } = {}) {
   const messages = [];
+  const waiters = [];
   const listeners = new Map();
   let failure = null;
 
@@ -269,8 +270,9 @@ function createFakeSidecar({ delay = () => 0 } = {}) {
         throw error;
       }
       const wait = delay(body);
-      if (wait) await new Promise((resolve) => setTimeout(resolve, wait));
+      if (wait) await wait;
       messages.push({ id, body });
+      for (const waiter of waiters.splice(0)) waiter();
       return Promise.resolve();
     },
     on: async function(id, handler) {
@@ -281,6 +283,10 @@ function createFakeSidecar({ delay = () => 0 } = {}) {
       return Promise.resolve();
     },
     getMessages: () => messages,
+    // Resolves when a message that the predicate accepts has been sent.
+    untilMessage: async function(accepts) {
+      while (!messages.some(({ body }) => accepts(body))) await new Promise((resolve) => waiters.push(resolve));
+    },
     triggerEvent: function(id, event) {
       if (listeners.has(id)) {
         for (const handler of listeners.get(id)) {
@@ -1376,7 +1382,8 @@ test("a fast drag whose replies are slow keeps one selection update waiting and 
   // not accumulate: the page keeps the latest point of the waiting update and reports a move only when the cell under the pointer
   // changes (cells of 8 by 16 CSS pixels).
   FakeResizeObserver.reset();
-  const fakeSidecar = createFakeSidecar({ delay: (body) => body.operation === "selection.start" ? 20 : 0 });
+  const reply = Promise.withResolvers();
+  const fakeSidecar = createFakeSidecar({ delay: (body) => body.operation === "selection.start" ? reply.promise : null });
   const view = createFakeView();
   await startTerminal({
     view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
@@ -1389,7 +1396,9 @@ test("a fast drag whose replies are slow keeps one selection update waiting and 
   view._trigger("pointerdown", { button: 0, pointerId: 4, clientX: 10, clientY: 12 });
   for (let x = 11; x <= 50; x++) view._trigger("pointermove", { pointerId: 4, clientX: x, clientY: 12 });
   view._trigger("pointerup", { pointerId: 4, clientX: 50, clientY: 12 });
-  await new Promise((resolve) => setTimeout(resolve, 60));
+  await new Promise((resolve) => setImmediate(resolve));
+  reply.resolve();
+  await fakeSidecar.untilMessage((body) => body.operation === "mouse" && body.phase === "up");
 
   const bodies = fakeSidecar.getMessages().map(({ body }) => body);
   const moves = bodies.filter((body) => body.operation === "mouse" && body.phase === "move").map((body) => Math.floor(body.x / 8));
@@ -1423,7 +1432,8 @@ test("a failed pointer capture does not leave terminal selection ownership stuck
 
 test("terminal pointer gesture serializes selection commands when sidecar replies finish out of order", async () => {
   FakeResizeObserver.reset();
-  const fakeSidecar = createFakeSidecar({ delay: (body) => body.operation === "selection.start" ? 10 : 0 });
+  const reply = Promise.withResolvers();
+  const fakeSidecar = createFakeSidecar({ delay: (body) => body.operation === "selection.start" ? reply.promise : null });
   const fakeExpose = createFakeExpose();
   const view = createFakeView();
   await startTerminal({
@@ -1437,7 +1447,9 @@ test("terminal pointer gesture serializes selection commands when sidecar replie
   view._trigger("pointerdown", { button: 0, pointerId: 4, clientX: 10, clientY: 12 });
   view._trigger("pointermove", { pointerId: 4, clientX: 42, clientY: 12 });
   view._trigger("pointerup", { pointerId: 4, clientX: 42, clientY: 12 });
-  await new Promise((resolve) => setTimeout(resolve, 30));
+  await new Promise((resolve) => setImmediate(resolve));
+  reply.resolve();
+  await fakeSidecar.untilMessage((body) => body.operation === "mouse" && body.phase === "up");
 
   assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body.operation === "mouse" ? `mouse.${body.phase}` : body.operation), [
     "mouse.down", "mouse.move", "selection.start", "selection.update", "selection.end", "mouse.up",
