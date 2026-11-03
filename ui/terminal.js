@@ -417,7 +417,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   const ACKNOWLEDGED = new Set(["selection.start", "selection.update", "paste"]);
   // 현재 세션 상태
   let session = {
-    sessionId: "", cols: 80, rows: 24, cellWidth: 8, cellHeight: 16, unsupported: [],
+    sessionId: "", cols: 80, rows: 24, cellWidth: 0, cellHeight: 0, unsupported: [],
     inlineImages: [],
     // 사이드카가 답한 선택 해제의 수. 해제의 결과(복사 또는 빈 선택)가 도착했음을 알린다.
     selectionReleases: 0,
@@ -1037,7 +1037,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     changed("session");
   };
   const beginSelection = (event) => {
-    if (event.button !== 0 || selectionPointerId !== null) return;
+    // The first state of the session carries the cell size: until then the sidecar has no image, and the view shows no cell to point at.
+    if (event.button !== 0 || selectionPointerId !== null || !(session.cellWidth > 0 && session.cellHeight > 0)) return;
     // Command 와 함께 누른 링크 칸은 선언된 명령으로 링크를 열고 선택을 시작하지 않는다.
     const link = event.metaKey ? linkAt(event) : null;
     if (link) {

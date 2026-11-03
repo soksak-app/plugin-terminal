@@ -4425,6 +4425,24 @@ async function startWithLink({ links } = {}) {
   return { fakeSidecar, fakeExpose, view, errors, link };
 }
 
+test("a pointer before the first state of the session sends no input", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const view = createFakeView();
+  await startTerminal({
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: createFakeExpose(),
+    reportSurfaceError: () => {},
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  view._trigger("pointermove", { pointerId: 1, clientX: 20, clientY: 5 });
+  view._trigger("pointerdown", { button: 0, pointerId: 2, clientX: 20, clientY: 5 });
+  view._trigger("pointerup", { button: 0, pointerId: 2, clientX: 20, clientY: 5 });
+  await new Promise((resolve) => setImmediate(resolve));
+  const sent = fakeSidecar.getMessages().map(({ body }) => String(body.operation));
+  assert.deepEqual(sent.filter((operation) => operation === "mouse" || operation.startsWith("selection")), []);
+});
+
 test("the pointer is a hand over a linked cell and the session reports the hovered link", async () => {
   const { fakeExpose, view, link } = await startWithLink({ links: { open: async () => {} } });
   const hovered = () => fakeExpose.getStatus("terminal.session").readFn().link;
