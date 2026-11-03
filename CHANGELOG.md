@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- P107: The plugin requires VT `^0.0.23`, and the version is 0.0.35.
 - P106: The view takes the cursor, the caret and the scrollback of a frame from the `view` event of the sidecar.
 - F389-terminal: `engines.soksak` is `^0.0.32`, and the version is 0.0.34. Its image region declares `present` `copy`, which core 0.0.32 requires. Red: the core version test failed on `^0.0.31`. Green: it passes.
 - F387-terminal: `engines.soksak` is `^0.0.31`, and the version is 0.0.33. Red: the core version test failed on `^0.0.30`. Green: it passes.
