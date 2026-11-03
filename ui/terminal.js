@@ -1328,8 +1328,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     return run;
   };
 
-  // screen.read 응답을 기다리는 resolver
-  let pendingScreenRead = null;
+  // The reads that wait for the full form of the screen.
+  const screenReads = new Set();
   // The result of applyScreenMessage for the last applied screen message, which a change applies to
   // (docs/spec/persistent-services.md#screen-message in core).
   let heldScreen = null;
@@ -1338,7 +1338,48 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   let screenReadAwaited = false;
   const readScreen = () => {
     screenReadAwaited = true;
-    return terminal.send(id, { operation: "screen.read" });
+    return terminal.send(id, { operation: "screen.read" }).catch((error) => {
+      screenReadAwaited = false;
+      throw error;
+    });
+  };
+  // A view event that arrived while a read was open: the answer of that read may be older than the frame of the event.
+  let screenReadAgain = false;
+  // The sidecar sends no screen for a frame, so a watcher of the status receives each drawn frame through a read that follows its
+  // view event (docs/spec/exposure.md in core: subscribe calls fn on each change). Nothing is read while nothing watches.
+  const followScreen = () => {
+    if (watchers.screen.size === 0 || !sessionOpen) return;
+    if (screenReadAwaited) {
+      screenReadAgain = true;
+      return;
+    }
+    readScreen().catch((error) => reportInputError(error, "screen"));
+  };
+  const watchScreen = (fn) => {
+    const stop = watch("screen")(fn);
+    followScreen();
+    return stop;
+  };
+  // Resolves with the full form that answers a read of its own.
+  const awaitScreen = () => new Promise((resolve, reject) => {
+    const entry = {
+      resolve,
+      timeout: setTimeout(() => {
+        screenReads.delete(entry);
+        reject(new Error("screen.read timeout"));
+      }, 5000),
+    };
+    screenReads.add(entry);
+    readScreen().catch((error) => {
+      clearTimeout(entry.timeout);
+      screenReads.delete(entry);
+      reject(error);
+    });
+  });
+  // The current value of the status: the sidecar holds the screen, and the view holds only the rows of its last read.
+  const currentScreen = async () => {
+    if (!sessionOpen || session.exited) return screen;
+    return (await awaitScreen()).rows;
   };
   // pty.pending 측정 응답을 기다리는 resolver. 진단 명령이 한 번에 하나만 요청한다.
   let pendingPtyRead = null;
@@ -1538,9 +1579,16 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         if (resolveError("screen")) changed("session");
       }
       // The sidecar answers a screen read with the full form.
-      if (pendingScreenRead && body.base === true) {
-        pendingScreenRead({ rows: screen, frame: screenFrame });
-        pendingScreenRead = null;
+      if (body.base === true) {
+        for (const entry of screenReads) {
+          clearTimeout(entry.timeout);
+          entry.resolve({ rows: screen, frame: screenFrame });
+        }
+        screenReads.clear();
+        if (screenReadAgain) {
+          screenReadAgain = false;
+          followScreen();
+        }
       }
     } else if (body.event === "view") {
       // The sidecar sends no screen for a frame; the view event of a drawn frame carries its cursor with the caret and its
@@ -1582,6 +1630,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         render: null, caret: body.cursor.caret, preedit: body.cursor.preedit ?? null,
       });
       if (resolveError("view")) changed("session");
+      followScreen();
     } else if (body.event === "cursor") {
       try {
         const policy = normalizeCursorPolicy(body);
@@ -1855,7 +1904,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 공개 항목 등록
   await Promise.all([
     expose.status("terminal.session", read.session, watch("session")),
-    expose.status("terminal.screen", read.screen, watch("screen")),
+    expose.status("terminal.screen", currentScreen, watchScreen),
     expose.status("terminal.compose", read.compose, watch("compose")),
     expose.status("terminal.cursor", read.cursor, watch("cursor")),
     expose.command("terminal.input", async ({ bytes }) => {
@@ -1870,33 +1919,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     }),
     expose.command("terminal.screen.read", async () => {
       if (region === null) throw new Error("Terminal not initialized");
-      return new Promise((resolve, reject) => {
-        let resolved = false;
-        const timeout = setTimeout(() => {
-          if (!resolved) {
-            resolved = true;
-            pendingScreenRead = null;
-            reject(new Error("screen.read timeout"));
-          }
-        }, 5000);
-
-        pendingScreenRead = (event) => {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(timeout);
-            resolve(event);
-          }
-        };
-
-        terminal.send(id, { operation: "screen.read" }).catch((error) => {
-          if (!resolved) {
-            resolved = true;
-            clearTimeout(timeout);
-            pendingScreenRead = null;
-            reject(error);
-          }
-        });
-      });
+      return awaitScreen();
     }),
     expose.command("terminal.close", async () => {
       await endSession();

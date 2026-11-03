@@ -306,12 +306,19 @@ function createFakeSidecar({ delay = () => null } = {}) {
 }
 
 /** A plugin-local registry for recorded terminal registrations and user-driven command calls. */
-function createFakeExpose() {
+// The fake follows the screen status as a watcher does and holds the last rows that it received, because a read of the status asks the
+// sidecar. A test of the follow itself passes `followScreen: false`.
+function createFakeExpose({ followScreen = true } = {}) {
+  let heldRows = [];
   const statuses = new Map();
   const commands = new Map();
   const doms = new Map();
   return {
-    async status(name, readFn, watchFn) { statuses.set(name, { readFn, watchFn }); },
+    async status(name, readFn, watchFn) {
+      statuses.set(name, { readFn, watchFn });
+      if (followScreen && name === "terminal.screen") watchFn((rows) => { heldRows = rows; });
+    },
+    heldScreen: () => heldRows,
     async command(name, handler) { commands.set(name, handler); },
     async dom(name, element) { doms.set(name, element); },
     async mark(element, name) { element.dataset.command = name; return element; },
@@ -457,17 +464,17 @@ test("terminal.screen publishes sidecar output without polling or input commands
   });
   const status = expose.getStatus("terminal.screen");
   assert.ok(status);
-  assert.deepEqual(status.readFn(), []);
+  assert.deepEqual(expose.heldScreen(), []);
   const received = [];
   const stop = status.watchFn((value) => received.push(value));
   const lines = [[{ ch: "x", width: 1 }]];
   sidecar.triggerEvent("test-session", { event: "screen", lines });
-  assert.deepEqual(status.readFn(), lines);
+  assert.deepEqual(expose.heldScreen(), lines);
   assert.deepEqual(received, [lines]);
   stop();
   sidecar.triggerEvent("test-session", { event: "screen", lines: [] });
   // A blank cell has no character; a reader counts its width as spaces (docs/spec/terminal-runtime.md#screen-message in core).
-  assert.deepEqual(status.readFn(), [[{ width: 1 }]]);
+  assert.deepEqual(expose.heldScreen(), [[{ width: 1 }]]);
   assert.deepEqual(received, [lines]);
   assert.deepEqual(sessionMessages(sidecar).map(({ body }) => body.operation), ["open"]);
 });
@@ -1599,7 +1606,7 @@ test("a cell of the screen names each attribute flag of the message that is set"
   // inverse 20, hidden 40, strikethrough 80.
   sidecar.triggerEvent("test-session", { event: "screen", sequence: 1, segment: "b1", number: 1, base: true, rows: 1, cols: 3,
     cursor: { row: 0, col: 0, visible: true }, cells: [cell("Z", 0x2d), cell("Y", 0xd2), cell("N", 0)] });
-  const [row] = expose.getStatus("terminal.screen").readFn();
+  const [row] = expose.heldScreen();
   assert.deepEqual(row, [
     { ch: "Z", width: 1, bold: true, italic: true, underline: true, inverse: true },
     { ch: "Y", width: 1, dim: true, blink: true, hidden: true, strikethrough: true },
@@ -1614,7 +1621,7 @@ test("a row of the screen keeps its blank cells and the continuation of a wide c
     window: { TextEncoder: FakeTextEncoder } });
   openSession(sidecar);
   sidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "A", width: 1 }, { width: 1 }, { width: 1 }, { ch: "B", width: 1 }, { ch: "한", width: 2 }, { width: 0 }]] });
-  const [row] = expose.getStatus("terminal.screen").readFn();
+  const [row] = expose.heldScreen();
   assert.deepEqual(row, [{ ch: "A", width: 1 }, { width: 1 }, { width: 1 }, { ch: "B", width: 1 }, { ch: "한", width: 2 }, { width: 0 }]);
   assert.equal(row.map((cell) => cell.ch ?? " ".repeat(cell.width)).join(""), "A  B한");
 });
@@ -2319,6 +2326,92 @@ test("a view event publishes the cursor of its frame, moves the input-method car
   assert.match(expose.getStatus("terminal.session").readFn().error ?? "", /invalid view/, "a refused view is reported as an error");
 });
 
+// Starts a terminal with an open session and returns its sidecar, its exposure and the number of screen reads that it sent.
+async function startWatchedScreen() {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const expose = createFakeExpose({ followScreen: false });
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose, scale: 1,
+    window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  FakeResizeObserver.triggerAll();
+  await new Promise((resolve) => setImmediate(resolve));
+  openSession(fakeSidecar);
+  return { fakeSidecar, expose, reads: () => fakeSidecar.getMessages().filter(({ body }) => body.operation === "screen.read").length };
+}
+
+const VIEW_EVENT = {
+  event: "view", frame: { generation: 1, raster: 1, sequence: 4 }, scrollback: { offset: 0, history: 0 },
+  cursor: { col: 0, row: 0, visible: true, focused: true, shape: "Block", blinking: false, blinkVisible: true, caret: { row: 0, col: 0 }, preedit: null },
+};
+
+test("a view event reads the screen for a watcher of the screen status, and only for a watcher", async () => {
+  const { fakeSidecar, expose, reads } = await startWatchedScreen();
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const unwatchedReads = reads();
+  fakeSidecar.triggerRaw("test-session", VIEW_EVENT);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(reads(), unwatchedReads, "a view event sends no screen read while nothing watches the screen status");
+
+  const seen = [];
+  const stop = expose.getStatus("terminal.screen").watchFn((rows) => seen.push(rows));
+  const watchedReads = reads();
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
+  await new Promise((resolve) => setImmediate(resolve));
+  seen.length = 0;
+  const afterAnswer = reads();
+  fakeSidecar.triggerRaw("test-session", VIEW_EVENT);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(reads(), afterAnswer + 1, `a view event sends one screen read for the watcher (reads when the watch started: ${watchedReads})`);
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: ["line1", "line2", "line3"] });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(seen.length, 1, "the answer of the read notifies the watcher");
+  assert.equal(seen[0][0].map((cell) => cell.ch ?? " ").join("").trim(), "line1");
+
+  stop();
+  const stoppedReads = reads();
+  fakeSidecar.triggerRaw("test-session", VIEW_EVENT);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(reads(), stoppedReads, "a view event sends no screen read after the watcher stopped");
+});
+
+test("view events during a screen read send one further read when it is answered", async () => {
+  const { fakeSidecar, expose, reads } = await startWatchedScreen();
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
+  await new Promise((resolve) => setImmediate(resolve));
+  expose.getStatus("terminal.screen").watchFn(() => {});
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const start = reads();
+  fakeSidecar.triggerRaw("test-session", VIEW_EVENT);
+  fakeSidecar.triggerRaw("test-session", VIEW_EVENT);
+  fakeSidecar.triggerRaw("test-session", VIEW_EVENT);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(reads(), start + 1, "the view events while a read is open send no read of their own");
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(reads(), start + 2, "the answer of the open read is older than the last view event, so one more read follows");
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: ["line1", "line2", "line3"] });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(reads(), start + 2, "the last answer sends no further read");
+});
+
+test("a read of the screen status returns the screen that the sidecar answers", async () => {
+  const { fakeSidecar, expose } = await startWatchedScreen();
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
+  await new Promise((resolve) => setImmediate(resolve));
+  const value = Promise.resolve(expose.getStatus("terminal.screen").readFn());
+  await new Promise((resolve) => setImmediate(resolve));
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: ["line1", "line2", "line3"] });
+  const rows = await value;
+  assert.equal(rows[0].map((cell) => cell.ch ?? " ").join("").trim(), "line1");
+});
+
 test("screen rejects a missing caret before changing screen and cursor status", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
@@ -2330,13 +2423,13 @@ test("screen rejects a missing caret before changing screen and cursor status", 
   openSession(fakeSidecar);
 
   const initialCursor = fakeExpose.getStatus("terminal.cursor").readFn();
-  const initialScreen = fakeExpose.getStatus("terminal.screen").readFn();
+  const initialScreen = fakeExpose.heldScreen();
   const missingCaret = { ...SCREEN_CARET_MESSAGE, render: null, cursor: { ...SCREEN_CARET_MESSAGE.cursor } };
   delete missingCaret.cursor.caret;
   fakeSidecar.triggerRaw("test-session", missingCaret);
   assert.deepEqual(fakeExpose.getStatus("terminal.cursor").readFn(), initialCursor,
     "a screen without caret changed cursor status");
-  assert.deepEqual(fakeExpose.getStatus("terminal.screen").readFn(), initialScreen,
+  assert.deepEqual(fakeExpose.heldScreen(), initialScreen,
     "a screen without caret changed screen status");
   assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "", /invalid screen cursor.*caret/);
 
@@ -2353,13 +2446,13 @@ test("screen rejects an out-of-grid caret before changing screen and cursor stat
   openSession(fakeSidecar);
 
   const initialCursor = fakeExpose.getStatus("terminal.cursor").readFn();
-  const initialScreen = fakeExpose.getStatus("terminal.screen").readFn();
+  const initialScreen = fakeExpose.heldScreen();
   const outsideGrid = { ...SCREEN_CARET_MESSAGE, render: null,
     cursor: { ...SCREEN_CARET_MESSAGE.cursor, caret: { row: 1, col: 0 } } };
   fakeSidecar.triggerRaw("test-session", outsideGrid);
   assert.deepEqual(fakeExpose.getStatus("terminal.cursor").readFn(), initialCursor,
     "an out-of-grid caret changed cursor status");
-  assert.deepEqual(fakeExpose.getStatus("terminal.screen").readFn(), initialScreen,
+  assert.deepEqual(fakeExpose.heldScreen(), initialScreen,
     "an out-of-grid caret changed screen status");
   assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "", /invalid screen cursor.*caret/);
 });
@@ -3231,14 +3324,14 @@ test("screen renderer metadata is required, nullable, frame-bound, and validated
   const screenStatus = fakeExpose.getStatus("terminal.screen");
   const sessionStatus = fakeExpose.getStatus("terminal.session");
   const initialCursor = cursorStatus.readFn();
-  const initialScreen = screenStatus.readFn();
+  const initialScreen = fakeExpose.heldScreen();
   const initialSession = sessionStatus.readFn();
 
   const missing = { ...SCREEN_FRAME_PREEDIT };
   delete missing.render;
   fakeSidecar.triggerRaw("test-session", missing);
   assert.deepEqual(cursorStatus.readFn(), initialCursor, "missing renderer metadata changed cursor state");
-  assert.deepEqual(screenStatus.readFn(), initialScreen, "missing renderer metadata changed screen state");
+  assert.deepEqual(fakeExpose.heldScreen(), initialScreen, "missing renderer metadata changed screen state");
   assert.deepEqual({ sessionId: sessionStatus.readFn().sessionId, cols: sessionStatus.readFn().cols,
     rows: sessionStatus.readFn().rows, cellWidth: sessionStatus.readFn().cellWidth, cellHeight: sessionStatus.readFn().cellHeight },
   { sessionId: initialSession.sessionId, cols: initialSession.cols, rows: initialSession.rows,
@@ -3272,10 +3365,10 @@ test("screen renderer metadata is required, nullable, frame-bound, and validated
     ...SCREEN_FRAME_PREEDIT.frame, sequence: SCREEN_FRAME_PREEDIT.frame.sequence + 1,
   } } };
   const beforeMalformedCursor = cursorStatus.readFn();
-  const beforeMalformedScreen = screenStatus.readFn();
+  const beforeMalformedScreen = fakeExpose.heldScreen();
   fakeSidecar.triggerEvent("test-session", malformed);
   assert.deepEqual(cursorStatus.readFn(), beforeMalformedCursor, "frame-mismatched metadata changed cursor state");
-  assert.deepEqual(screenStatus.readFn(), beforeMalformedScreen, "frame-mismatched metadata changed screen state");
+  assert.deepEqual(fakeExpose.heldScreen(), beforeMalformedScreen, "frame-mismatched metadata changed screen state");
   assert.deepEqual({ sessionId: sessionStatus.readFn().sessionId, cols: sessionStatus.readFn().cols,
     rows: sessionStatus.readFn().rows, cellWidth: sessionStatus.readFn().cellWidth, cellHeight: sessionStatus.readFn().cellHeight },
   { sessionId: initialSession.sessionId, cols: initialSession.cols, rows: initialSession.rows,
@@ -3287,18 +3380,18 @@ test("screen renderer metadata is required, nullable, frame-bound, and validated
   ] } };
   fakeSidecar.triggerEvent("test-session", partial);
   assert.deepEqual(cursorStatus.readFn(), beforeMalformedCursor, "malformed font runs changed cursor state");
-  assert.deepEqual(screenStatus.readFn(), beforeMalformedScreen, "malformed font runs changed screen state");
+  assert.deepEqual(fakeExpose.heldScreen(), beforeMalformedScreen, "malformed font runs changed screen state");
   assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "", /glyphs\[0\]\.fontRuns/);
 
   const drawnCursorMalformed = { ...SCREEN_FRAME_PREEDIT, render: SCREEN_RENDER() };
   drawnCursorMalformed.render.cursor = { rect: { x: 0, y: 0, width: 8, height: 16 }, shape: "block",
     visible: true, blinkVisible: true, focused: true, blend: "normal", color: null, border: 0 };
   const beforeMalformedDrawnCursor = cursorStatus.readFn();
-  const beforeMalformedDrawnScreen = screenStatus.readFn();
+  const beforeMalformedDrawnScreen = fakeExpose.heldScreen();
   fakeSidecar.triggerEvent("test-session", drawnCursorMalformed);
   assert.deepEqual(cursorStatus.readFn(), beforeMalformedDrawnCursor,
     "a drawn cursor without its effective color changed cursor state");
-  assert.deepEqual(screenStatus.readFn(), beforeMalformedDrawnScreen,
+  assert.deepEqual(fakeExpose.heldScreen(), beforeMalformedDrawnScreen,
     "a drawn cursor without its effective color changed screen state");
   assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "", /cursor\.color is required/);
 });
@@ -3331,10 +3424,10 @@ test("screen render preserves raw CoreText overhang and rejects invalid glyph bo
       ...render, glyphs: [{ ...render.glyphs[0], bounds }],
     } };
     const beforeCursor = cursorStatus.readFn();
-    const beforeScreen = screenStatus.readFn();
+    const beforeScreen = fakeExpose.heldScreen();
     fakeSidecar.triggerEvent("test-session", malformed);
     assert.deepEqual(cursorStatus.readFn(), beforeCursor, `${name} geometry changed cursor state`);
-    assert.deepEqual(screenStatus.readFn(), beforeScreen, `${name} geometry changed screen state`);
+    assert.deepEqual(fakeExpose.heldScreen(), beforeScreen, `${name} geometry changed screen state`);
     assert.match(sessionStatus.readFn().error ?? "", reason);
   }
 
@@ -3355,14 +3448,14 @@ test("screen render rejects negative absolute cursor rectangles atomically", asy
   const valid = { ...SCREEN_FRAME_PREEDIT, render: SCREEN_RENDER() };
   fakeSidecar.triggerEvent("test-session", valid);
   const beforeCursor = cursorStatus.readFn();
-  const beforeScreen = screenStatus.readFn();
+  const beforeScreen = fakeExpose.heldScreen();
 
   const malformed = { ...SCREEN_FRAME_PREEDIT, render: SCREEN_RENDER() };
   malformed.render.cursor = { rect: { x: -1, y: 0, width: 8, height: 16 }, shape: "block",
     visible: true, blinkVisible: true, focused: true, blend: "normal", color: "#ffffff", border: 0 };
   fakeSidecar.triggerEvent("test-session", malformed);
   assert.deepEqual(cursorStatus.readFn(), beforeCursor, "negative absolute cursor geometry changed cursor state");
-  assert.deepEqual(screenStatus.readFn(), beforeScreen, "negative absolute cursor geometry changed screen state");
+  assert.deepEqual(fakeExpose.heldScreen(), beforeScreen, "negative absolute cursor geometry changed screen state");
   assert.match(sessionStatus.readFn().error ?? "", /cursor\.rect must be inside the pixel raster/);
 });
 
@@ -4956,7 +5049,7 @@ const applyCaseMessage = (id) => {
   return { ...message, cursor: { ...message.cursor, caret: null }, render: null };
 };
 const caseHash = (id) => SCREEN_HASH_CASES.find(({ id: candidate }) => candidate === id).steps[0].output.hash;
-const screenText = (expose) => expose.getStatus("terminal.screen").readFn().map((row) => row.map((cell) => cell.ch ?? " ").join(""));
+const screenText = (expose) => expose.heldScreen().map((row) => row.map((cell) => cell.ch ?? " ").join(""));
 const screenReads = (sidecar) => sidecar.getMessages().filter(({ body }) => body.operation === "screen.read").length;
 
 async function startChangeTerminal(lines) {
@@ -5065,10 +5158,10 @@ test("malformed screen rows, columns, cells, and segment are refused with debug 
     ["empty segment", { ...base, segment: "" }],
   ];
   for (const [name, message] of malformed) {
-    const screenBefore = expose.getStatus("terminal.screen").readFn();
+    const screenBefore = expose.heldScreen();
     sidecar.triggerEvent("test-session", message);
     assert.match(error() ?? "", /^terminal input failed: /, name + " was not refused");
-    assert.deepEqual(expose.getStatus("terminal.screen").readFn(), screenBefore, name + " changed the rendered screen");
+    assert.deepEqual(expose.heldScreen(), screenBefore, name + " changed the rendered screen");
   }
 });
 

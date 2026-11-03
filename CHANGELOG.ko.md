@@ -2,6 +2,7 @@
 
 [English](CHANGELOG.md)
 
+- P113: `terminal.screen` status는 view event 뒤의 screen read로 그린 frame마다 watcher에게 알리고, status의 read는 현재 화면을 돌려준다.
 - F402-terminal: `engines.soksak`은 `^0.0.33`이고 version은 0.0.37이다. Red: core version test가 `^0.0.32`에서 실패했다. Green: 통과한다.
 - P112: 느린 selection 응답의 test는 고정 시간 대신 gesture를 끝내는 message를 기다린다.
 - P111: sidecar `^0.0.24`을 요구하는 version 0.0.36.

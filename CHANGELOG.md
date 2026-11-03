@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- P113: The `terminal.screen` status notifies a watcher of each drawn frame through a screen read that follows its view event, and a read of the status returns the current screen.
 - F402-terminal: `engines.soksak` is `^0.0.33`, and the version is 0.0.37. Red: the core version test failed on `^0.0.32`. Green: it passes.
 - P112: The tests of a slow selection reply wait for the message that ends the gesture instead of a fixed time.
 - P111: Version 0.0.36, which requires the sidecar `^0.0.24`.
