@@ -2,6 +2,7 @@
 
 [English](CHANGELOG.md)
 
+- F374-5-3-terminal: publish된 version 0.0.35와 core 0.0.32가 screen 메시지의 변경 형식을 함께 담으므로 항목을 완료한다.
 - P107: plugin은 VT `^0.0.23`을 요구하고 version은 0.0.35다.
 - P106: view는 frame의 커서, caret, scrollback을 sidecar의 `view` event에서 받는다.
 - F389-terminal: `engines.soksak`은 `^0.0.32`이고, version은 0.0.34다. image 영역은 core 0.0.32가 요구하는 `present` `copy`를 선언한다. Red: core version test가 `^0.0.31`에서 실패했다. Green: 통과한다.
