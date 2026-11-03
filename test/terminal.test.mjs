@@ -2309,7 +2309,7 @@ test("a view event publishes the cursor of its frame, moves the input-method car
   const frame = { generation: 1, raster: 1, sequence: 4 };
   const cursor = { col: 3, row: 1, visible: true, focused: true, shape: "Block", blinking: false, blinkVisible: true, caret: { row: 1, col: 3 } };
 
-  fakeSidecar.triggerRaw("test-session", { event: "view", frame, cursor, scrollback: { offset: 0, history: 12 } });
+  fakeSidecar.triggerRaw("test-session", { event: "view", frame, rows: 24, cols: 80, cursor, scrollback: { offset: 0, history: 12 } });
   await new Promise((resolve) => setImmediate(resolve));
 
   const status = expose.getStatus("terminal.cursor").readFn();
@@ -2318,12 +2318,17 @@ test("a view event publishes the cursor of its frame, moves the input-method car
   assert.deepEqual(regionReference._caret, { x: 24, y: 16, width: 8, height: 16 }, "the input-method caret follows the caret of the frame");
   assert.deepEqual(expose.getStatus("terminal.session").readFn().scrollback, { offset: 0, history: 12 });
 
-  fakeSidecar.triggerRaw("test-session", { event: "view", frame: { ...frame, sequence: 5 }, cursor: { ...cursor, caret: { row: 50, col: 0 } },
+  fakeSidecar.triggerRaw("test-session", { event: "view", frame: { ...frame, sequence: 5 }, rows: 24, cols: 80, cursor: { ...cursor, caret: { row: 50, col: 0 } },
     scrollback: { offset: 0, history: 13 } });
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(expose.getStatus("terminal.cursor").readFn().frame, frame, "a caret outside the grid does not replace the cursor");
   assert.deepEqual(expose.getStatus("terminal.session").readFn().scrollback, { offset: 0, history: 12 }, "a refused view changes no scrollback");
   assert.match(expose.getStatus("terminal.session").readFn().error ?? "", /invalid view/, "a refused view is reported as an error");
+  // The grid of the frame judges its caret: the state event of a new grid can follow the first view of that grid.
+  fakeSidecar.triggerRaw("test-session", { event: "view", frame: { ...frame, sequence: 6 }, rows: 60, cols: 200, cursor: { ...cursor, caret: { row: 50, col: 150 } },
+    scrollback: { offset: 0, history: 14 } });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(expose.getStatus("terminal.cursor").readFn().caret, { row: 50, col: 150 }, "a caret inside the grid of its frame was refused");
 });
 
 // Starts a terminal with an open session and returns its sidecar, its exposure and the number of screen reads that it sent.
@@ -2343,7 +2348,7 @@ async function startWatchedScreen() {
 }
 
 const VIEW_EVENT = {
-  event: "view", frame: { generation: 1, raster: 1, sequence: 4 }, scrollback: { offset: 0, history: 0 },
+  event: "view", frame: { generation: 1, raster: 1, sequence: 4 }, rows: 24, cols: 80, scrollback: { offset: 0, history: 0 },
   cursor: { col: 0, row: 0, visible: true, focused: true, shape: "Block", blinking: false, blinkVisible: true, caret: { row: 0, col: 0 }, preedit: null },
 };
 

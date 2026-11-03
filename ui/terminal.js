@@ -1605,7 +1605,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         const preeditFailure = preeditError(body.cursor.preedit);
         if (preeditFailure !== null) throw new Error(`invalid view cursor preedit from sidecar: ${preeditFailure}`);
         if (body.frame === null || !isScreenFrame(body.frame)) throw new Error(`invalid view frame from sidecar: ${JSON.stringify(body.frame)}`);
-        const caretFailure = screenCaretError(body.cursor, session.rows, session.cols, body.frame);
+        const caretFailure = screenCaretError(body.cursor, body.rows, body.cols, body.frame);
         if (caretFailure !== null) throw new Error(`invalid view cursor caret from sidecar: ${caretFailure}`);
         const { offset, history } = body.scrollback ?? {};
         if (!Number.isInteger(offset) || !Number.isInteger(history) || offset < 0 || history < 0) {
