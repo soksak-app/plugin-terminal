@@ -2,6 +2,7 @@
 
 [English](CHANGELOG.md)
 
+- P110: session status는 `exit` event로 session의 child가 끝났음을 기록하며, 이 event는 붙잡힌 입력을 지우고 warning을 남기지 않는다. `state` event와 `session` event는 실행 중인 session을 연다(`session`은 붙잡힌 입력을 유지한다). 끝난 연결은 붙잡힌 입력을 지운다. Red: test `an exit event marks the session as ended and clears the held input without a warning`가 `a session has not ended before its exit event`로, `a connection that ends while input is held clears the held input`가 `the sidecar sends no held:false after a connection ends, so the page clears it`로 실패했다. Green: 두 test가 통과하며, test 파일은 183개 중 183개 통과한다.
 - P109: session status는 sidecar가 붙잡고 있는 입력을 `inputHeld`로 드러낸다. 붙잡혀 있는 동안은 `{queued, held}`이고, 그 밖에는 `null`이다. 잘못된 `input_held` event는 입력 오류로 거부한다. Red: test `an input_held event publishes the held input and clears it when reads resume`가 `no input is held before the first input_held event`로 실패했다. Green: 통과하며, test 파일은 181개 중 181개 통과한다.
 - P108: 이 저장소는 records kit 0.0.6을 쓰며, 그 release gate는 `Closed:` 사유가 있는 닫힌 항목을 받아들인다.
 - P68-1, P66-1, P70-1, P58, P61, F212.12-1-8-2-view: version 0.0.35가 수정을 담거나 항목이 말하는 pin이 없어졌으므로 hold 항목 6개를 닫았다.

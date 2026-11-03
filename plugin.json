@@ -188,7 +188,7 @@
       },
       {
         "name": "terminal.session",
-        "description": "The session state: identifier, dimensions, cell size, the scrollback viewport offset and history, the number of selection releases the sidecar answered, the pointer shape the program set with OSC 22, the theme mode and the default background (`#rrggbb`) the sidecar applied, the reasons of the last eight output sequences the engine rejected, and the input held by the sidecar as `inputHeld`, which is `{queued, held}` while held and `null` otherwise.",
+        "description": "The session state: identifier, dimensions, cell size, the scrollback viewport offset and history, the number of selection releases the sidecar answered, the pointer shape the program set with OSC 22, the theme mode and the default background (`#rrggbb`) the sidecar applied, the reasons of the last eight output sequences the engine rejected, and the input held by the sidecar as `inputHeld`, which is `{queued, held}` while held and `null` otherwise, and whether the child of the session ended as `exited`.",
         "schema": {
           "type": "object",
           "properties": {
@@ -277,6 +277,9 @@
             "inputHeld": {
               "type": ["object", "null"],
               "properties": { "queued": { "type": "integer" }, "held": { "type": "boolean" } }
+            },
+            "exited": {
+              "type": "boolean"
             }
           }
         }

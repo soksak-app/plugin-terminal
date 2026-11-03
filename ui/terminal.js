@@ -437,6 +437,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     rejectedShed: 0,
     // The input the sidecar holds while reads of the program output stop: {queued, held: true}, or null.
     inputHeld: null,
+    // Whether the child of the session ended, which the sidecar reports with the exit event.
+    exited: false,
     vendor: { directory: null, hyperlink: null, notification: null, shell: null },
     compose: { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false },
     theme: "dark",
@@ -1396,6 +1398,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         cellWidth: body.cellWidth,
         cellHeight: body.cellHeight,
         unsupported: session.unsupported,
+        // A state event names a running session. It also follows a reconnect and a resize, so it
+        // keeps the held input, which the sidecar reports when it changes and at a reconnect.
+        exited: false,
       };
       resolveError("state");
       if (body.cursor !== undefined) applyCursor(body.cursor, { ...body.cursor, frame: null, render: null, caret: null, preedit: body.cursor.preedit ?? null });
@@ -1408,7 +1413,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         reportInputError("invalid persistent session event", "session");
         return;
       }
-      session = { ...session, sessionId: body.sessionId };
+      session = { ...session, sessionId: body.sessionId, exited: false };
       resolveError("session");
       // A preserved session answers a reattached surface with this event, so the input that waited during the
       // reconnection flows now.
@@ -1427,6 +1432,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         rerunBootstrap().catch((error) => reportInputError(error));
       } else {
         const reason = typeof body.reason === "string" && body.reason.length > 0 ? `: ${body.reason}` : "";
+        // The sidecar sends no held:false for a connection that ended, so the held input is cleared here.
+        session = { ...session, inputHeld: null };
         setError("sidecar", `sidecar connection failed${reason}`);
       }
     } else if (body.event === "screen") {
@@ -1749,6 +1756,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         return;
       }
       session = { ...session, inputHeld: body.held ? { queued: body.queued, held: true } : null };
+      changed("session");
+    } else if (body.event === "exit") {
+      // The child ended: the last frame stays on screen, and no input is held in an ended session.
+      session = { ...session, exited: true, inputHeld: null };
       changed("session");
     } else if (body.event === "error") {
       // error 이벤트를 session 상태에 저장한다

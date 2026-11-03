@@ -3511,6 +3511,51 @@ test("an input_held event publishes the held input and clears it when reads resu
     "input_held is a known event and writes no unknown-event record");
 });
 
+test("an exit event marks the session as ended and clears the held input without a warning", async () => {
+  FakeResizeObserver.reset();
+  const log = capturedLog();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose,
+    window: { TextEncoder: FakeTextEncoder }, runtime: log.runtime,
+  });
+  openSession(fakeSidecar);
+  const session = () => fakeExpose.getStatus("terminal.session").readFn();
+  assert.equal(session().exited, false, "a session has not ended before its exit event");
+  fakeSidecar.triggerEvent("test-session", { event: "input_held", queued: 4096, held: true });
+  fakeSidecar.triggerEvent("test-session", { event: "exit" });
+  assert.equal(session().exited, true, "the exit event marks the session as ended");
+  assert.equal(session().inputHeld, null, "an ended session holds no input");
+  assert.deepEqual(log.records.filter(([event, , level]) => event === "sidecar.unknown" || level === "warn"), [],
+    "exit is a known event and writes no unknown-event or warning record");
+  openSession(fakeSidecar);
+  assert.equal(session().exited, false, "a state event names a running session");
+  fakeSidecar.triggerEvent("test-session", { event: "input_held", queued: 4096, held: true });
+  openSession(fakeSidecar);
+  assert.deepEqual(session().inputHeld, { queued: 4096, held: true },
+    "a state event also follows a reconnect and a resize, and the session still holds the input");
+});
+
+test("a connection that ends while input is held clears the held input", async () => {
+  FakeResizeObserver.reset();
+  const log = capturedLog();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose,
+    window: { TextEncoder: FakeTextEncoder }, runtime: log.runtime,
+  });
+  openSession(fakeSidecar);
+  fakeSidecar.triggerEvent("test-session", { event: "input_held", queued: 8, held: true });
+  fakeSidecar.triggerEvent("test-session", { event: "connection", connected: false, reason: "closed" });
+  const session = fakeExpose.getStatus("terminal.session").readFn();
+  assert.equal(session.inputHeld, null, "the sidecar sends no held:false after a connection ends, so the page clears it");
+  assert.match(session.error, /sidecar connection failed: closed/, "the ended connection is still reported");
+});
+
 test("cursor policy sends explicit shape, blink, interval, idle timeout, and unfocused rendering", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
