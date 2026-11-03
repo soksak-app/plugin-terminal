@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- P108: The repository uses the records kit 0.0.6, whose release gate accepts a closed item with a `Closed:` reason.
 - P68-1, P66-1, P70-1, P58, P61, F212.12-1-8-2-view: Six held items are closed, because version 0.0.35 contains their corrections or the pin they name no longer exists.
 - F374-5-3-terminal: The published version 0.0.35 and core 0.0.32 together carry the change form of a screen message, so the item is complete.
 - P107: The plugin requires VT `^0.0.23`, and the version is 0.0.35.
