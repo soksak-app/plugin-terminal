@@ -3483,6 +3483,34 @@ test("a sequence the engine rejected is recorded in the session without a surfac
     "the session keeps the last eight rejected sequences");
 });
 
+test("an input_held event publishes the held input and clears it when reads resume", async () => {
+  FakeResizeObserver.reset();
+  const log = capturedLog();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose,
+    window: { TextEncoder: FakeTextEncoder }, runtime: log.runtime,
+  });
+  openSession(fakeSidecar);
+  const session = () => fakeExpose.getStatus("terminal.session").readFn();
+  assert.equal(session().inputHeld, null, "no input is held before the first input_held event");
+  fakeSidecar.triggerEvent("test-session", { event: "input_held", queued: 4096, held: true });
+  assert.deepEqual(session().inputHeld, { queued: 4096, held: true },
+    "a held event publishes the queued byte count and the held state");
+  fakeSidecar.triggerEvent("test-session", { event: "input_held", queued: 0, held: false });
+  assert.equal(session().inputHeld, null, "a resumed event clears the held input");
+  fakeSidecar.triggerEvent("test-session", { event: "input_held", queued: -1, held: true });
+  assert.match(session().error, /terminal input failed: invalid input_held event from sidecar/,
+    "a negative queued count is an input error");
+  fakeSidecar.triggerEvent("test-session", { event: "input_held", queued: 1, held: "yes" });
+  assert.match(session().error, /terminal input failed: invalid input_held event from sidecar/,
+    "a non-boolean held value is an input error");
+  assert.deepEqual(log.records.filter(([event]) => event === "sidecar.unknown"), [],
+    "input_held is a known event and writes no unknown-event record");
+});
+
 test("cursor policy sends explicit shape, blink, interval, idle timeout, and unfocused rendering", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();

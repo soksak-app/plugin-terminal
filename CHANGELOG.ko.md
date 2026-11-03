@@ -2,6 +2,7 @@
 
 [English](CHANGELOG.md)
 
+- P109: session status는 sidecar가 붙잡고 있는 입력을 `inputHeld`로 드러낸다. 붙잡혀 있는 동안은 `{queued, held}`이고, 그 밖에는 `null`이다. 잘못된 `input_held` event는 입력 오류로 거부한다. Red: test `an input_held event publishes the held input and clears it when reads resume`가 `no input is held before the first input_held event`로 실패했다. Green: 통과하며, test 파일은 181개 중 181개 통과한다.
 - P108: 이 저장소는 records kit 0.0.6을 쓰며, 그 release gate는 `Closed:` 사유가 있는 닫힌 항목을 받아들인다.
 - P68-1, P66-1, P70-1, P58, P61, F212.12-1-8-2-view: version 0.0.35가 수정을 담거나 항목이 말하는 pin이 없어졌으므로 hold 항목 6개를 닫았다.
 - F374-5-3-terminal: publish된 version 0.0.35와 core 0.0.32가 screen 메시지의 변경 형식을 함께 담으므로 항목을 완료한다.

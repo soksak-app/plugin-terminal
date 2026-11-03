@@ -435,6 +435,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     rejected: [],
     // The sequence.rejected reasons that the rejected list dropped; the list keeps the last REJECTED_KEPT reasons.
     rejectedShed: 0,
+    // The input the sidecar holds while reads of the program output stop: {queued, held: true}, or null.
+    inputHeld: null,
     vendor: { directory: null, hyperlink: null, notification: null, shell: null },
     compose: { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false },
     theme: "dark",
@@ -1740,6 +1742,13 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       session = { ...session, rejected: rejected.slice(-REJECTED_KEPT), rejectedShed: session.rejectedShed + shed };
       // Each reason that the list drops is counted, and the record states the running count.
       if (shed > 0) runtime.log.info("session.rejected.shed", { count: session.rejectedShed });
+      changed("session");
+    } else if (body.event === "input_held") {
+      if (!Number.isInteger(body.queued) || body.queued < 0 || typeof body.held !== "boolean") {
+        reportInputError(new Error("invalid input_held event from sidecar"));
+        return;
+      }
+      session = { ...session, inputHeld: body.held ? { queued: body.queued, held: true } : null };
       changed("session");
     } else if (body.event === "error") {
       // error 이벤트를 session 상태에 저장한다
