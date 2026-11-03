@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- F402-terminal: `engines.soksak` is `^0.0.33`, and the version is 0.0.37. Red: the core version test failed on `^0.0.32`. Green: it passes.
 - P112: The tests of a slow selection reply wait for the message that ends the gesture instead of a fixed time.
 - P111: Version 0.0.36, which requires the sidecar `^0.0.24`.
 - P110: The session status records that the child of the session ended, from the `exit` event, which clears the held input and records no warning. A `state` or `session` event opens a running session (`session` keeps the held input), and a connection that ends clears it. Red: the test `an exit event marks the session as ended and clears the held input without a warning` failed with `a session has not ended before its exit event`, and `a connection that ends while input is held clears the held input` failed with `the sidecar sends no held:false after a connection ends, so the page clears it`. Green: both pass, and the test file passes 183 of 183.

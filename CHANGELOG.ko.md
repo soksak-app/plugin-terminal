@@ -2,6 +2,7 @@
 
 [English](CHANGELOG.md)
 
+- F402-terminal: `engines.soksak`은 `^0.0.33`이고 version은 0.0.37이다. Red: core version test가 `^0.0.32`에서 실패했다. Green: 통과한다.
 - P112: 느린 selection 응답의 test는 고정 시간 대신 gesture를 끝내는 message를 기다린다.
 - P111: sidecar `^0.0.24`을 요구하는 version 0.0.36.
 - P110: session status는 `exit` event로 session의 child가 끝났음을 기록하며, 이 event는 붙잡힌 입력을 지우고 warning을 남기지 않는다. `state` event와 `session` event는 실행 중인 session을 연다(`session`은 붙잡힌 입력을 유지한다). 끝난 연결은 붙잡힌 입력을 지운다. Red: test `an exit event marks the session as ended and clears the held input without a warning`가 `a session has not ended before its exit event`로, `a connection that ends while input is held clears the held input`가 `the sidecar sends no held:false after a connection ends, so the page clears it`로 실패했다. Green: 두 test가 통과하며, test 파일은 183개 중 183개 통과한다.
