@@ -11,7 +11,7 @@
 export function createExposurePort({ bridge, runtime, releaseOf, report }) {
   return {
     // A command is declared by commands.register of the bridge (withBridgeCommands), which keeps its handler for the command
-    // requests of core, so the port sends no declaration of its own; statuses and dom names are declared by the registered
+    // requests of core, so the port sends no declaration of its own; statuses and element names are declared by the registered
     // call of the exposure relay.
     register: (kind, name) => kind === "command" ? Promise.resolve() : bridge.exposure.register(kind, name),
     onRequest: (fn) => { releaseOf(runtime.native.on("exposure-request", (data) => fn(data))); },

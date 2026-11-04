@@ -10,9 +10,9 @@ const diagnostics = JSON.parse(readFileSync(new URL("../diagnostics.json", impor
 const registrations = (source) => [
   ...[...source.matchAll(/expose\.status\(\s*["']([^"']+)["']/g)].map((match) => `status ${match[1]}`),
   ...[...source.matchAll(/expose\.command\(\s*["']([^"']+)["']/g)].map((match) => `command ${match[1]}`),
-  ...[...source.matchAll(/expose\.dom\(\s*["']([^"']+)["']/g)].map((match) => `dom ${match[1]}`),
+  ...[...source.matchAll(/expose\.element\(\s*["']([^"']+)["']/g)].map((match) => `element ${match[1]}`),
 ].sort();
-const kinds = { status: "status", commands: "command", dom: "dom" };
+const kinds = { status: "status", commands: "command", element: "element" };
 const declarations = (exposes) => Object.entries(exposes ?? {})
   .flatMap(([kind, entries]) => entries.map((entry) => `${kinds[kind]} ${entry.name}`))
   .sort();
@@ -111,7 +111,7 @@ test("the terminal exposes its session, input, preedit, paste, file drop, screen
   const names = (kind) => manifest.exposes[kind].map((entry) => entry.name).sort();
   assert.deepEqual(names("status"), ["terminal.compose", "terminal.cursor", "terminal.screen", "terminal.session"]);
   assert.deepEqual(names("commands"), ["terminal.close", "terminal.copy", "terminal.cursor.set", "terminal.drop", "terminal.focus", "terminal.image.inline.delete", "terminal.input", "terminal.link.open", "terminal.paste", "terminal.screen.read", "terminal.scrollback.set"]);
-  assert.deepEqual(names("dom"), ["terminal.scrollbar", "terminal.scrollbar.thumb", "terminal.view"]);
+  assert.deepEqual(names("element"), ["terminal.scrollbar", "terminal.scrollbar.thumb", "terminal.view"]);
 });
 
 test("the context menu of the surface copies and pastes", () => {

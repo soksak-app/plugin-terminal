@@ -47,12 +47,12 @@ test("the view page opens the sidecar session of its surface and registers the d
   assert.deepEqual(host.regionCalls[0], ["image.attach", { name: "view", sidecar: manifest.surface.composition.regions[0].sidecar }]);
   assert.equal(host.places.length > 0, true, "the page placed its composition");
   assert.deepEqual(host.places[0].regions.map(({ name }) => name), ["view"]);
-  // Every declared status and dom name is registered through the relay, and every command through the registry.
+  // Every declared status and element name is registered through the relay, and every command through the registry.
   const kinds = (group) => host.registrations.filter(({ kind }) => kind === group).map(({ name }) => name).sort();
   // A diagnostic build adds the entries of diagnostics.json to the surface declaration, and the page registers them.
   const diagnosticNames = (group) => diagnostics.exposes[group].map((entry) => entry.name);
   assert.deepEqual(kinds("status"), [...declared("status"), ...diagnosticNames("status")].sort());
-  assert.deepEqual(kinds("dom"), declared("dom"));
+  assert.deepEqual(kinds("element"), declared("element"));
   assert.deepEqual([...host.commands].sort(), [...declared("commands"), ...diagnosticNames("commands")].sort());
 });
 
@@ -143,7 +143,7 @@ test("terminal input and send records carry the sidecar correlation identifiers"
 
 
 function terminalPointer(host, button = 0) {
-  const view = host.context.exposure.getDom("terminal.view");
+  const view = host.context.exposure.getElement("terminal.view");
   view.getBoundingClientRect = () => ({ left: 0, top: 0, width: 640, height: 400 });
   view.setPointerCapture = () => {};
   view.hasPointerCapture = () => true;
@@ -162,7 +162,7 @@ test("a primary press in the separate view runs terminal.focus and requests nati
   assert.deepEqual(host.commandRuns, [{ name: "terminal.focus", params: {} }], "the view press did not run its declared focus command");
   assert.deepEqual(host.regionCalls.filter(([name]) => name === "image.focus"), [["image.focus", { name: "view" }]],
     "the focus command did not transfer keyboard ownership to the native region");
-  assert.equal(host.context.exposure.getDom("terminal.view").dataset.command, "terminal.focus");
+  assert.equal(host.context.exposure.getElement("terminal.view").dataset.command, "terminal.focus");
   assert.equal(event.defaultPrevented, true, "the DOM must not retake focus after the native focus command");
   await host.page.dispose();
 });
@@ -174,7 +174,7 @@ test("the view focus binding ignores another button and is removed when the page
   terminalPointer(host, 2);
   await host.settle();
   assert.deepEqual(host.commandRuns, []);
-  const view = host.context.exposure.getDom("terminal.view");
+  const view = host.context.exposure.getElement("terminal.view");
   await host.page.dispose();
   view.dispatchEvent(new host.window.MouseEvent("pointerdown", { button: 0 }));
   await host.settle();

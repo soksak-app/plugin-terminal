@@ -73,7 +73,7 @@ export function createViewPage(_t, caseId, { scheme = "dark", start = START, dia
   const commands = new Set();
   const commandHandlers = new Map();
   const statuses = new Map();
-  const doms = new Map();
+  const exposedElements = new Map();
   const regionCalls = [];
   const places = [];
   const reports = [];
@@ -87,7 +87,7 @@ export function createViewPage(_t, caseId, { scheme = "dark", start = START, dia
   const exposure = {
     async status(name, read, watch) { registrations.push({ kind: "status", name }); statuses.set(name, { read, watch }); },
     async command(name, handler) { commands.add(name); commandHandlers.set(name, handler); },
-    async dom(name, element) { registrations.push({ kind: "dom", name }); doms.set(name, element); },
+    async element(name, element) { registrations.push({ kind: "element", name }); exposedElements.set(name, element); },
     async run(name, params = {}) {
       commandRuns.push({ name, params });
       const handler = commandHandlers.get(name);
@@ -114,7 +114,7 @@ export function createViewPage(_t, caseId, { scheme = "dark", start = START, dia
     async dispose() { for (const release of releaseBindings.splice(0)) release(); },
     getCommand: (name) => commandHandlers.get(name),
     getStatus: (name) => statuses.get(name),
-    getDom: (name) => doms.get(name),
+    getElement: (name) => exposedElements.get(name),
   };
 
   const region = fakeRegion();

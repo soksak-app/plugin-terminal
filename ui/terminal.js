@@ -1933,7 +1933,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       await terminal.send(id, { operation: "image.inline.delete", name });
       return null;
     }),
-    expose.dom("terminal.view", view),
+    expose.element("terminal.view", view),
   ]);
   await expose.command("terminal.focus", async () => {
     try {
@@ -1957,8 +1957,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   });
   if (scrollbar) {
     await Promise.all([
-      expose.dom("terminal.scrollbar", scrollbar.track),
-      expose.dom("terminal.scrollbar.thumb", scrollbar.thumb),
+      expose.element("terminal.scrollbar", scrollbar.track),
+      expose.element("terminal.scrollbar.thumb", scrollbar.thumb),
       expose.mark(scrollbar.thumb, "terminal.scrollback.set"),
     ]);
   }

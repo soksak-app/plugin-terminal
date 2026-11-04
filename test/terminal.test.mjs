@@ -313,7 +313,7 @@ function createFakeExpose({ followScreen = true } = {}) {
   let heldRows = [];
   const statuses = new Map();
   const commands = new Map();
-  const doms = new Map();
+  const exposedElements = new Map();
   return {
     async status(name, readFn, watchFn) {
       statuses.set(name, { readFn, watchFn });
@@ -321,7 +321,7 @@ function createFakeExpose({ followScreen = true } = {}) {
     },
     heldScreen: () => heldRows,
     async command(name, handler) { commands.set(name, handler); },
-    async dom(name, element) { doms.set(name, element); },
+    async element(name, element) { exposedElements.set(name, element); },
     async mark(element, name) { element.dataset.command = name; return element; },
     async run(name, params = {}) {
       const handler = commands.get(name);
@@ -331,11 +331,11 @@ function createFakeExpose({ followScreen = true } = {}) {
     async dispose() {},
     getStatus: (name) => statuses.get(name),
     getCommand: (name) => commands.get(name),
-    getDom: (name) => doms.get(name),
+    getElement: (name) => exposedElements.get(name),
     getStatuses: () => statuses,
     getCommands: () => commands,
-    getDoms: () => doms,
-    reset() { statuses.clear(); commands.clear(); doms.clear(); },
+    getElements: () => exposedElements,
+    reset() { statuses.clear(); commands.clear(); exposedElements.clear(); },
   };
 }
 
