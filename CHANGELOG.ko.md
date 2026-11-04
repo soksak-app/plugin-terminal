@@ -2,6 +2,7 @@
 
 [English](CHANGELOG.md)
 
+- P119: core 호환성 문서는 package가 선언한 범위 `^0.0.34`를 적고, test가 두 문서를 `engines.soksak`과 비교한다. Red: test가 `^0.0.34`에 대한 `^0.0.24`로 실패했다. Green: 통과한다.
 - P118: view clipboard는 PNG를 view document의 binary path로 나른다. `persistPNG`는 bytes를 upload하고 그 id를 `{binary}`로 보내며, `png` read는 그 id의 bytes를 download한다. F518을 담은 core release가 나올 때까지 `engines.soksak`은 `^0.0.34`로 남는다. Red: `test/view-clipboard.test.mjs`의 13 test 중 8개가 실패했고, 그중 `the view clipboard downloads the bytes of the binary id of a PNG read`는 `clipboard png response is invalid`로 실패했다. Green: 13 test가 통과한다.
 - F432-terminal: `engines.soksak`은 `^0.0.34`이고, sidecar `^0.0.25`을 요구하며 version은 0.0.38이다. Red: core version test가 `^0.0.33`에서 실패했다. Green: 통과한다.
 - P115: 세션의 첫 state 전의 포인터가 입력을 보내지 않아 터미널 오류가 나타나지 않는다.

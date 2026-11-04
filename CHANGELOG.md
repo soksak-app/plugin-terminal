@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- P119: The core compatibility document states `^0.0.34`, the range that the package declares, and a test compares both documents with `engines.soksak`. Red: the test failed with `^0.0.24` against `^0.0.34`. Green: it passes.
 - P118: The view clipboard carries a PNG through the binary path of the view document: `persistPNG` uploads the bytes and sends their id as `{binary}`, and a `png` read downloads the bytes of its id. `engines.soksak` stays `^0.0.34` until a core release carries F518. Red: 8 of the 13 tests of `test/view-clipboard.test.mjs` failed, among them `the view clipboard downloads the bytes of the binary id of a PNG read` with `clipboard png response is invalid`. Green: the 13 tests pass.
 - F432-terminal: `engines.soksak` is `^0.0.34`, and it requires `^0.0.25` of its sidecar, and the version is 0.0.38. Red: the core version test failed on `^0.0.33`. Green: it passes.
 - P115: A pointer before the first state of a session sends no input, so it shows no terminal error.
