@@ -7,9 +7,12 @@ import { screenMessage } from "./screen-message.mjs";
 const terminalManifest = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
 const SCREEN_MESSAGES = JSON.parse(readFileSync(new URL("./fixtures/screen-message.json", import.meta.url), "utf8"));
 const SCREEN_MESSAGE = SCREEN_MESSAGES.vectors[0];
-const SCREEN_FRAME_PREEDIT = JSON.parse(readFileSync(new URL("../scripts/test-sdk-cases.json", import.meta.url), "utf8"))
-  .modules.find(({ specifier }) => specifier === "@soksak/plugin-api/screen-hash")
-  .caseCopies.find(({ id }) => id === "screen.message.frame-preedit").steps[0].apply.message;
+// The cases of the copies that the test table lists for the screen hash module, read from test/fixtures/contract.
+const SCREEN_HASH_CASES = JSON.parse(readFileSync(new URL("../scripts/test-sdk-cases.json", import.meta.url), "utf8"))
+  .modules.find(({ specifier }) => specifier === "@soksak/plugin-api/screen-hash").cases
+  .flatMap((name) => JSON.parse(readFileSync(new URL(`./fixtures/contract/${name}`, import.meta.url), "utf8")).cases);
+const SCREEN_FRAME_PREEDIT = structuredClone(SCREEN_HASH_CASES
+  .find(({ id }) => id === "screen.message.frame-preedit").steps[0].apply.message);
 SCREEN_FRAME_PREEDIT.cursor = { ...SCREEN_FRAME_PREEDIT.cursor,
   caret: { row: SCREEN_FRAME_PREEDIT.cursor.row, col: SCREEN_FRAME_PREEDIT.cursor.col } };
 const SCREEN_RENDER = (frame = SCREEN_FRAME_PREEDIT.frame) => ({
@@ -25,8 +28,6 @@ const SCREEN_RENDER = (frame = SCREEN_FRAME_PREEDIT.frame) => ({
   glyphs: [{ row: 0, col: 0, width: 1, fontRuns: 1, grapheme: "g", foreground: "#000000",
     background: "#ffffff", bounds: { x: 0, y: 1, width: 4, height: 8 }, underline: { rect: null } }],
 });
-const SCREEN_HASH_CASES = JSON.parse(readFileSync(new URL("../scripts/test-sdk-cases.json", import.meta.url), "utf8"))
-  .modules.find(({ specifier }) => specifier === "@soksak/plugin-api/screen-hash").caseCopies;
 const SCREEN_CARET_MESSAGE = SCREEN_HASH_CASES.find(({ id }) => id === "screen.message.frame-preedit").steps[0].apply.message;
 const P74_SCREEN_MESSAGE_IDS = [
   "screen.message.letter-x-cursor-hidden",

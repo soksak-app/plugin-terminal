@@ -9,6 +9,7 @@ const sourceUI = path.join(root, "ui");
 const outputRoot = path.join(root, "build", "test");
 const outputUI = path.join(outputRoot, "ui");
 const table = JSON.parse(fs.readFileSync(path.join(root, "scripts", "test-sdk-cases.json"), "utf8"));
+const contractCopies = path.join(root, "test", "fixtures", "contract");
 
 function walk(directory) {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -71,8 +72,47 @@ function localTarget(from, specifier) {
   throw new Error("test build cannot resolve UI import " + specifier + " from " + path.relative(root, from));
 }
 
+// The cases that the fake of a module replays: each case of its listed copies of test/fixtures/contract has one step whose
+// operation the module exports, or the skip list of the module names it with the reason. A case that is neither, a skip of a
+// replayed case, and a skip of a case that no listed copy holds fail the build.
+function replayedCases(module) {
+  const where = "the table entry of " + module.specifier;
+  if (!Array.isArray(module.cases) || module.cases.length === 0 || !module.cases.every((name) => typeof name === "string")) {
+    throw new Error(where + " lists no contract copies in cases");
+  }
+  if (module.skip === null || typeof module.skip !== "object" || Array.isArray(module.skip)) throw new Error(where + " has no skip list");
+  for (const [id, reason] of Object.entries(module.skip)) {
+    if (typeof reason !== "string" || reason.length === 0) throw new Error("the skip list of " + module.specifier + " gives no reason for " + id);
+  }
+  const operations = new Set(Object.values(module.exports));
+  const replays = (testCase) => Array.isArray(testCase.steps) && testCase.steps.length === 1 &&
+    Object.keys(testCase.steps[0]).some((key) => operations.has(key));
+  const replayed = [];
+  const unhandled = [];
+  const held = new Set();
+  for (const name of module.cases) {
+    const file = path.join(contractCopies, name);
+    if (!fs.existsSync(file)) throw new Error(where + " lists a contract copy that does not exist: " + path.relative(root, file));
+    for (const testCase of JSON.parse(fs.readFileSync(file, "utf8")).cases) {
+      held.add(testCase.id);
+      const skipped = Object.hasOwn(module.skip, testCase.id);
+      if (replays(testCase)) {
+        if (skipped) throw new Error("the skip list of " + module.specifier + " names a case that the fake replays: " + testCase.id);
+        replayed.push(testCase);
+      } else if (!skipped) {
+        unhandled.push("the fake neither replays nor skips " + testCase.id + " (" + name + ")");
+      }
+    }
+  }
+  if (unhandled.length > 0) throw new Error(where + ":\n" + unhandled.join("\n"));
+  for (const id of Object.keys(module.skip)) {
+    if (!held.has(id)) throw new Error("the skip list of " + module.specifier + " names a case that no listed copy holds: " + id);
+  }
+  return replayed;
+}
+
 function fakeSource(module) {
-  const literal = JSON.stringify({ exports: module.exports, caseCopies: module.caseCopies });
+  const literal = JSON.stringify({ exports: module.exports, cases: replayedCases(module) });
   const lines = [
     'import { isDeepStrictEqual } from "node:util";',
     "const TABLE = " + literal + ";",
@@ -104,8 +144,7 @@ function fakeSource(module) {
     '  const withoutCaret = message && typeof message === "object" && message.cursor && typeof message.cursor === "object"',
     '    ? { ...message, cursor: Object.fromEntries(Object.entries(message.cursor).filter(([key]) => key !== "caret")) } : message;',
     '  const contractValue = operation === "apply" ? { previous: value, message: withoutCaret } : value;',
-    "  const matches = TABLE.caseCopies.filter((testCase) => {",
-    "    if (!Array.isArray(testCase.steps) || testCase.steps.length !== 1) return false;",
+    "  const matches = TABLE.cases.filter((testCase) => {",
     "    const step = testCase.steps[0];",
     "    if (!Object.hasOwn(step, operation)) return false;",
     "    return isDeepStrictEqual(contractValue, caseInput(operation, step[operation]));",

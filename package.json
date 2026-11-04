@@ -15,6 +15,7 @@
   },
   "files": [
     "plugin.json",
+    "contract-copies.json",
     "diagnostics.json",
     "ui/terminal-diagnostics.js",
     "events.json",
