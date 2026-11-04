@@ -2,6 +2,7 @@
 
 [English](CHANGELOG.md)
 
+- F432-terminal: `engines.soksak`은 `^0.0.34`이고, sidecar `^0.0.25`을 요구하며 version은 0.0.38이다. Red: core version test가 `^0.0.33`에서 실패했다. Green: 통과한다.
 - P115: 세션의 첫 state 전의 포인터가 입력을 보내지 않아 터미널 오류가 나타나지 않는다.
 - P114: page가 `view` 이벤트의 caret을 그 이벤트의 격자로 판정한다.
 - P113: `terminal.screen` status는 view event 뒤의 screen read로 그린 frame마다 watcher에게 알리고, status의 read는 현재 화면을 돌려준다.

@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- F432-terminal: `engines.soksak` is `^0.0.34`, and it requires `^0.0.25` of its sidecar, and the version is 0.0.38. Red: the core version test failed on `^0.0.33`. Green: it passes.
 - P115: A pointer before the first state of a session sends no input, so it shows no terminal error.
 - P114: The page judges the caret of a `view` event against the grid of that event.
 - P113: The `terminal.screen` status notifies a watcher of each drawn frame through a screen read that follows its view event, and a read of the status returns the current screen.
