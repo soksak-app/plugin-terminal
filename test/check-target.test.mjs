@@ -15,7 +15,7 @@ test("test runs plugin tests only", () => {
   }
 });
 
-test("check runs the census check of the checks kit and the record check of the checks kit without running plugin tests", () => {
+test("check runs the census check of the kit and the record check of the kit without running plugin tests", () => {
   const output = make("-n", "check");
   assert.ok(output.includes("pnpm exec soksak-check census --config census.json --catalog events.json"));
   assert.ok(output.includes("pnpm exec soksak-check records"));
