@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- F474-terminal: `engines.soksak` is `^0.0.36`, and the version is 0.0.40. It requires `@soksak/sidecar-vt-alacritty` `^0.0.26`, whose executables have the current names. Red: the core version test failed on `^0.0.35`. Green: it passes.
 - F432-terminal: `engines.soksak` is `^0.0.34`, and it requires `^0.0.25` of its sidecar, and the version is 0.0.38. Red: the core version test failed on `^0.0.33`. Green: it passes.
 - P115: A pointer before the first state of a session sends no input, so it shows no terminal error.
 - P114: The page judges the caret of a `view` event against the grid of that event.
