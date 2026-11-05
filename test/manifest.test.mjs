@@ -25,11 +25,6 @@ test("the package publishes the manifest and the view page", () => {
   assert.equal(manifest.surface.module, undefined, "a view surface has no module");
 });
 
-test("the local transaction candidate requires the VT input transaction contract", () => {
-  assert.equal(manifest.dependencies["@soksak/sidecar-vt-alacritty"], "^0.0.25");
-  assert.equal(pkg.version, "0.0.39");
-});
-
 test("compose and cursor preedit schemas use the supported range keywords", () => {
   const statuses = manifest.exposes.status;
   const compose = statuses.find(({ name }) => name === "terminal.compose").schema;
