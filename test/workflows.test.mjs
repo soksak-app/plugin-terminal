@@ -46,7 +46,7 @@ test("the release starts on a push to main and runs ci.yml and the release gate"
   assert.match(RELEASE_TEXT, /^\s*uses: \.\/\.github\/workflows\/ci\.yml$/m, "release.yml must run ci.yml as its checks");
   const ci = readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf8");
   assert.match(ci, /^on:\n(?: {2}.+\n)* {2}workflow_call:/m, "ci.yml must be callable by release.yml");
-  assert.match(RELEASE_TEXT, /soksak-check release package\.json docs\/features\.md/, "release.yml must run the release gate");
+  assert.match(RELEASE_TEXT, /sok-check release package\.json docs\/features\.md/, "release.yml must run the release gate");
   assert.match(RELEASE_TEXT, /git ls-remote origin refs\/heads\/main/, "the release must require the run commit to be the head of main");
   assert.match(RELEASE_TEXT, /git ls-remote --tags origin "refs\/tags\/v\$VERSION"/, "the release must require the tag to be absent");
 });
@@ -64,7 +64,7 @@ test("make pack writes the release with pnpm pack into the folder that OUT names
   assert.equal(result.status, 0, result.stderr);
   const commands = result.stdout.trim().split("\n");
   assert.equal(commands.at(-1), "pnpm pack --pack-destination /releases", `make pack runs ${JSON.stringify(commands)}`);
-  // candidate-install-check runs the sok of an installed application that SOK names; no pack target uses it.
+  // check-candidate-install runs the sok of an installed application that SOK names; no pack target uses it.
   assert.doesNotMatch(readFileSync(path.join(ROOT, "Makefile"), "utf8"), /plugin pack|PACK_FLAGS/, "the Makefile must not pack with a sok");
 });
 
