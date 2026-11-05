@@ -1,5 +1,6 @@
 # 기능
 
+- [o] F463-terminal — P0, core F463과 연결: 저장소가 checks kit을 쓴다. 입력: records kit과 events kit을 pin하고 그 command를 실행했다. 기대: `package.json`이 `@soksak/kit-checks`를 pin하고 hook, target, workflow가 `soksak-check`를 실행하며, test는 `package.json`의 kit release를 반복하지 않는다. Red: workflow test가 이전 command를 읽었다. Green: `make test`가 통과한다.
 - [o] F462-terminal — P0, core F462와 연결: plugin이 `engines.soksak` `^0.0.35`를 선언해 core release 0.0.35가 설치하고, version은 0.0.39이다. Red: `test/core-version.test.mjs`가 `^0.0.34`에서 실패했다. Green: 통과한다. 결과: release run이 v0.0.39를 publish했고 registry가 이를 나열한다.
 - [o] F432-terminal — P0, core F432와 연결: plugin이 `engines.soksak` `^0.0.34`를 선언해 core release 0.0.34가 설치하고, sidecar `^0.0.25`을 요구하며 version은 0.0.38이다. Red: `test/core-version.test.mjs`가 `^0.0.33`에서 실패했다. Green: 통과한다. 결과: release run이 v0.0.38을 게시했고 registry가 이를 올렸다.
 - [o] P115 — P0: 세션의 첫 state 전의 포인터는 입력을 보내지 않는다. 입력: sidecar에 아직 이미지가 없는 터미널 위의 포인터. 동작: page가 8 x 16의 임시 칸 크기를 가지고 mouse 이동이나 누름을 보냈고, sidecar가 `mouse image is not configured`로 답하여 터미널이 오류로 표시했다. 기대: 칸 크기는 첫 state까지 0이고, 그 전의 hover와 누름은 아무것도 보내지 않는다. Red: `a pointer before the first state of the session sends no input`이 mouse 연산을 보내어 실패했다. Green: 같은 test가 통과한다.
