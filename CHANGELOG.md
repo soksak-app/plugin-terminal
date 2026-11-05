@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- F476-terminal: The tests repeat no declared version.
 - F474-terminal: The release run published v0.0.40, and the registry lists it.
 - F474-terminal: `engines.soksak` is `^0.0.36`, and the version is 0.0.40. It requires `@soksak/sidecar-vt-alacritty` `^0.0.26`, whose executables have the current names. Red: the core version test failed on `^0.0.35`. Green: it passes.
 - F432-terminal: `engines.soksak` is `^0.0.34`, and it requires `^0.0.25` of its sidecar, and the version is 0.0.38. Red: the core version test failed on `^0.0.33`. Green: it passes.
