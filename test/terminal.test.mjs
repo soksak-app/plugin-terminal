@@ -3695,6 +3695,88 @@ test("a connection that ends while input is held clears the held input", async (
   assert.match(session.error, /sidecar connection failed: closed/, "the ended connection is still reported");
 });
 
+test("input of a caller does not wait for a session whose open failed", { timeout: 10000 }, async () => {
+  FakeResizeObserver.reset();
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar, expose,
+    window: { TextEncoder: FakeTextEncoder },
+    clipboard: { read: async () => "pasted", write: async () => {} },
+  });
+  const input = expose.getCommand("terminal.input");
+  const paste = expose.getCommand("terminal.paste");
+  const session = () => expose.getStatus("terminal.session").readFn();
+  const sent = (operation) => sidecar.getMessages().filter(({ body }) => body.operation === operation);
+  const settle = async (predicate, what) => {
+    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(predicate(), what);
+  };
+
+  const waiting = input({ bytes: "waited" });
+  const waitingPaste = paste();
+  region._trigger("input", inputEvent([inputKey("Enter")]));
+  await new Promise((resolve) => setImmediate(resolve));
+  sidecar.triggerEvent("test-session", { error: "openFailed", reason: "terminal shell is not a file" });
+  await assert.rejects(waiting, /terminal shell is not a file/, "the input that waited ends with the reason");
+  await assert.rejects(waitingPaste, /terminal shell is not a file/, "the paste that waited ends with the reason");
+  await assert.rejects(input({ bytes: "later" }), /terminal shell is not a file/, "later input ends at once");
+  await assert.rejects(paste(), /terminal shell is not a file/, "a later paste ends at once");
+  assert.equal(session().error, "session open failed: terminal shell is not a file",
+    "the session reports the open failure, and the refused callers do not replace it");
+
+  // The next configure tries the open again, and a session that opens ends the failure.
+  openSession(sidecar);
+  assert.equal(session().error, undefined, "the session that opened resolves the open failure");
+  await settle(() => sent("input").length === 1, "the typed input stays queued for the session that opens");
+  await input({ bytes: "after" });
+  await settle(() => sent("input").length === 2, "input flows into the session that opened");
+  assert.equal(sent("paste").length, 0, "a refused paste is not sent later");
+  assert.deepEqual(sent("input").at(-1).body.actions, [{ type: "insert", text: "after", replacementRange: null, attributed: false }],
+    "a refused input is not sent later");
+});
+
+test("input of a caller does not wait for a connection that failed", { timeout: 10000 }, async () => {
+  FakeResizeObserver.reset();
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(sidecar);
+  const input = expose.getCommand("terminal.input");
+  const inputs = () => sidecar.getMessages().filter(({ body }) => body.operation === "input");
+  const settle = async (predicate, what) => {
+    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(predicate(), what);
+  };
+
+  sidecar.triggerEvent("test-session", { event: "connection", connected: false, reason: "spawn failed" });
+  await assert.rejects(input({ bytes: "down" }), /sidecar connection failed: spawn failed/, "input during the failed connection ends at once");
+
+  // A connection that comes back reopens the session, and input waits for that open.
+  sidecar.triggerEvent("test-session", { event: "connection", connected: true });
+  const waiting = input({ bytes: "reopening" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(inputs().length, 0, "input waits while the session reopens");
+  // A reopening that ends in a failed connection ends the input that waited.
+  sidecar.triggerEvent("test-session", { event: "connection", connected: false, reason: "closed" });
+  await assert.rejects(waiting, /sidecar connection failed: closed/, "the input that waited ends with the reason");
+  assert.equal(expose.getStatus("terminal.session").readFn().error, "sidecar connection failed: closed",
+    "the session reports the connection, and the refused callers do not replace it");
+
+  sidecar.triggerEvent("test-session", { event: "connection", connected: true });
+  const reopened = input({ bytes: "flows" });
+  sidecar.triggerEvent("test-session", { event: "session", sessionId: "s1" });
+  await reopened;
+  await settle(() => inputs().length === 1, "input flows into the session that reopened");
+  assert.deepEqual(inputs()[0].body.actions, [{ type: "insert", text: "flows", replacementRange: null, attributed: false }],
+    "a refused input is not sent later");
+});
+
 test("cursor policy sends explicit shape, blink, interval, idle timeout, and unfocused rendering", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();

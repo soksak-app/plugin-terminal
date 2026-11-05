@@ -5,6 +5,9 @@ import { applyScreenMessage, screenHash } from "@soksak/plugin-api/screen-hash";
 //
 // startTerminal 함수는 인자로 받은 의존성을 사용하므로 브라우저와 Node 환경에서 모두 부를 수 있다.
 
+// The refusal of an input whose caller waits for a session that no event will open. The session status holds the reason already.
+class SessionFailure extends Error {}
+
 function fileURLPath(value) {
   if (typeof value !== "string") throw new Error("clipboard file URL is not a string");
   let url;
@@ -642,6 +645,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
 
   // 세션이 생겼는지 추적한다. 래스터 크기는 페이지가 아니라 호스트 configure가 정한다.
   let sessionOpen = false;
+  // Why no event will open the session: the open failed, or the connection failed. Null while a session is open or on its way.
+  let sessionFailure = null;
   let nativeFocused = false;
   const focusWaiters = new Set();
 
@@ -728,7 +733,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     if (typeof text !== "string" || text.length === 0) throw new Error("terminal paste text is empty");
     // A paste is the paste request of the sidecar, which brackets it when the program turned bracketed paste on; it keeps
     // its place in the order of the inputs.
-    await enqueueInput({ type: "paste", text });
+    await callerInput({ type: "paste", text });
     return null;
   };
   const dropFileURLs = (value) => {
@@ -869,7 +874,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     }
   };
 
-  const enqueueInput = (entry, cids = []) => {
+  const enqueueInput = (entry, cids = [], caller = false) => {
     const input = inputBody(entry);
     notifyInput({ kind: "terminal-input", input, cids });
     // The trace records each input with every field that it carries, the text included, and whether it waits for the session.
@@ -881,9 +886,25 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         const error = new Error(`Input queue overflow (max ${MAX_QUEUE_SIZE})`);
         return Promise.reject(error);
       }
-      return new Promise((resolve, reject) => inputQueue.push({ entry, cids, resolve, reject }));
+      return new Promise((resolve, reject) => inputQueue.push({ entry, cids, resolve, reject, caller }));
     }
     return scheduleInput(entry, cids);
+  };
+
+  // A caller waits for the answer of its input, so its input ends when no event will open the session. Typed input has no caller
+  // and stays queued for the session that opens later.
+  const callerInput = (entry) => (sessionFailure === null
+    ? enqueueInput(entry, [], true)
+    : Promise.reject(new SessionFailure(sessionFailure)));
+
+  const failSession = (reason) => {
+    sessionFailure = reason;
+    const pending = inputQueue.splice(0);
+    for (const item of pending) {
+      if (item.caller) item.reject(new SessionFailure(reason));
+      else inputQueue.push(item);
+    }
+    runtime.log.debug("input.refused", { count: pending.length - inputQueue.length });
   };
 
   const flushInputQueue = () => {
@@ -901,6 +922,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   const openSessionGate = (event) => {
     const opening = !sessionOpen;
     sessionOpen = true;
+    sessionFailure = null;
+    resolveError("open");
     runtime.log.info("session.gate", { open: true, event });
     changed("session");
     if (opening) {
@@ -1480,13 +1503,16 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       sessionOpen = false;
       runtime.log.info("session.gate", { open: false, event: "connection", connected: body.connected });
       if (body.connected === true) {
-        if (resolveError("sidecar")) changed("session");
+        sessionFailure = null;
+        const resolved = resolveError("open");
+        if (resolveError("sidecar") || resolved) changed("session");
         rerunBootstrap().catch((error) => reportInputError(error));
       } else {
         const reason = typeof body.reason === "string" && body.reason.length > 0 ? `: ${body.reason}` : "";
         // The sidecar sends no held:false for a connection that ended, so the held input is cleared here.
         session = { ...session, inputHeld: null };
         setError("sidecar", `sidecar connection failed${reason}`);
+        failSession(`sidecar connection failed${reason}`);
       }
     } else if (body.event === "screen") {
       if (body.base === false && screenReadAwaited) {
@@ -1829,6 +1855,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     } else if (body.event === "font" && typeof body.family === "string") {
       session = { ...session, font: body.family, fontSystem: body.system === true, fontSize: body.size };
       changed("session");
+    } else if (body.error === "openFailed") {
+      // The service opened no session. The next configure tries again, and the session that opens resolves this error.
+      const message = `session open failed: ${body.reason}`;
+      setError("open", message);
+      failSession(message);
+      reportSurfaceError(new Error(message));
     } else if (body.error) {
       // 오류 응답 처리: {"error":"invalidParams","reason":"...",...}
       // reason 을 버리지 않고 오류에 실어 보낸다.
@@ -1924,9 +1956,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     expose.command("terminal.input", async ({ bytes }) => {
       if (typeof bytes !== "string") throw new Error("terminal.input requires bytes");
       try {
-        await enqueueInput({ type: "input", actions: [{ type: "insert", text: bytes, replacementRange: null, attributed: false }], preedit: compose });
+        await callerInput({ type: "input", actions: [{ type: "insert", text: bytes, replacementRange: null, attributed: false }], preedit: compose });
       } catch (error) {
-        reportInputError(error);
+        if (!(error instanceof SessionFailure)) reportInputError(error);
         throw error;
       }
       return null;

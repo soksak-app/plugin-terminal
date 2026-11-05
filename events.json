@@ -169,6 +169,24 @@
       },
       "description": "The inputs that waited for the session are sent, count of them."
     },
+    "plugin.terminal.input.refused": {
+      "layer": "plugin",
+      "class": "input",
+      "level": "debug",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "count"
+        ]
+      },
+      "description": "The session failed, and the inputs whose callers waited for it ended, count of them."
+    },
     "plugin.terminal.input.overflow": {
       "layer": "plugin",
       "class": "input",
