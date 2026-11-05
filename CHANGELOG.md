@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- P130: The core compatibility documents state `^0.0.37`, the range that `package.json` declares.
 - P128: Input that reaches a respawned service before the view hears of it flows into the session that reopens, instead of being lost with an error on the session.
 - P127: A session that opens resolves the answer `Session not open`, so `terminal.session` holds no such error after the service respawned.
 - P126: `terminal.input` and `terminal.paste` end with the reason when the open of the session failed or its connection failed, instead of waiting until the host ends the command after 10 s.
