@@ -22,6 +22,7 @@
 - F355-4-terminal: `make pack OUT=<folder>` writes the release with `pnpm pack`, and release.yml no longer downloads a core release, because core 0.0.25 installs the `pnpm pack` file of a plugin and has no `sok plugin pack`. The release holds `diagnostics.json` and its module, which only a diagnostic build reads, and `@soksak/plugin-api` is pinned to the core release `v0.0.25`.
 ## Unreleased
 
+- F466-terminal: The repository pins the kit release that reports a citation of a local build log or a temporary log.
 - F467-terminal: The repository pins `@soksak/kit`.
 - F463-terminal: The repository uses the checks kit and its one executable `soksak-check`.
 - F462-terminal: `engines.soksak` is `^0.0.35`, and the version is 0.0.39. Red: the core version test failed on `^0.0.34`. Green: it passes.
@@ -88,9 +89,8 @@
 - P92-terminal: Declare the runtime-injected `surface` field in
   `plugin.terminal.view.content_frame`. Red: the actual host-published event
   fixture failed `additionalProperties` because `surface` was absent from the
-  schema (`/tmp/terminal-P92-red.log`). Green: the same payload validates and
-  an arbitrary extra field is rejected; the focused event test passes 3/3
-  (`/tmp/terminal-P92-green.log`). The current SDK event and records checks
+  schema. Green: the same payload validates and
+  an arbitrary extra field is rejected; the focused event test passes 3/3. The current SDK event and records checks
   pass. Producer and runtime behavior are unchanged.
 
 - P49.2.1: Add explicit diagnostic commands for the current view document history length and source content-frame observation. The observer starts and stops on request, records the document root size after ResizeObserver and the next animation frame, and retains no frame history. Red: the owning tests fail because the commands are absent. Green: the five focused view-diagnostics cases pass, including live history reads, explicit observer lifecycle and emitted source records; manifest and event catalog cases pass. Application measurements remain pending.
@@ -101,10 +101,8 @@
   the owner diagnostics. The overwritten broad test log did not preserve the
   failures. Red: the focused owner test failed all four subcases because the
   missing-field error came from the exact preedit-key check and the other
-  errors were prefixed `IME markedRange`, not `native input preedit markedRange`
-  (`/tmp/terminal-P91-red.log`). Green: the same test passes all four subcases
-  while checking the unchanged compose status and absence of a sidecar request
-  (`/tmp/terminal-P91-green.log`). Production validation is unchanged.
+  errors were prefixed `IME markedRange`, not `native input preedit markedRange`. Green: the same test passes all four subcases
+  while checking the unchanged compose status and absence of a sidecar request. Production validation is unchanged.
 
 - P90-terminal: Include the accepted native frame tuple in the terminal
   frame marker. Capture the tuple before asynchronous hash calculation so two
