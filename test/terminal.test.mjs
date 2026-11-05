@@ -3777,7 +3777,52 @@ test("input of a caller does not wait for a connection that failed", { timeout: 
     "a refused input is not sent later");
 });
 
-test("a session that opens resolves the answer that no session was open", { timeout: 10000 }, async () => {
+test("input that a respawned service refused flows into the session that reopens", { timeout: 10000 }, async () => {
+  FakeResizeObserver.reset();
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  const reports = [];
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar, expose,
+    window: { TextEncoder: FakeTextEncoder }, reportSurfaceError: (error) => reports.push(error.message),
+  });
+  openSession(sidecar);
+  const session = () => expose.getStatus("terminal.session").readFn();
+  const sent = () => sidecar.getMessages().filter(({ body }) => body.operation === "input" || body.operation === "paste").map(({ body }) => body);
+  const opens = () => sidecar.getMessages().filter(({ body }) => body.operation === "open").length;
+  const settle = async (predicate, what) => {
+    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(predicate(), what);
+  };
+  const insert = (text) => ({ type: "insert", text, replacementRange: null, attributed: false });
+
+  // Two inputs reach the respawned service before the view hears of it, and the service refuses them in order.
+  await expose.getCommand("terminal.input")({ bytes: "first" });
+  await expose.getCommand("terminal.input")({ bytes: "second" });
+  await settle(() => sent().length === 2, "both inputs are sent");
+  const [first, second] = sent();
+  sidecar.triggerEvent("test-session", { error: "Session not open", request: first });
+  await settle(() => opens() === 2, "the refusal reopens the session without waiting for a connection event");
+  sidecar.triggerEvent("test-session", { event: "connection", connected: true });
+  await settle(() => opens() === 3, "the connection event reopens the session as well");
+  sidecar.triggerEvent("test-session", { error: "Session not open", request: second });
+  const waiting = expose.getCommand("terminal.input")({ bytes: "third" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sent().length, 2, "input waits for the session that reopens");
+
+  sidecar.triggerEvent("test-session", { event: "state", sessionId: "s2", cols: 100, rows: 50, cellWidth: 8, cellHeight: 16 });
+  await waiting;
+  await settle(() => sent().length === 5, "the refused input and the input that waited are sent");
+  assert.deepEqual(sent().slice(2).map((body) => body.actions[0]), [insert("first"), insert("second"), insert("third")],
+    "the refused input keeps its place before the input that waited");
+  assert.equal(session().error, undefined, "input that is sent again is not an error of the session");
+  assert.deepEqual(reports, [], "input that is sent again is not an error of the surface");
+  assert.ok(region, "the region stays attached");
+});
+
+test("input refused by a session that ended is an error and is not sent again", { timeout: 10000 }, async () => {
   FakeResizeObserver.reset();
   const sidecar = createFakeSidecar();
   const expose = createFakeExpose();
@@ -3786,17 +3831,13 @@ test("a session that opens resolves the answer that no session was open", { time
     window: { TextEncoder: FakeTextEncoder },
   });
   openSession(sidecar);
-  const error = () => expose.getStatus("terminal.session").readFn().error;
-  // The input that a respawned service received before the view reopened its session is answered after the connection event.
-  sidecar.triggerEvent("test-session", { event: "connection", connected: true });
-  sidecar.triggerEvent("test-session", { error: "Session not open" });
-  assert.equal(error(), "Session not open");
-  openSession(sidecar);
-  assert.equal(error(), undefined, "the session that opened resolves the error");
-
-  sidecar.triggerEvent("test-session", { error: "image creation failed", reason: "no memory" });
-  openSession(sidecar);
-  assert.equal(error(), "image creation failed: no memory", "a state event of an open session resolves no sidecar error");
+  sidecar.triggerEvent("test-session", { event: "exit" });
+  const request = { operation: "paste", text: "late" };
+  sidecar.triggerEvent("test-session", { error: "Session not open", request });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(expose.getStatus("terminal.session").readFn().error, "Session not open");
+  assert.equal(sidecar.getMessages().filter(({ body }) => body.operation === "paste" || body.operation === "open").length, 1,
+    "the ended session is not reopened and the input is not sent again");
 });
 
 test("cursor policy sends explicit shape, blink, interval, idle timeout, and unfocused rendering", async () => {

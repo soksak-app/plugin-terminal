@@ -840,6 +840,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   const sendEntry = async (entry, cids) => {
     if (entry.type === "input" || entry.type === "paste") {
       await terminal.send(id, inputBody(entry), cids);
+    } else if (entry.type === "refused") {
+      await terminal.send(id, entry.request, cids);
     } else {
       throw new Error(`unknown terminal input type: ${entry.type}`);
     }
@@ -907,7 +909,23 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     runtime.log.debug("input.refused", { count: pending.length - inputQueue.length });
   };
 
+  // A service that respawned holds no session of this surface, and input that reached it before this view heard of that comes back
+  // in its answer. That input goes before the input that waited, in the order of the answers, and the session reopens: the open does
+  // nothing when a connection event opened it already.
+  let refusedInputs = 0;
+  const requeueRefused = (request) => {
+    inputQueue.splice(refusedInputs, 0, {
+      entry: { type: "refused", request }, cids: [], resolve: () => {}, reject: (error) => reportInputError(error), caller: false,
+    });
+    refusedInputs += 1;
+    if (!sessionOpen) return;
+    sessionOpen = false;
+    runtime.log.info("session.gate", { open: false, event: "refused" });
+    rerunBootstrap().catch((error) => reportInputError(error));
+  };
+
   const flushInputQueue = () => {
+    refusedInputs = 0;
     const pending = inputQueue.splice(0);
     runtime.log.debug("input.flush", { count: pending.length });
     for (const { entry, cids, resolve, reject } of pending) {
@@ -1861,11 +1879,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       setError("open", message);
       failSession(message);
       reportSurfaceError(new Error(message));
-    } else if (body.error === "Session not open") {
-      // Input reached a service that holds no session of this surface, such as a respawned service before this view reopened its
-      // session. The session that opens resolves this error.
-      setError("open", body.error);
-      reportSurfaceError(new Error(body.error));
+    } else if (body.error === "Session not open" && body.request !== undefined && !session.exited) {
+      requeueRefused(body.request);
     } else if (body.error) {
       // 오류 응답 처리: {"error":"invalidParams","reason":"...",...}
       // reason 을 버리지 않고 오류에 실어 보낸다.
