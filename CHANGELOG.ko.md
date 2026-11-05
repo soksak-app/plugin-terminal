@@ -2,6 +2,7 @@
 
 [English](CHANGELOG.md)
 
+- P127: 열린 session이 `Session not open` 답을 해소하므로, service가 다시 뜬 뒤의 `terminal.session`에 그 오류가 남지 않는다.
 - P126: session open이나 연결이 실패하면 `terminal.input`과 `terminal.paste`는 host가 10 s 뒤에 command를 끝낼 때까지 기다리지 않고 이유와 함께 끝난다.
 - P125: `terminal.close`가 session을 끝난 것으로 표시하므로, close 뒤의 `terminal.session`은 `exited`가 true이고 붙잡힌 입력이 없다.
 - P124: 열리는 session이 값과 무관하게 region의 focus를 읽으므로, reload된 view가 다시 붙는 preserved session에 filled cursor가 남지 않는다.

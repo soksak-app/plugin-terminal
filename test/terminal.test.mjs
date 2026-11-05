@@ -3777,6 +3777,28 @@ test("input of a caller does not wait for a connection that failed", { timeout: 
     "a refused input is not sent later");
 });
 
+test("a session that opens resolves the answer that no session was open", { timeout: 10000 }, async () => {
+  FakeResizeObserver.reset();
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(sidecar);
+  const error = () => expose.getStatus("terminal.session").readFn().error;
+  // The input that a respawned service received before the view reopened its session is answered after the connection event.
+  sidecar.triggerEvent("test-session", { event: "connection", connected: true });
+  sidecar.triggerEvent("test-session", { error: "Session not open" });
+  assert.equal(error(), "Session not open");
+  openSession(sidecar);
+  assert.equal(error(), undefined, "the session that opened resolves the error");
+
+  sidecar.triggerEvent("test-session", { error: "image creation failed", reason: "no memory" });
+  openSession(sidecar);
+  assert.equal(error(), "image creation failed: no memory", "a state event of an open session resolves no sidecar error");
+});
+
 test("cursor policy sends explicit shape, blink, interval, idle timeout, and unfocused rendering", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();

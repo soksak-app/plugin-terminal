@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- P127: A session that opens resolves the answer `Session not open`, so `terminal.session` holds no such error after the service respawned.
 - P126: `terminal.input` and `terminal.paste` end with the reason when the open of the session failed or its connection failed, instead of waiting until the host ends the command after 10 s.
 - P125: `terminal.close` marks the session as ended, so `terminal.session` states `exited` true and holds no input after the close.
 - P124: A session that opens reads the focus of the region whichever value it has, so a view that reloads does not leave a filled cursor on the preserved session it attaches to.

@@ -1861,6 +1861,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       setError("open", message);
       failSession(message);
       reportSurfaceError(new Error(message));
+    } else if (body.error === "Session not open") {
+      // Input reached a service that holds no session of this surface, such as a respawned service before this view reopened its
+      // session. The session that opens resolves this error.
+      setError("open", body.error);
+      reportSurfaceError(new Error(body.error));
     } else if (body.error) {
       // 오류 응답 처리: {"error":"invalidParams","reason":"...",...}
       // reason 을 버리지 않고 오류에 실어 보낸다.
