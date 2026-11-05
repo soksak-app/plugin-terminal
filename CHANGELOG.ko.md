@@ -2,6 +2,7 @@
 
 [English](CHANGELOG.md)
 
+- P125: `terminal.close`가 session을 끝난 것으로 표시하므로, close 뒤의 `terminal.session`은 `exited`가 true이고 붙잡힌 입력이 없다.
 - P124: 열리는 session이 값과 무관하게 region의 focus를 읽으므로, reload된 view가 다시 붙는 preserved session에 filled cursor가 남지 않는다.
 - P123: 열리는 session이 region의 현재 focus를 읽으므로, 키보드를 가진 terminal의 cursor는 service가 다시 떠도 focus 상태를 유지한다.
 - P121: subject `docs(features): State the checklist as facts (#P19)`는 체크리스트가 P19로 적는 항목이 아니라 지워진 항목의 것이다.

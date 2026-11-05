@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- P125: `terminal.close` marks the session as ended, so `terminal.session` states `exited` true and holds no input after the close.
 - P124: A session that opens reads the focus of the region whichever value it has, so a view that reloads does not leave a filled cursor on the preserved session it attaches to.
 - P123: A session that opens reads the current focus of the region, so the cursor of a terminal that holds the keyboard stays focused after its service respawns.
 - P121: The subject `docs(features): State the checklist as facts (#P19)` belongs to a removed item, not to the item that the checklist states as P19.

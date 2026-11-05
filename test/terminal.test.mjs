@@ -3633,6 +3633,23 @@ test("an input_held event publishes the held input and clears it when reads resu
     "input_held is a known event and writes no unknown-event record");
 });
 
+test("terminal.close marks the session as ended and clears the held input", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose,
+    window: { TextEncoder: FakeTextEncoder }, runtime: capturedLog().runtime,
+  });
+  openSession(fakeSidecar);
+  const session = () => fakeExpose.getStatus("terminal.session").readFn();
+  fakeSidecar.triggerEvent("test-session", { event: "input_held", queued: 4096, held: true });
+  await fakeExpose.getCommand("terminal.close")({});
+  assert.equal(session().exited, true, "a closed session has ended");
+  assert.equal(session().inputHeld, null, "a closed session holds no input");
+});
+
 test("an exit event marks the session as ended and clears the held input without a warning", async () => {
   FakeResizeObserver.reset();
   const log = capturedLog();
