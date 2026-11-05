@@ -894,6 +894,21 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     }
   };
 
+  // A session that opens reads the current focus of the region, and then takes the input that waited: the last focus of the queue is
+  // the current focus, so the order of the two does not change the state. A session starts without the focus, so only a focused
+  // region has something to send. A state event of an open session sends nothing.
+  const openSessionGate = (event) => {
+    const opening = !sessionOpen;
+    sessionOpen = true;
+    runtime.log.info("session.gate", { open: true, event });
+    changed("session");
+    if (opening && nativeFocused) {
+      enqueueInput({ type: "input", actions: [{ type: "focus", focused: true }], preedit: compose })
+        .catch((error) => reportInputError(error));
+    }
+    flushInputQueue();
+  };
+
   // The region reports all callbacks from one native input scope as one strict transaction.
   onRegion("input", async (event) => {
     let transaction;
@@ -1446,10 +1461,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       };
       resolveError("state");
       if (body.cursor !== undefined) applyCursor(body.cursor, { ...body.cursor, frame: null, render: null, caret: null, preedit: body.cursor.preedit ?? null });
-      sessionOpen = true;
-      runtime.log.info("session.gate", { open: true, event: "state" });
-      changed("session");
-      flushInputQueue();
+      openSessionGate("state");
     } else if (body.event === "session") {
       if (typeof body.sessionId !== "string" || body.sessionId.length === 0) {
         reportInputError("invalid persistent session event", "session");
@@ -1459,10 +1471,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       resolveError("session");
       // A preserved session answers a reattached surface with this event, so the input that waited during the
       // reconnection flows now.
-      sessionOpen = true;
-      runtime.log.info("session.gate", { open: true, event: "session" });
-      changed("session");
-      flushInputQueue();
+      openSessionGate("session");
     } else if (body.event === "connection") {
       // 영속 사이드카의 연결이 다시 맺혔다(V5-106). 이전 연결이 남긴 사이드카 오류는
       // 해소하고 세션을 다시 연다 — 재스폰된 서비스에는 이 표면의 세션이 없다. 실패했으면

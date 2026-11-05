@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- P123: A session that opens reads the current focus of the region, so the cursor of a terminal that holds the keyboard stays focused after its service respawns.
 - P121: The subject `docs(features): State the checklist as facts (#P19)` belongs to a removed item, not to the item that the checklist states as P19.
 - P116: The plugin declares its exposed elements as element entries: `plugin.json` declares `exposes.element`, and the view calls `expose.element`. `engines.soksak` is `^0.0.35`, the version of the core release of F502-13, and the pin of the records kit release of KR9 waits for that release. Red: the tests failed 191 of 214, most with `expose.dom is not a function`. Green: they pass.
 - P120: The contract cases of the test fakes are byte copies of the published `clipboard.json` and `screen-hash.json` in `test/fixtures/contract`, and `contract-copies.json`, which the release carries, names each copy with its SHA-256. Each module of `scripts/test-sdk-cases.json` lists its copies, and a case that the fake does not replay is in a skip list with its reason; the build fails on a case that is neither. Red: the tests failed on the inline copies, and without the skip list the build named the five cases that the inline copies did not hold. Green: they pass.

@@ -5264,3 +5264,40 @@ test("a screen message without a cursor is refused as an error before it changes
   assert.ok(log.records.some(([event, fields, level]) => event === "error" && level === "error" && /invalid screen cursor from sidecar/.test(fields.message)),
     JSON.stringify(log.records));
 });
+
+// The view reads the focus of its region when a session opens: a new service holds no focus, whichever came first.
+test("a session that opens reads the current focus of the region", async () => {
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar();
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)),
+    sidecar, expose: createFakeExpose(),
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  const focusSent = () => sidecar.getMessages().filter(({ body }) => body.operation === "input")
+    .flatMap(({ body }) => body.actions).filter(({ type }) => type === "focus").map(({ focused }) => focused);
+  region._trigger("input", inputEvent([{ type: "focus", focused: true }]));
+  openSession(sidecar);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(focusSent().at(-1), true, "the focus of the region before the session did not reach it");
+  // A respawned service holds no session and no focus.
+  const before = focusSent().length;
+  sidecar.triggerEvent("test-session", { event: "connection", connected: true });
+  await new Promise((resolve) => setImmediate(resolve));
+  openSession(sidecar);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(focusSent().length, before + 1, "the reopened session did not read the focus");
+  assert.equal(focusSent().at(-1), true);
+  // A state event of a session that stays open, such as a resize, sends nothing.
+  openSession(sidecar);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(focusSent().length, before + 1);
+  // The region lost the focus while the connection was down, and a preserved session answers the reattach.
+  sidecar.triggerEvent("test-session", { event: "connection", connected: true });
+  region._trigger("input", inputEvent([{ type: "focus", focused: false }]));
+  await new Promise((resolve) => setImmediate(resolve));
+  sidecar.triggerEvent("test-session", { event: "session", sessionId: "s1" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(focusSent().at(-1), false);
+});
