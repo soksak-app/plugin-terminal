@@ -1910,6 +1910,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     endCopyWaits();
     runtime.log.info("close", {});
     await terminal.send(id, { operation: "close" });
+    // The answer of the close ends the session, so its status states the end without an exit event.
+    session = { ...session, exited: true, inputHeld: null };
+    changed("session");
   }
 
   // 공개 항목 등록
