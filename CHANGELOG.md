@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- P124: A session that opens reads the focus of the region whichever value it has, so a view that reloads does not leave a filled cursor on the preserved session it attaches to.
 - P123: A session that opens reads the current focus of the region, so the cursor of a terminal that holds the keyboard stays focused after its service respawns.
 - P121: The subject `docs(features): State the checklist as facts (#P19)` belongs to a removed item, not to the item that the checklist states as P19.
 - P116: The plugin declares its exposed elements as element entries: `plugin.json` declares `exposes.element`, and the view calls `expose.element`. `engines.soksak` is `^0.0.35`, the version of the core release of F502-13, and the pin of the records kit release of KR9 waits for that release. Red: the tests failed 191 of 214, most with `expose.dom is not a function`. Green: they pass.

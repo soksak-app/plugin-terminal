@@ -64,6 +64,9 @@ test("the theme of the view reaches the session with the card colors", async (t)
     { operation: "theme", mode: "dark", background: "#ffffff", foreground: "#252735", cursor: "#252735", selection: "#5962e8" });
 });
 
+// A session that opens sends the focus of the region in a message of its own, which is not input of the test.
+const carriesInput = (body) => body.operation === "input" && !body.actions.every(({ type }) => type === "focus");
+
 test("a registered terminal command reaches its handler", async (t) => {
   const host = createViewPage(t, "command");
   await mountView(host);
@@ -73,7 +76,7 @@ test("a registered terminal command reaches its handler", async (t) => {
   const answer = await host.exposureRequest(9001, "command.run", { name: "terminal.input", params: { bytes: "bHM=" } });
   await host.settle();
   assert.equal(answer, null);
-  const input = host.sidecar.sent.find(({ body }) => body.operation === "input");
+  const input = host.sidecar.sent.find(({ body }) => carriesInput(body));
   assert.equal(input.id, START.surface, "the input travels to the session of the surface");
   assert.deepEqual(input.body.actions, [{ type: "insert", text: "bHM=", replacementRange: null, attributed: false }]);
 });
@@ -132,10 +135,10 @@ test("terminal input and send records carry the sidecar correlation identifiers"
     errors: [], cids: ["native-input-49-5"],
   });
   await host.settle();
-  const input = host.sidecar.sent.find(({ body }) => body.operation === "input");
+  const input = host.sidecar.sent.find(({ body }) => carriesInput(body));
   assert.ok(input.cids.length > 0, "input has a real correlation chain");
   for (const event of ["input", "send"]) {
-    const record = records.find((record) => record.event === event && (event !== "send" || record.fields.body.operation === "input"));
+    const record = records.find((record) => record.event === event && (event === "send" ? carriesInput(record.fields.body) : !record.fields.actions?.every(({ type }) => type === "focus")));
     assert.ok(record, event + " record reaches the view route");
     assert.deepEqual(record.cids, input.cids, event + " retains correlation identifiers");
   }

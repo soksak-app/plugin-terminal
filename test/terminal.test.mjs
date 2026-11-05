@@ -255,8 +255,15 @@ function recorder(lines) {
 /**
  * 가짜 sidecar 구현.
  */
+// A session that opens sends the focus of the region in a message of its own, which is not input of the test.
+const onlyFocus = (actions) => actions.length > 0 && actions.every(({ type }) => type === "focus");
+const carriesInput = (body) => body.operation === "input" && !onlyFocus(body.actions);
+
 function createFakeSidecar({ delay = () => null } = {}) {
   const messages = [];
+  // Each opening session reads the focus of the region, so a message that carries only a focus is held apart from what a test of
+  // other input sent. The tests of the focus read getFocusMessages.
+  const focusBodies = [];
   const waiters = [];
   const listeners = new Map();
   let failure = null;
@@ -272,7 +279,8 @@ function createFakeSidecar({ delay = () => null } = {}) {
       }
       const wait = delay(body);
       if (wait) await wait;
-      messages.push({ id, body });
+      if (body.operation === "input" && body.actions.some(({ type }) => type === "focus")) focusBodies.push(body);
+      if (body.operation !== "input" || !onlyFocus(body.actions)) messages.push({ id, body });
       for (const waiter of waiters.splice(0)) waiter();
       return Promise.resolve();
     },
@@ -284,6 +292,8 @@ function createFakeSidecar({ delay = () => null } = {}) {
       return Promise.resolve();
     },
     getMessages: () => messages,
+    getFocusBodies: () => focusBodies,
+    getFocusMessages: () => focusBodies.flatMap(({ actions }) => actions).filter(({ type }) => type === "focus"),
     // Resolves when a message that the predicate accepts has been sent.
     untilMessage: async function(accepts) {
       while (!messages.some(({ body }) => accepts(body))) await new Promise((resolve) => waiters.push(resolve));
@@ -2611,7 +2621,7 @@ test("native input transaction submits ordered actions and final preedit once", 
   };
   await fakeAttachImage.triggerRaw("input", event);
 
-  const inputs = requests.filter(({ body }) => body.operation === "input");
+  const inputs = requests.filter(({ body }) => carriesInput(body));
   assert.equal(inputs.length, 1, "one native input scope sends one VT request");
   assert.deepEqual(inputs[0].body, { operation: "input", actions: event.actions, preedit },
     "the VT request preserves ordered actions and the final strict snapshot");
@@ -2710,6 +2720,7 @@ test("native input reports callback errors when its VT request fails", async () 
   });
   FakeResizeObserver.triggerAll();
   openSession(fakeSidecar);
+  await new Promise((resolve) => setImmediate(resolve));
   fakeSidecar.failNext(new Error("input unavailable"));
 
   await fakeAttachImage.triggerRaw("input", inputEvent([], inputPreedit(), {
@@ -3186,12 +3197,12 @@ test("native focus transaction and cursor state route without moving an unframed
   assert.equal(regionReference._caret, undefined, "an unframed state cursor moved the native caret");
   assert.equal(fakeExpose.getStatus("terminal.session").readFn().error, undefined,
     "a valid focus action was rejected");
-  assert.deepEqual(fakeSidecar.getMessages().at(-1).body, {
+  assert.deepEqual(fakeSidecar.getFocusBodies().at(-1), {
     operation: "input", actions: [{ type: "focus", focused: true }],
     preedit: inputPreedit(),
   });
   await fakeAttachImage.triggerRaw("input", inputEvent([{ type: "focus", focused: false }]));
-  assert.deepEqual(fakeSidecar.getMessages().at(-1).body.actions, [{ type: "focus", focused: false }],
+  assert.deepEqual(fakeSidecar.getFocusBodies().at(-1).actions, [{ type: "focus", focused: false }],
     "resign focus is kept as the false focus action");
 });
 
@@ -4713,6 +4724,7 @@ test("the trace records each input with its text, the session gate and the flush
   assert.deepEqual(recorded.filter(([event]) => ["ime", "input", "input.flush"].includes(event)), [
     ["ime", { kind: "native-input", input: { actions: event.actions, preedit: event.preedit, errors: [] }, cids: event.cids }],
     ["input", { kind: "input", actions: event.actions, preedit: event.preedit, queued: true, queue: 0 }],
+    ["input", { kind: "input", actions: [{ type: "focus", focused: false }], preedit: event.preedit, queued: false, queue: 1 }],
     ["input.flush", { count: 1 }],
   ]);
   assert.deepEqual(recorded.find(([event]) => event === "session.gate"), ["session.gate", { open: true, event: "state" }]);
@@ -4760,7 +4772,7 @@ test("the trace records every message sent to the sidecar with its result, every
   // Every message that the plugin sends is recorded with its whole body before it is sent and with its result after.
   const sent = of("send");
   assert.ok(sent.some((fields) => fields.body.operation === "open"), "the open message was not recorded");
-  const input = sent.find((fields) => fields.body.operation === "input");
+  const input = sent.find((fields) => carriesInput(fields.body));
   assert.ok(input, "the input message was not recorded");
   assert.deepEqual(input.body.actions, [inputInsert("한")]);
   const results = of("send.result");
@@ -4831,7 +4843,7 @@ test("the input of a region event reaches the sidecar with the cids of that even
   region._trigger("input", inputEvent([inputInsert("x")], inputPreedit(), { cids: ["b1.8"] }));
   region._trigger("input", inputEvent([inputKey("Tab")], inputPreedit(), { cids: ["b1.9"] }));
   await new Promise((resolve) => setImmediate(resolve));
-  const inputs = sent.filter(({ body }) => body.operation === "input");
+  const inputs = sent.filter(({ body }) => carriesInput(body));
   assert.deepEqual(inputs.map(({ cids }) => cids), [["b1.7"], ["b1.8"], ["b1.9"]]);
 });
 
@@ -4852,7 +4864,7 @@ test("the inputs that waited for the session keep their cids when they are sent"
   assert.deepEqual(sent.filter(({ body }) => body.operation === "input"), []);
   openSession(sidecar);
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(sent.filter(({ body }) => body.operation === "input").map(({ cids }) => cids), [["b1.7"], ["b1.8"]]);
+  assert.deepEqual(sent.filter(({ body }) => carriesInput(body)).map(({ cids }) => cids), [["b1.7"], ["b1.8"]]);
 });
 
 test("cids that are no list of identifiers are an observable input error", async () => {
@@ -4977,9 +4989,9 @@ test("the events input and send carry the cids of their input", async () => {
   openSession(sidecar);
   region._trigger("input", inputEvent([inputKey("Enter")], inputPreedit(), { cids: ["b1.7"] }));
   await new Promise((resolve) => setImmediate(resolve));
-  const input = lines.find(([event, fields]) => event === "input" && fields.kind === "input");
+  const input = lines.find(([event, fields]) => event === "input" && fields.kind === "input" && !onlyFocus(fields.actions));
   assert.deepEqual(input?.[3], ["b1.7"], "the input event did not carry the cids");
-  const send = lines.find(([event, fields]) => event === "send" && fields.body.operation === "input");
+  const send = lines.find(([event, fields]) => event === "send" && carriesInput(fields.body));
   assert.deepEqual(send?.[3], ["b1.7"], "the send event did not carry the cids");
 });
 
@@ -5275,8 +5287,7 @@ test("a session that opens reads the current focus of the region", async () => {
     sidecar, expose: createFakeExpose(),
     window: { TextEncoder: FakeTextEncoder },
   });
-  const focusSent = () => sidecar.getMessages().filter(({ body }) => body.operation === "input")
-    .flatMap(({ body }) => body.actions).filter(({ type }) => type === "focus").map(({ focused }) => focused);
+  const focusSent = () => sidecar.getFocusMessages().map(({ focused }) => focused);
   region._trigger("input", inputEvent([{ type: "focus", focused: true }]));
   openSession(sidecar);
   await new Promise((resolve) => setImmediate(resolve));
@@ -5300,4 +5311,50 @@ test("a session that opens reads the current focus of the region", async () => {
   sidecar.triggerEvent("test-session", { event: "session", sessionId: "s1" });
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(focusSent().at(-1), false);
+});
+
+// A view that reloads attaches to a session that a service preserved, whose focus is the focus of the view before it. The new view
+// has a region without the focus, so a cursor drawn focused would disagree with the keyboard. Either event can open the gate.
+for (const [name, event] of [
+  ["state", { event: "state", sessionId: "s1", cols: 100, rows: 50, cellWidth: 8, cellHeight: 16 }],
+  ["session", { event: "session", sessionId: "s1" }],
+]) {
+  test(`a reloaded view takes the focus back from a preserved session that a ${name} event opens`, async () => {
+    const attach = createFakeAttachImage();
+    const sidecar = createFakeSidecar();
+    await startTerminal({
+      view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => attach.function(...args),
+      sidecar, expose: createFakeExpose(),
+      window: { TextEncoder: FakeTextEncoder },
+    });
+    // The focus of the session starts as the earlier view left it, and each input that carries a focus changes it.
+    const sessionFocus = () => sidecar.getFocusMessages().at(-1)?.focused ?? true;
+    sidecar.triggerEvent("test-session", event);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(sessionFocus(), false, "the session draws a focused cursor while the region holds no keyboard");
+  });
+}
+
+// The whole message list of the reattach: the focus of the region goes first, and a focus that is false holds nothing back.
+test("the focus that a reattached session reads does not hold the input that waited", async () => {
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar();
+  const sent = [];
+  const send = sidecar.send;
+  sidecar.send = (id, body) => { if (body.operation === "input") sent.push(body.actions); return send(id, body); };
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)),
+    sidecar, expose: createFakeExpose(),
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(sidecar);
+  await new Promise((resolve) => setImmediate(resolve));
+  sidecar.triggerEvent("test-session", { event: "connection", connected: true });
+  region._trigger("input", inputEvent([inputKey("Enter")]));
+  await new Promise((resolve) => setImmediate(resolve));
+  sent.length = 0;
+  sidecar.triggerEvent("test-session", { event: "session", sessionId: "s1" });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(sent, [[{ type: "focus", focused: false }], [inputKey("Enter")]]);
 });

@@ -895,15 +895,16 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   };
 
   // A session that opens reads the current focus of the region, and then takes the input that waited: the last focus of the queue is
-  // the current focus, so the order of the two does not change the state. A session starts without the focus, so only a focused
-  // region has something to send. A state event of an open session sends nothing.
+  // the current focus, so the order of the two does not change the state. A respawned service holds no focus and a preserved session
+  // holds the focus of the view before this one, and a state event opens the gate for either. A state event of an open session sends
+  // nothing.
   const openSessionGate = (event) => {
     const opening = !sessionOpen;
     sessionOpen = true;
     runtime.log.info("session.gate", { open: true, event });
     changed("session");
-    if (opening && nativeFocused) {
-      enqueueInput({ type: "input", actions: [{ type: "focus", focused: true }], preedit: compose })
+    if (opening) {
+      enqueueInput({ type: "input", actions: [{ type: "focus", focused: nativeFocused }], preedit: compose })
         .catch((error) => reportInputError(error));
     }
     flushInputQueue();
