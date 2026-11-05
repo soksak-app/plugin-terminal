@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- F479-terminal: The release run published v0.0.41, and the registry lists it.
 - F479-terminal: `engines.soksak` is `^0.0.37`, and the version is 0.0.41.
 - F476-terminal: The tests repeat no declared version.
 - F474-terminal: The release run published v0.0.40, and the registry lists it.
