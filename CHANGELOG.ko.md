@@ -29,6 +29,8 @@
 - F355-4-terminal: `make pack OUT=<folder>`는 `pnpm pack`으로 release를 쓰고, release.yml은 더 이상 core release를 내려받지 않는다. core 0.0.25는 plugin의 `pnpm pack` 파일을 설치하고 `sok plugin pack`이 없기 때문이다. release는 진단 build만 읽는 `diagnostics.json`과 그 module을 담고, `@soksak/plugin-api`는 core release `v0.0.25`에 pin된다.
 ## 미배포
 
+- F466-terminal: 저장소가 local build log와 임시 log의 인용을 보고하는 kit release를 pin한다.
+- F467-terminal: 저장소가 `@soksak/kit`을 pin한다.
 - F463-terminal: 저장소가 checks kit과 실행 파일 하나 `soksak-check`를 쓴다.
 - F462-terminal: `engines.soksak`은 `^0.0.35`이고, version은 0.0.39이다. Red: core version test가 `^0.0.34`에서 실패했다. Green: 통과한다.
 - S120-terminal: VT는 image region이 그리지 않는 terminal에 아무것도 그리지 않는 `^0.0.22`이고, version은 0.0.32이다. Red: manifest test가 `^0.0.21`에서 실패했다. Green: 통과한다.
@@ -101,9 +103,9 @@
 
 - P92-terminal: `plugin.terminal.view.content_frame`에 runtime이 추가하는
   `surface` field를 선언한다. Red: `surface`가 schema에 없어 실제 host event
-  fixture가 `additionalProperties` 검사에서 실패했다(`/tmp/terminal-P92-red.log`).
+  fixture가 `additionalProperties` 검사에서 실패했다.
   Green: 같은 payload가 유효하고 임의의 추가 field는 거부되며 집중 event test가
-  3/3 통과한다(`/tmp/terminal-P92-green.log`). 현재 SDK의 event와 records 검사도
+  3/3 통과한다. 현재 SDK의 event와 records 검사도
   통과한다. Producer와 runtime 동작은 바뀌지 않았다.
 
 - P49.2.1: 현재 view document history 길이와 source content-frame 관찰을 위한
@@ -120,9 +122,8 @@
   맞춘다. 덮어쓴 전체 test log에는 실패가 보존되지 않았다. Red: 집중 owner
   test의 네 subcase가 모두 실패했다. 누락 field는 정확한 preedit key 검사에서
   거부됐고 나머지는 `native input preedit markedRange`가 아닌 `IME markedRange`
-  접두어를 사용했다(`/tmp/terminal-P91-red.log`). Green: 같은 test 네 case가
-  모두 통과하며 compose status 불변과 sidecar request 부재도 확인한다
-  (`/tmp/terminal-P91-green.log`). Production validation은 바뀌지 않았다.
+  접두어를 사용했다. Green: 같은 test 네 case가
+  모두 통과하며 compose status 불변과 sidecar request 부재도 확인한다. Production validation은 바뀌지 않았다.
 
 - P90-terminal: 비동기 hash 계산 전에 수락한 native frame tuple을 캡처해
   terminal frame marker에 포함한다. 한 screen message에서 나온 두 native raster를
