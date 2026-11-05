@@ -259,8 +259,10 @@ function recorder(lines) {
 const onlyFocus = (actions) => actions.length > 0 && actions.every(({ type }) => type === "focus");
 const carriesInput = (body) => body.operation === "input" && !onlyFocus(body.actions);
 
-function createFakeSidecar({ delay = () => null } = {}) {
+function createFakeSidecar({ delay = () => null, answers = true } = {}) {
   const messages = [];
+  // The cids of each sent body. A service names them in the answer of the body (core docs/spec/sidecars.md#protocol).
+  const sentCids = new Map();
   // Each opening session reads the focus of the region, so a message that carries only a focus is held apart from what a test of
   // other input sent. The tests of the focus read getFocusMessages.
   const focusBodies = [];
@@ -271,7 +273,8 @@ function createFakeSidecar({ delay = () => null } = {}) {
   return {
     // The next send rejects with error.
     failNext: (error) => { failure = error; },
-    send: async function(id, body) {
+    send: async function(id, body, cids = []) {
+      sentCids.set(body, cids);
       if (failure) {
         const error = failure;
         failure = null;
@@ -282,8 +285,10 @@ function createFakeSidecar({ delay = () => null } = {}) {
       if (body.operation === "input" && body.actions.some(({ type }) => type === "focus")) focusBodies.push(body);
       if (body.operation !== "input" || !onlyFocus(body.actions)) messages.push({ id, body });
       for (const waiter of waiters.splice(0)) waiter();
+      if (answers && cids.length > 0) for (const handler of listeners.get(id) ?? []) handler({ ack: true }, cids);
       return Promise.resolve();
     },
+    getCids: (body) => sentCids.get(body),
     on: async function(id, handler) {
       if (!listeners.has(id)) {
         listeners.set(id, []);
@@ -306,8 +311,8 @@ function createFakeSidecar({ delay = () => null } = {}) {
       }
     },
     // Delivers the message as the sidecar sent it, without the compact form of screenMessage.
-    triggerRaw: function(id, message) {
-      for (const handler of listeners.get(id) ?? []) handler(message);
+    triggerRaw: function(id, message, cids = []) {
+      for (const handler of listeners.get(id) ?? []) handler(message, cids);
     },
     reset: () => {
       messages.length = 0;
@@ -3838,6 +3843,317 @@ test("input refused by a session that ended is an error and is not sent again", 
   assert.equal(expose.getStatus("terminal.session").readFn().error, "Session not open");
   assert.equal(sidecar.getMessages().filter(({ body }) => body.operation === "paste" || body.operation === "open").length, 1,
     "the ended session is not reopened and the input is not sent again");
+});
+
+// Each answer of a service names the cids of its request (core docs/spec/sidecars.md#protocol), so the fake that answers nothing is a
+// service that ended before it read the input.
+const startForAnswers = async (log = null) => {
+  FakeResizeObserver.reset();
+  const sidecar = createFakeSidecar({ answers: false });
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
+    window: { TextEncoder: FakeTextEncoder }, ...(log ? { runtime: log.runtime } : {}),
+  });
+  const state = (sessionId) => sidecar.triggerEvent("test-session", { event: "state", sessionId, cols: 100, rows: 50, cellWidth: 8, cellHeight: 16 });
+  state("s1");
+  const typed = () => sidecar.getMessages().map(({ body }) => body)
+    .filter((body) => body.operation === "input" || body.operation === "paste");
+  const settle = async (predicate, what) => {
+    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(predicate(), what);
+  };
+  const reopen = (sessionId) => {
+    sidecar.triggerEvent("test-session", { event: "connection", connected: true });
+    state(sessionId);
+  };
+  const quiet = async () => { for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve)); };
+  const answer = (body, cids) => sidecar.triggerRaw("test-session", body, cids);
+  const texts = () => typed().map((body) => body.actions[0].text);
+  return { sidecar, expose, typed, texts, settle, reopen, quiet, answer };
+};
+
+test("input without an answer of a service that ended is sent to the new session", { timeout: 10000 }, async () => {
+  const { expose, texts, settle, reopen } = await startForAnswers();
+  // The send answers: the bytes are in the socket of a service that has just been killed, and no answer of the service will come.
+  await expose.getCommand("terminal.input")({ bytes: "killed" });
+  await settle(() => texts().length === 1, "the input is sent");
+
+  reopen("s2");
+  await settle(() => texts().length === 2, "the input is lost: it did not arrive in the new session");
+  assert.deepEqual(texts(), ["killed", "killed"]);
+});
+
+test("each input without a native input names a cid of its own", { timeout: 10000 }, async () => {
+  const { sidecar, expose, typed, settle } = await startForAnswers();
+  await expose.getCommand("terminal.input")({ bytes: "one" });
+  await expose.getCommand("terminal.input")({ bytes: "two" });
+  await settle(() => typed().length === 2, "both inputs are sent");
+  const [one, two] = typed().map((body) => sidecar.getCids(body));
+  assert.equal(one.length, 1);
+  assert.equal(two.length, 1);
+  assert.notEqual(one[0], two[0]);
+  assert.doesNotMatch(one[0], /["\\\u0000-\u001f\u007f]/, "core refuses a cid with a quote, a backslash or a control character");
+});
+
+test("input of a native input names its cids alone, is ended by their answer, and is sent again with a cid of the view", { timeout: 10000 }, async () => {
+  FakeResizeObserver.reset();
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar({ answers: false });
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder },
+  });
+  const state = (sessionId) => sidecar.triggerEvent("test-session", { event: "state", sessionId, cols: 100, rows: 50, cellWidth: 8, cellHeight: 16 });
+  state("s1");
+  const inserted = () => sidecar.getMessages().map(({ body }) => body).filter((body) => body.operation === "input" && body.actions[0]?.type === "insert");
+  const settle = async (predicate, what) => {
+    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(predicate(), what);
+  };
+  region._trigger("input", inputEvent([inputInsert("answered")], inputPreedit(), { cids: ["b1.7"] }));
+  region._trigger("input", inputEvent([inputInsert("killed")], inputPreedit(), { cids: ["b1.8"] }));
+  await settle(() => inserted().length === 2, "both inputs are sent");
+  assert.deepEqual(inserted().map((body) => sidecar.getCids(body)), [["b1.7"], ["b1.8"]]);
+  sidecar.triggerRaw("test-session", { ack: true }, ["b1.7"]);
+
+  sidecar.triggerEvent("test-session", { event: "connection", connected: true });
+  state("s2");
+  await settle(() => inserted().length === 3, "the input without an answer is sent again");
+  assert.equal(inserted()[2].actions[0].text, "killed");
+  assert.match(sidecar.getCids(inserted()[2])[0], /^view-/);
+});
+
+test("two requests of one native input are each ended by one answer", { timeout: 10000 }, async () => {
+  FakeResizeObserver.reset();
+  const attach = createFakeAttachImage();
+  const sidecar = createFakeSidecar({ answers: false });
+  let region;
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
+    expose: createFakeExpose(), window: { TextEncoder: FakeTextEncoder },
+  });
+  const state = (sessionId) => sidecar.triggerEvent("test-session", { event: "state", sessionId, cols: 100, rows: 50, cellWidth: 8, cellHeight: 16 });
+  state("s1");
+  const inserted = () => sidecar.getMessages().map(({ body }) => body).filter((body) => body.operation === "input" && body.actions[0]?.type === "insert");
+  const settle = async (predicate, what) => {
+    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(predicate(), what);
+  };
+  region._trigger("input", inputEvent([inputInsert("first")], inputPreedit(), { cids: ["b1.7"] }));
+  region._trigger("input", inputEvent([inputInsert("second")], inputPreedit(), { cids: ["b1.7"] }));
+  await settle(() => inserted().length === 2, "both requests are sent");
+  sidecar.triggerRaw("test-session", { ack: true }, ["b1.7"]);
+
+  sidecar.triggerEvent("test-session", { event: "connection", connected: true });
+  state("s2");
+  await settle(() => inserted().length === 3, "the request without an answer is sent again");
+  assert.equal(inserted()[2].actions[0].text, "second");
+});
+
+test("input that the service answered is not sent again to the new session", { timeout: 10000 }, async () => {
+  const { sidecar, expose, typed, texts, settle, reopen, quiet, answer } = await startForAnswers();
+  await expose.getCommand("terminal.input")({ bytes: "applied" });
+  await expose.getCommand("terminal.input")({ bytes: "killed" });
+  await settle(() => texts().length === 2, "both inputs are sent");
+  answer({ ack: true }, sidecar.getCids(typed()[0]));
+
+  reopen("s2");
+  await settle(() => texts().length === 3, "the input without an answer is sent again");
+  await quiet();
+  assert.deepEqual(texts(), ["applied", "killed", "killed"]);
+});
+
+test("one answer that names several cids ends each of their inputs, and a cid that nothing holds changes nothing", { timeout: 10000 }, async () => {
+  const { sidecar, expose, typed, texts, settle, reopen, quiet, answer } = await startForAnswers();
+  await expose.getCommand("terminal.input")({ bytes: "one" });
+  await expose.getCommand("terminal.input")({ bytes: "two" });
+  await expose.getCommand("terminal.input")({ bytes: "three" });
+  await settle(() => texts().length === 3, "the inputs are sent");
+  answer({ ack: true }, [...sidecar.getCids(typed()[0]), ...sidecar.getCids(typed()[1]), "b1.99"]);
+
+  reopen("s2");
+  await settle(() => texts().length === 4, "the input without an answer is sent again");
+  await quiet();
+  assert.deepEqual(texts(), ["one", "two", "three", "three"]);
+});
+
+test("input that is sent again names a new cid, and its answer ends it", { timeout: 10000 }, async () => {
+  const { sidecar, expose, typed, texts, settle, reopen, quiet, answer } = await startForAnswers();
+  await expose.getCommand("terminal.input")({ bytes: "killed" });
+  await settle(() => texts().length === 1, "the input is sent");
+  const first = sidecar.getCids(typed()[0]);
+  reopen("s2");
+  await settle(() => texts().length === 2, "the input is sent again");
+  const second = sidecar.getCids(typed()[1]);
+  assert.notDeepEqual(second, first);
+  answer({ ack: true }, first);
+  reopen("s3");
+  await settle(() => texts().length === 3, "an answer of the earlier send does not end the input that was sent again");
+  answer({ ack: true }, sidecar.getCids(typed()[2]));
+  reopen("s4");
+  await quiet();
+  assert.equal(texts().length, 3);
+});
+
+test("input without an answer is not sent again to the session that stayed open, and leaves a record", { timeout: 10000 }, async () => {
+  const log = capturedLog();
+  const { sidecar, expose, texts, settle, reopen, quiet } = await startForAnswers(log);
+  await expose.getCommand("terminal.input")({ bytes: "one" });
+  await expose.getCommand("terminal.input")({ bytes: "two" });
+  await settle(() => texts().length === 2, "the inputs are sent");
+
+  reopen("s1");
+  await settle(() => sidecar.getMessages().filter(({ body }) => body.operation === "open").length === 2, "the session reopens");
+  await quiet();
+  assert.equal(texts().length, 2, "a service that kept the session may have applied the input");
+  assert.deepEqual(log.records.filter(([event]) => event === "input.unanswered.discarded").map(([, fields, level]) => [fields, level]),
+    [[{ count: 2, reason: "session-kept" }, "warn"]]);
+});
+
+test("input that a new service refused is sent again once", { timeout: 10000 }, async () => {
+  const { sidecar, expose, typed, texts, settle, reopen, quiet, answer } = await startForAnswers();
+  await expose.getCommand("terminal.input")({ bytes: "refused" });
+  await settle(() => texts().length === 1, "the input is sent");
+  answer({ error: "Session not open", request: typed()[0] }, sidecar.getCids(typed()[0]));
+
+  reopen("s2");
+  await settle(() => texts().length === 2, "the refused input is sent again");
+  await quiet();
+  assert.equal(texts().length, 2, "the refused input is not also sent as input without an answer");
+});
+
+test("the input of an ended service goes before the input that a new service refused and the input that waited", { timeout: 10000 }, async () => {
+  const { sidecar, expose, typed, texts, settle, reopen, answer } = await startForAnswers();
+  await expose.getCommand("terminal.input")({ bytes: "killed" });
+  await expose.getCommand("terminal.input")({ bytes: "refused" });
+  await settle(() => texts().length === 2, "both inputs are sent");
+  answer({ error: "Session not open", request: typed()[1] }, sidecar.getCids(typed()[1]));
+  const waiting = expose.getCommand("terminal.input")({ bytes: "waited" });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  reopen("s2");
+  await waiting;
+  await settle(() => texts().length === 5, "all three inputs reach the new session");
+  assert.deepEqual(texts().slice(2), ["killed", "refused", "waited"]);
+});
+
+test("input that a service answered with an error is not sent again", { timeout: 10000 }, async () => {
+  const { sidecar, expose, typed, settle, reopen, quiet, answer } = await startForAnswers();
+  await expose.getCommand("terminal.input")({ bytes: "failed" });
+  await settle(() => typed().length === 1, "the input is sent");
+  answer({ error: "Write failed" }, sidecar.getCids(typed()[0]));
+
+  reopen("s2");
+  await quiet();
+  assert.equal(typed().length, 1);
+});
+
+test("input whose send failed answers with the failure and is not sent again", { timeout: 10000 }, async () => {
+  const { sidecar, expose, typed, reopen, quiet } = await startForAnswers();
+  sidecar.failNext(new Error("restart limit"));
+  await assert.rejects(expose.getCommand("terminal.input")({ bytes: "failed" }), /restart limit/);
+
+  reopen("s2");
+  await quiet();
+  assert.equal(typed().length, 0);
+});
+
+test("input of a session that ended is not sent to the session that opens later, and leaves a record", { timeout: 10000 }, async () => {
+  const log = capturedLog();
+  const { sidecar, expose, typed, settle, reopen, quiet } = await startForAnswers(log);
+  await expose.getCommand("terminal.input")({ bytes: "exit\n" });
+  await settle(() => typed().length === 1, "the input is sent");
+  sidecar.triggerEvent("test-session", { event: "exit" });
+
+  reopen("s2");
+  await quiet();
+  assert.equal(typed().length, 1);
+  assert.deepEqual(log.records.filter(([event]) => event === "input.unanswered.discarded").map(([, fields]) => fields),
+    [{ count: 1, reason: "session-ended" }]);
+});
+
+test("input that only reports focus names no cid and is not held", { timeout: 10000 }, async () => {
+  const { sidecar, reopen, settle, quiet } = await startForAnswers();
+  const focusBodies = () => sidecar.getFocusBodies();
+  await settle(() => focusBodies().length >= 1, "the opened session reads the focus");
+  assert.deepEqual(sidecar.getCids(focusBodies().at(-1)), []);
+  const before = focusBodies().length;
+  reopen("s2");
+  await settle(() => focusBodies().length === before + 1, "the session that opens reads the focus once");
+  await quiet();
+  assert.equal(focusBodies().length, before + 1);
+});
+
+const records = (log, event) => log.records.filter(([name]) => name === event).map(([, fields, level]) => [fields, level]);
+
+test("input above the limit of the characters that its service answers is not held and nothing is lost", { timeout: 60000 }, async () => {
+  const log = capturedLog();
+  const { sidecar, expose, typed, texts, settle, reopen, quiet, answer } = await startForAnswers(log);
+  await expose.getCommand("terminal.input")({ bytes: "x".repeat(1048577) });
+  await settle(() => texts().length === 1, "the input is sent");
+  assert.deepEqual(records(log, "input.unanswered.unheld"), [[{ characters: 1048577, maxCharacters: 1048576 }, "info"]]);
+
+  answer({ ack: true }, sidecar.getCids(typed()[0]));
+  reopen("s2");
+  await quiet();
+  assert.equal(texts().length, 1);
+  assert.deepEqual(records(log, "input.unanswered.lost"), []);
+});
+
+test("input above the limit of the characters that its service never answers is recorded as lost, and the input that fits is sent again", { timeout: 60000 }, async () => {
+  const log = capturedLog();
+  const { expose, texts, settle, reopen, quiet } = await startForAnswers(log);
+  await expose.getCommand("terminal.input")({ bytes: "small" });
+  await expose.getCommand("terminal.input")({ bytes: "x".repeat(1048577) });
+  await settle(() => texts().length === 2, "both inputs are sent");
+  assert.deepEqual(records(log, "input.unanswered.lost"), []);
+
+  reopen("s2");
+  await settle(() => texts().length === 3, "the input that fits is sent again");
+  await quiet();
+  assert.equal(texts()[2], "small");
+  assert.deepEqual(records(log, "input.unanswered.resent").map(([fields]) => fields), [{ count: 1 }]);
+  assert.deepEqual(records(log, "input.unanswered.lost"), [[{ count: 1, characters: 1048577 }, "warn"]]);
+});
+
+test("the text of the oldest input leaves when the characters of a new input pass the limit, and only an input without an answer counts as lost", { timeout: 60000 }, async () => {
+  const log = capturedLog();
+  const { expose, texts, settle, reopen } = await startForAnswers(log);
+  await expose.getCommand("terminal.input")({ bytes: `a${"x".repeat(699999)}` });
+  await expose.getCommand("terminal.input")({ bytes: `b${"x".repeat(699999)}` });
+  await settle(() => texts().length === 2, "both inputs are sent");
+  assert.deepEqual(records(log, "input.unanswered.unheld"), [[{ characters: 700000, maxCharacters: 1048576 }, "info"]]);
+
+  reopen("s2");
+  await settle(() => texts().length === 3, "the input that fits is sent again");
+  assert.equal(texts()[2][0], "b");
+  assert.deepEqual(records(log, "input.unanswered.lost"), [[{ count: 1, characters: 700000 }, "warn"]]);
+});
+
+test("close of a session with input without an answer leaves a record", { timeout: 10000 }, async () => {
+  const log = capturedLog();
+  const { expose, texts, settle } = await startForAnswers(log);
+  await expose.getCommand("terminal.input")({ bytes: "x" });
+  await settle(() => texts().length === 1, "the input is sent");
+  await expose.getCommand("terminal.close")({});
+  assert.deepEqual(log.records.filter(([event]) => event === "input.unanswered.discarded").map(([, fields]) => fields),
+    [{ count: 1, reason: "session-closed" }]);
+});
+
+test("the oldest input above the limit of the count is no longer followed, and leaves a record", { timeout: 60000 }, async () => {
+  const log = capturedLog();
+  const { expose, texts, settle, reopen } = await startForAnswers(log);
+  for (let i = 0; i < 1025; i++) await expose.getCommand("terminal.input")({ bytes: `i${i}` });
+  await settle(() => texts().length === 1025, "every input is sent");
+
+  reopen("s2");
+  await settle(() => texts().length === 2049, "1024 inputs are sent again");
+  assert.deepEqual([texts()[1025], texts()[2048]], ["i1", "i1024"]);
+  assert.deepEqual(log.records.filter(([event]) => event === "input.unanswered.unfollowed").map(([, fields, level]) => [fields, level]),
+    [[{ max: 1024 }, "warn"]]);
+  assert.deepEqual(log.records.filter(([event]) => event === "input.unanswered.lost"), []);
 });
 
 test("cursor policy sends explicit shape, blink, interval, idle timeout, and unfocused rendering", async () => {

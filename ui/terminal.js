@@ -511,9 +511,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
     },
     on(surface, handler) {
-      return sidecar.on(surface, (body) => {
+      return sidecar.on(surface, (body, cids) => {
         runtime.log.trace("sidecar.event", () => ({ body }));
-        return handler(body);
+        return handler(body, cids);
       });
     },
   };
@@ -653,6 +653,18 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   let inputChain = Promise.resolve();
   const inputQueue = [];
   const MAX_QUEUE_SIZE = 1024;
+  // The input that a service received and has not answered, in the order sent. Its answer names the cids of its request (core
+  // docs/spec/sidecars.md#protocol): the cids of the native input that it continues, or one of this view for input without any. A service that ends takes what it did not read from its socket, and the write and its answer succeeded, so
+  // only the answer of the service tells that the input was applied. A new session takes this input; a session that stayed open may
+  // have applied it. Input that only reports focus or a composition is not held: the session that opens reads them from the region.
+  const unanswered = [];
+  // Typing leaves at most 3 inputs without an answer, and a paste of 1 MiB has its answer within about 100 ms, so this limit keeps
+  // all of that; a larger paste is not worth holding its text in the page for its whole session.
+  const MAX_UNANSWERED_CHARACTERS = 1048576;
+  let unansweredCharacters = 0;
+  let unansweredSession = null;
+  const unansweredPrefix = `view-${crypto.randomUUID()}`;
+  let nextUnanswered = 1;
 
   // 세션 오류. 출처마다 마지막 메시지를 두며 session.error 는 가장 최근에 남은 오류다. 스냅샷
   // 출처(state, session, theme, screen, trace)의 오류는 같은 종류의 다음 유효한 이벤트가 해소하고,
@@ -837,11 +849,66 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   const inputBody = (entry) => (entry.type === "paste"
     ? { operation: "paste", text: entry.text }
     : { operation: "input", actions: entry.actions, preedit: entry.preedit });
+  // Each cid of an answer ends the oldest input that names it; a native input may continue in more than one request.
+  const releaseText = (held) => {
+    if (held.body !== null) unansweredCharacters -= held.characters;
+    held.body = null;
+  };
+  const forgetInput = (held) => {
+    releaseText(held);
+    unanswered.splice(unanswered.indexOf(held), 1);
+  };
+  // The input is no longer tracked and is not sent again: the session may have applied it, and nothing tells whether it did.
+  const discardUnanswered = (reason) => {
+    if (unanswered.length === 0) return;
+    runtime.log.warn("input.unanswered.discarded", { count: unanswered.length, reason });
+    unanswered.length = 0;
+    unansweredCharacters = 0;
+  };
+  const charactersOf = (body) => (body.operation === "paste"
+    ? body.text.length
+    : body.actions.reduce((sum, action) => sum + (typeof action.text === "string" ? action.text.length : 1), 0));
+  // Above a limit the text leaves and the cids stay, so that an answer still ends the input and only an input without an answer counts as lost.
+  const recordNotHeld = (characters) => runtime.log.info("input.unanswered.unheld", { characters, maxCharacters: MAX_UNANSWERED_CHARACTERS });
+  const holdInput = (body, cids) => {
+    if (unanswered.length >= MAX_QUEUE_SIZE) {
+      forgetInput(unanswered[0]);
+      runtime.log.warn("input.unanswered.unfollowed", { max: MAX_QUEUE_SIZE });
+    }
+    const characters = charactersOf(body);
+    const fits = characters <= MAX_UNANSWERED_CHARACTERS;
+    if (!fits) recordNotHeld(characters);
+    while (fits && unansweredCharacters + characters > MAX_UNANSWERED_CHARACTERS) {
+      const oldest = unanswered.find((item) => item.body !== null);
+      releaseText(oldest);
+      recordNotHeld(oldest.characters);
+    }
+    if (unanswered.length === 0) unansweredSession = session.sessionId;
+    const held = { body: fits ? body : null, cids, characters };
+    unanswered.push(held);
+    if (fits) unansweredCharacters += characters;
+    return held;
+  };
+  // A send that fails answers its caller with the failure, so that input is not sent again.
+  const sendHeld = async (body, native) => {
+    if (body.operation === "input" && body.actions.every(({ type }) => type === "focus")) {
+      await terminal.send(id, body, native);
+      return;
+    }
+    const cids = native.length > 0 ? native : [`${unansweredPrefix}.${nextUnanswered++}`];
+    const held = holdInput(body, cids);
+    try {
+      await terminal.send(id, body, cids);
+    } catch (error) {
+      if (unanswered.includes(held)) forgetInput(held);
+      throw error;
+    }
+  };
   const sendEntry = async (entry, cids) => {
     if (entry.type === "input" || entry.type === "paste") {
-      await terminal.send(id, inputBody(entry), cids);
+      await sendHeld(inputBody(entry), cids);
     } else if (entry.type === "refused") {
-      await terminal.send(id, entry.request, cids);
+      await sendHeld(entry.request, cids);
     } else {
       throw new Error(`unknown terminal input type: ${entry.type}`);
     }
@@ -913,15 +980,36 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // in its answer. That input goes before the input that waited, in the order of the answers, and the session reopens: the open does
   // nothing when a connection event opened it already.
   let refusedInputs = 0;
+  const refusedEntry = (request) => ({
+    entry: { type: "refused", request }, cids: [], resolve: () => {}, reject: (error) => reportInputError(error), caller: false,
+  });
   const requeueRefused = (request) => {
-    inputQueue.splice(refusedInputs, 0, {
-      entry: { type: "refused", request }, cids: [], resolve: () => {}, reject: (error) => reportInputError(error), caller: false,
-    });
+    inputQueue.splice(refusedInputs, 0, refusedEntry(request));
     refusedInputs += 1;
     if (!sessionOpen) return;
     sessionOpen = false;
     runtime.log.info("session.gate", { open: false, event: "refused" });
     rerunBootstrap().catch((error) => reportInputError(error));
+  };
+
+  // The input that the ended service did not answer went before the input that a new service refused, and before the input that
+  // waited. A session that stayed open keeps what it read, so its input is not sent twice.
+  const settleUnanswered = () => {
+    if (unanswered.length === 0) return;
+    if (unansweredSession === session.sessionId) {
+      discardUnanswered("session-kept");
+      return;
+    }
+    const ended = unanswered.splice(0);
+    unansweredCharacters = 0;
+    const lost = ended.filter(({ body }) => body === null);
+    if (lost.length > 0) {
+      runtime.log.warn("input.unanswered.lost", { count: lost.length, characters: lost.reduce((sum, { characters }) => sum + characters, 0) });
+    }
+    const held = ended.filter(({ body }) => body !== null).map(({ body }) => body);
+    runtime.log.info("input.unanswered.resent", { count: held.length });
+    inputQueue.splice(0, 0, ...held.map(refusedEntry));
+    refusedInputs += held.length;
   };
 
   const flushInputQueue = () => {
@@ -945,6 +1033,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     runtime.log.info("session.gate", { open: true, event });
     changed("session");
     if (opening) {
+      settleUnanswered();
       enqueueInput({ type: "input", actions: [{ type: "focus", focused: nativeFocused }], preedit: compose })
         .catch((error) => reportInputError(error));
     }
@@ -1443,9 +1532,14 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   let pendingPtyRead = null;
 
   // 사이드카 메시지 수신
-  const stopSidecar = await terminal.on(id, (body) => {
+  const stopSidecar = await terminal.on(id, (body, cids) => {
     // The regions detach at the removal; an event after it would operate on a detached region.
     if (closing.aborted) return;
+    // An answer names the cids of its request: an acknowledgement, a refusal or an error, each of which ends the wait for it.
+    for (const cid of cids ?? []) {
+      const held = unanswered.find((item) => item.cids.includes(cid));
+      if (held !== undefined) forgetInput(held);
+    }
     if (body.event === "state") {
       // 숫자 필드의 유효성을 확인한다. 계약 위반이면 오류로 보고한다.
       const errorDetails = [];
@@ -1863,6 +1957,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       changed("session");
     } else if (body.event === "exit") {
       // The child ended: the last frame stays on screen, and no input is held in an ended session.
+      discardUnanswered("session-ended");
       session = { ...session, exited: true, inputHeld: null };
       changed("session");
     } else if (body.event === "error") {
@@ -1963,6 +2058,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     runtime.log.info("close", {});
     await terminal.send(id, { operation: "close" });
     // The answer of the close ends the session, so its status states the end without an exit event.
+    discardUnanswered("session-closed");
     session = { ...session, exited: true, inputHeld: null };
     changed("session");
   }
