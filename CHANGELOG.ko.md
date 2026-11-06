@@ -3,6 +3,7 @@
 [English](CHANGELOG.md)
 
 - P130: core 호환 문서가 `package.json`이 선언한 범위 `^0.0.37`을 적는다.
+- P129: 끝난 service가 답하지 않은 입력이 성공 답 뒤에 사라지지 않고 새 session으로 간다.
 - P128: view가 알기 전에 다시 뜬 서비스에 닿은 입력이 session 오류와 함께 사라지지 않고 다시 열린 session으로 흐른다.
 - P127: 열린 session이 `Session not open` 답을 해소하므로, service가 다시 뜬 뒤의 `terminal.session`에 그 오류가 남지 않는다.
 - P126: session open이나 연결이 실패하면 `terminal.input`과 `terminal.paste`는 host가 10 s 뒤에 command를 끝낼 때까지 기다리지 않고 이유와 함께 끝난다.

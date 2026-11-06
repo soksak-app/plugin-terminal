@@ -213,6 +213,108 @@
       },
       "description": "An input is refused because the queue of inputs that wait for the session holds max inputs; the input is rejected with an error."
     },
+    "plugin.terminal.input.unanswered.unheld": {
+      "layer": "plugin",
+      "class": "input",
+      "level": "info",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "characters": {
+            "type": "number"
+          },
+          "maxCharacters": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "characters",
+          "maxCharacters"
+        ]
+      },
+      "description": "The text of an input without an answer of the service is not held, because it or the held inputs reach the limit of the characters. Nothing is lost by this: an answer still ends the input, and a service that ends first records input.unanswered.lost."
+    },
+    "plugin.terminal.input.unanswered.lost": {
+      "layer": "plugin",
+      "class": "input",
+      "level": "warn",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "characters": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "count",
+          "characters"
+        ]
+      },
+      "description": "The service ended without an answer of these inputs and their text was not held, so the new session does not take them."
+    },
+    "plugin.terminal.input.unanswered.unfollowed": {
+      "layer": "plugin",
+      "class": "input",
+      "level": "warn",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "max": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "max"
+        ]
+      },
+      "description": "The oldest input without an answer leaves, because the inputs without an answer reached the limit of their count: nothing records what becomes of it."
+    },
+    "plugin.terminal.input.unanswered.discarded": {
+      "layer": "plugin",
+      "class": "input",
+      "level": "warn",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "reason"
+        ]
+      },
+      "description": "Inputs without an answer of the service are no longer tracked and are not sent again, because their session stayed open, ended or closed; the session may have applied them. Count of them and the reason."
+    },
+    "plugin.terminal.input.unanswered.resent": {
+      "layer": "plugin",
+      "class": "input",
+      "level": "info",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "count"
+        ]
+      },
+      "description": "A new session takes the inputs that the service that ended did not answer, count of them."
+    },
     "plugin.terminal.session.gate": {
       "layer": "plugin",
       "class": "lifecycle",
