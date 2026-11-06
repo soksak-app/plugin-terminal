@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- P131: The core compatibility documents state `^0.0.39`, the range that `package.json` declares.
 - P130: The core compatibility documents state `^0.0.37`, the range that `package.json` declares.
 - P129: Input without an answer of a service that ended reaches the new session, instead of disappearing after a successful answer.
 - P128: Input that reaches a respawned service before the view hears of it flows into the session that reopens, instead of being lost with an error on the session.
@@ -42,6 +43,7 @@
 - F355-4-terminal: `make pack OUT=<folder>` writes the release with `pnpm pack`, and release.yml no longer downloads a core release, because core 0.0.25 installs the `pnpm pack` file of a plugin and has no `sok plugin pack`. The release holds `diagnostics.json` and its module, which only a diagnostic build reads, and `@soksak/plugin-api` is pinned to the core release `v0.0.25`.
 ## Unreleased
 
+- P131: The core compatibility documents state `^0.0.39`, the range that `package.json` declares.
 - F460-terminal: `.gitignore` names the local output folder `/build/`.
 - F472-terminal: The names of the commands state what they do, and `sok-check commands` holds them.
 - F468-terminal: The repository runs `soksak-check docs` and `soksak-check events` of the kit with `event-sources.json`.
