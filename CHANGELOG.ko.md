@@ -2,6 +2,7 @@
 
 [English](CHANGELOG.md)
 
+- F497-terminal: `engines.soksak`은 `^0.0.39`이고, version은 0.0.43이다.
 - F494-terminal: `engines.soksak`은 `^0.0.38`이고, version은 0.0.42이다.
 - F479-terminal: release run이 v0.0.41을 게시했고 registry가 이를 올린다.
 - F479-terminal: `engines.soksak`은 `^0.0.37`이고, version은 0.0.41이다.
