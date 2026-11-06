@@ -15,6 +15,7 @@
 - P120: The contract cases of the test fakes are byte copies of the published `clipboard.json` and `screen-hash.json` in `test/fixtures/contract`, and `contract-copies.json`, which the release carries, names each copy with its SHA-256. Each module of `scripts/test-sdk-cases.json` lists its copies, and a case that the fake does not replay is in a skip list with its reason; the build fails on a case that is neither. Red: the tests failed on the inline copies, and without the skip list the build named the five cases that the inline copies did not hold. Green: they pass.
 - P119: The core compatibility document states `^0.0.34`, the range that the package declares, and a test compares both documents with `engines.soksak`. Red: the test failed with `^0.0.24` against `^0.0.34`. Green: it passes.
 - P118: The view clipboard carries a PNG through the binary path of the view document: `persistPNG` uploads the bytes and sends their id as `{binary}`, and a `png` read downloads the bytes of its id. `engines.soksak` stays `^0.0.34` until a core release carries F518. Red: 8 of the 13 tests of `test/view-clipboard.test.mjs` failed, among them `the view clipboard downloads the bytes of the binary id of a PNG read` with `clipboard png response is invalid`. Green: the 13 tests pass.
+- F494-terminal: `engines.soksak` is `^0.0.38`, and the version is 0.0.42.
 - F479-terminal: The release run published v0.0.41, and the registry lists it.
 - F479-terminal: `engines.soksak` is `^0.0.37`, and the version is 0.0.41.
 - F476-terminal: The tests repeat no declared version.
