@@ -2,6 +2,7 @@
 
 [English](CHANGELOG.md)
 
+- P122: push check와 CI가 kit의 체크리스트 이력 검사를 실행한다. `package.json`이 KR14와 KR15를 담은 kit 0.0.14를 pin하고, `make check-push`가 push 범위에 `sok-check docs --range`를 실행하며, CI가 event의 범위에 `make check-push`를 실행한다. Red: 변경 전 Makefile과 `ci.yml`에서 push check test가 실패했다. Green: 통과한다.
 - P131: core 호환 문서가 `package.json`이 선언한 범위 `^0.0.39`을 적는다.
 - P130: core 호환 문서가 `package.json`이 선언한 범위 `^0.0.37`을 적는다.
 - P129: 끝난 service가 답하지 않은 입력이 성공 답 뒤에 사라지지 않고 새 session으로 간다.
@@ -12,7 +13,7 @@
 - P124: 열리는 session이 값과 무관하게 region의 focus를 읽으므로, reload된 view가 다시 붙는 preserved session에 filled cursor가 남지 않는다.
 - P123: 열리는 session이 region의 현재 focus를 읽으므로, 키보드를 가진 terminal의 cursor는 service가 다시 떠도 focus 상태를 유지한다.
 - P121: subject `docs(features): State the checklist as facts (#P19)`는 체크리스트가 P19로 적는 항목이 아니라 지워진 항목의 것이다.
-- P116: plugin은 노출하는 element를 element entry로 선언한다. `plugin.json`은 `exposes.element`를 선언하고, view는 `expose.element`를 호출한다. `engines.soksak`은 F502-13의 core release version인 `^0.0.35`를 요구하고, KR9의 records kit release pin은 그 release를 기다린다. Red: test가 214개 중 191개 실패했고, 대부분 `expose.dom is not a function`이었다. Green: 통과한다.
+- P116: plugin은 노출하는 element를 element entry로 선언한다. `plugin.json`은 `exposes.element`를 선언하고, view는 `expose.element`를 호출한다. `engines.soksak`은 F502-13의 core release version인 `^0.0.35`를 요구하고, KR19의 records kit release pin은 그 release를 기다린다. Red: test가 214개 중 191개 실패했고, 대부분 `expose.dom is not a function`이었다. Green: 통과한다.
 - P120: test fake의 contract case는 `test/fixtures/contract`에 있는 publish된 `clipboard.json`과 `screen-hash.json`의 byte 사본이고, release가 싣는 `contract-copies.json`이 각 사본을 SHA-256과 함께 적는다. `scripts/test-sdk-cases.json`의 각 module은 그 사본을 나열하고, fake가 재생하지 않는 case는 이유와 함께 skip 목록에 있으며, 둘 다 아닌 case에서 build가 실패한다. Red: inline 사본에서 test가 실패했고, skip 목록이 없으면 build가 inline 사본에 없던 다섯 case를 적었다. Green: 통과한다.
 - P119: core 호환성 문서는 package가 선언한 범위 `^0.0.34`를 적고, test가 두 문서를 `engines.soksak`과 비교한다. Red: test가 `^0.0.34`에 대한 `^0.0.24`로 실패했다. Green: 통과한다.
 - P118: view clipboard는 PNG를 view document의 binary path로 나른다. `persistPNG`는 bytes를 upload하고 그 id를 `{binary}`로 보내며, `png` read는 그 id의 bytes를 download한다. F518을 담은 core release가 나올 때까지 `engines.soksak`은 `^0.0.34`로 남는다. Red: `test/view-clipboard.test.mjs`의 13 test 중 8개가 실패했고, 그중 `the view clipboard downloads the bytes of the binary id of a PNG read`는 `clipboard png response is invalid`로 실패했다. Green: 13 test가 통과한다.

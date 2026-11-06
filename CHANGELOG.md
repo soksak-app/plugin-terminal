@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- P122: The push check and CI run the checklist history check of the kit: `package.json` pins kit 0.0.14, which holds KR14 and KR15, `make check-push` runs `sok-check docs --range` on the pushed range, and CI runs `make check-push` on the range of its event. Red: the tests of the push check failed on the Makefile and `ci.yml` before the change. Green: they pass.
 - P131: The core compatibility documents state `^0.0.39`, the range that `package.json` declares.
 - P130: The core compatibility documents state `^0.0.37`, the range that `package.json` declares.
 - P129: Input without an answer of a service that ended reaches the new session, instead of disappearing after a successful answer.

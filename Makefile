@@ -30,11 +30,12 @@ check-candidate-install:
 	@test -n "$(EXPECTED_VT_VERSION)" || { echo "make check-candidate-install SOK=<sok> REGISTRY=<folder> EXPECTED_TERMINAL_VERSION=<version> PREVIOUS_VT_VERSION=<version> EXPECTED_VT_VERSION=<version>" >&2; exit 2; }
 	SOK="$(SOK)" CANDIDATE_REGISTRY="$(REGISTRY)" EXPECTED_TERMINAL_VERSION="$(EXPECTED_TERMINAL_VERSION)" PREVIOUS_VT_VERSION="$(PREVIOUS_VT_VERSION)" EXPECTED_VT_VERSION="$(EXPECTED_VT_VERSION)" node scripts/check-candidate-install.mjs
 
-# The check that a push needs: the commit messages of the pushed range, because a published commit message is kept; CI runs
-# the tests and checks on the pushed commits.
+# The checks that a push needs: the commit messages and the checklist history of the pushed range, because a published commit
+# is kept; CI runs the tests and checks on the pushed commits.
 # RANGE holds the commits of the pushed refs; the pre-push hook sets it, and it defaults to origin/main..HEAD.
 check-push:
 	pnpm exec sok-check commits "$(or $(RANGE),origin/main..HEAD)"
+	pnpm exec sok-check docs --range "$(or $(RANGE),origin/main..HEAD)"
 
 # Sets this repository to use .githooks, which checks commit messages and records at commit time.
 install-hooks:
