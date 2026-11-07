@@ -1452,6 +1452,13 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   const bootstrapSession = async () => {
     applyTitle();
     await openSession();
+    // Restore semantic demand before the fresh read; raster visibility does
+    // not determine whether a public screen watcher observes engine output.
+    try { await updateScreenWatch(); } catch (error) {
+      // An ended registration cancels this bootstrap before its fresh read.
+      if (error.name === "AbortError") return;
+      throw error;
+    }
     // The view holds no screen of the session it opens or reattaches to, so it reads the full form.
     await readScreen();
     if (lastTheme) await setTheme(lastTheme.scheme, lastTheme.tokens);
@@ -1490,12 +1497,56 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       throw error;
     });
   };
-  // A view event that arrived while a read was open: the answer of that read may be older than the frame of the event.
+  let screenWatchEnabled = false;
+  let screenWatchRegistered = false;
+  let screenWatchConnected = true;
+  let screenWatchPending = Promise.resolve();
+  let screenWatchRequest = null;
+  let screenWatchSequence = 0;
+  let screenWatchDisposed = false;
+  const reportScreenWatchError = (error) => {
+    if (error.name !== "AbortError") reportInputError(error, "screen");
+  };
+  const endScreenWatchRequest = (error) => {
+    if (!screenWatchRequest) return;
+    const pending = screenWatchRequest;
+    screenWatchRequest = null;
+    clearTimeout(pending.timeout);
+    if (error) pending.reject(error);
+    else pending.resolve();
+  };
+  const updateScreenWatch = () => {
+    const enabled = watchers.screen.size > 0 && !screenWatchDisposed;
+    if (!screenWatchConnected || enabled === screenWatchEnabled) return screenWatchPending;
+    screenWatchEnabled = enabled;
+    screenWatchRegistered = false;
+    endScreenWatchRequest(new DOMException("screen watch superseded", "AbortError"));
+    // sidecar.send completes transport, not the semantic reply. There is no
+    // generic response deadline in that API, so use the existing screen.read
+    // response budget for this one CID-correlated transition (never a poll).
+    screenWatchPending = new Promise((resolve, reject) => {
+      const cid = `${unansweredPrefix}-screen-watch-${++screenWatchSequence}`;
+      const pending = { cid, enabled, resolve, reject, timeout: setTimeout(() => {
+        if (screenWatchRequest === pending) endScreenWatchRequest(new Error("screen.watch acknowledgement timeout"));
+      }, 5000) };
+      screenWatchRequest = pending;
+      terminal.send(id, { operation: "screen.watch", enabled }, [cid]).catch((error) => {
+        if (screenWatchRequest === pending) endScreenWatchRequest(error);
+      });
+    });
+    return screenWatchPending;
+  };
+  const closeScreenWatch = () => {
+    screenWatchDisposed = true;
+    updateScreenWatch().catch(reportScreenWatchError);
+  };
+  closing.addEventListener("abort", closeScreenWatch, { once: true });
+  // A semantic change or view event during a read requires a trailing read.
   let screenReadAgain = false;
-  // The sidecar sends no screen for a frame, so a watcher of the status receives each drawn frame through a read that follows its
-  // view event (docs/spec/exposure.md in core: subscribe calls fn on each change). Nothing is read while nothing watches.
+  // Read on semantic invalidation and on view changes, only while watched.
+  // An invalidation carries no raster identity or presentation assertion.
   const followScreen = () => {
-    if (watchers.screen.size === 0 || !sessionOpen) return;
+    if (watchers.screen.size === 0 || !sessionOpen || screenWatchDisposed || !screenWatchRegistered) return;
     if (screenReadAwaited) {
       screenReadAgain = true;
       return;
@@ -1504,8 +1555,14 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   };
   const watchScreen = (fn) => {
     const stop = watch("screen")(fn);
-    followScreen();
-    return stop;
+    updateScreenWatch().then(followScreen).catch(reportScreenWatchError);
+    let stopped = false;
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      stop();
+      updateScreenWatch().catch(reportScreenWatchError);
+    };
   };
   // Resolves with the full form that answers a read of its own.
   const awaitScreen = () => new Promise((resolve, reject) => {
@@ -1587,6 +1644,19 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
 
   // 사이드카 메시지 수신
   const stopSidecar = await terminal.on(id, (body, cids) => {
+    // A close can be waiting for its disable ACK after the view aborts.
+    // Match this request before the detached-view guard; ignore late CIDs.
+    if (screenWatchRequest && (cids ?? []).includes(screenWatchRequest.cid)) {
+      if (body.error) {
+        endScreenWatchRequest(new Error(`${body.error}: ${body.reason ?? "screen.watch failed"}`));
+      } else if (body.event !== "screen.watching" || body.enabled !== screenWatchRequest.enabled) {
+        endScreenWatchRequest(new Error("screen.watch received a mismatched acknowledgement"));
+      } else {
+        screenWatchRegistered = body.enabled;
+        endScreenWatchRequest();
+      }
+      return;
+    }
     // The regions detach at the removal; an event after it would operate on a detached region.
     if (closing.aborted) return;
     if (body.event === "screen.observed" ||
@@ -1596,6 +1666,13 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       return;
     }
     if ((body.event === "connection" && body.connected === false) || body.event === "exit") observationClosed();
+    if (body.event === "exit") {
+      screenWatchConnected = false;
+      screenWatchEnabled = false;
+      screenWatchRegistered = false;
+      endScreenWatchRequest(new DOMException("screen watch session ended", "AbortError"));
+      screenWatchPending = Promise.resolve();
+    }
     // An answer names the cids of its request: an acknowledgement, a refusal or an error, each of which ends the wait for it.
     for (const cid of cids ?? []) {
       const held = unanswered.find((item) => item.cids.includes(cid));
@@ -1670,6 +1747,13 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       // reconnection flows now.
       openSessionGate("session");
     } else if (body.event === "connection") {
+      screenWatchConnected = body.connected === true;
+      screenWatchRegistered = false;
+      endScreenWatchRequest(new DOMException("screen watch connection ended", "AbortError"));
+      screenWatchEnabled = false;
+      screenWatchPending = Promise.resolve();
+      screenReadAwaited = false;
+      screenReadAgain = false;
       // 영속 사이드카의 연결이 다시 맺혔다(V5-106). 이전 연결이 남긴 사이드카 오류는
       // 해소하고 세션을 다시 연다 — 재스폰된 서비스에는 이 표면의 세션이 없다. 실패했으면
       // 연결 끊김과 그 까닭을 세션 오류로 남긴다. 입력은 다시 열릴 때까지 대기열에 쌓인다.
@@ -1687,6 +1771,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         setError("sidecar", `sidecar connection failed${reason}`);
         failSession(`sidecar connection failed${reason}`);
       }
+    } else if (body.event === "screen.changed") {
+      followScreen();
+    } else if (body.event === "screen.watching") {
+      // A late acknowledgement of an ended transition owns no current state.
     } else if (body.event === "screen") {
       if (body.base === false && screenReadAwaited) {
         runtime.log.debug("screen.refused", { number: body.number, previous: body.previous });
@@ -2281,6 +2369,13 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
     },
     async dispose() {
+      screenWatchDisposed = true;
+      let screenWatchError;
+      try { await updateScreenWatch(); } catch (error) {
+        screenWatchError = error;
+        reportInputError(error, "screen");
+      }
+      closing.removeEventListener("abort", closeScreenWatch);
       observationClosed();
       closing.removeEventListener("abort", observationClosed);
       if (diagnostics) for (const type of pointerTraceTypes) view.removeEventListener(type, tracePointer);
@@ -2309,6 +2404,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       view.removeEventListener("pointercancel", endSelection);
       view.removeEventListener("lostpointercapture", endSelection);
       await endSession();
+      if (screenWatchError) throw screenWatchError;
     },
   };
 }

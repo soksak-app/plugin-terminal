@@ -259,7 +259,7 @@ function recorder(lines) {
 const onlyFocus = (actions) => actions.length > 0 && actions.every(({ type }) => type === "focus");
 const carriesInput = (body) => body.operation === "input" && !onlyFocus(body.actions);
 
-function createFakeSidecar({ delay = () => null, answers = true } = {}) {
+function createFakeSidecar({ delay = () => null, answers = true, watchAnswers = true } = {}) {
   const messages = [];
   // The cids of each sent body. A service names them in the answer of the body (core docs/spec/sidecars.md#protocol).
   const sentCids = new Map();
@@ -285,7 +285,11 @@ function createFakeSidecar({ delay = () => null, answers = true } = {}) {
       if (body.operation === "input" && body.actions.some(({ type }) => type === "focus")) focusBodies.push(body);
       if (body.operation !== "input" || !onlyFocus(body.actions)) messages.push({ id, body });
       for (const waiter of waiters.splice(0)) waiter();
-      if (answers && cids.length > 0) for (const handler of listeners.get(id) ?? []) handler({ ack: true }, cids);
+      if (answers && cids.length > 0) for (const handler of listeners.get(id) ?? []) {
+        if (body.operation === "screen.watch") {
+          if (watchAnswers) handler({ event: "screen.watching", enabled: body.enabled }, cids);
+        } else handler({ ack: true }, cids);
+      }
       return Promise.resolve();
     },
     getCids: (body) => sentCids.get(body),
@@ -492,7 +496,7 @@ test("terminal.screen publishes sidecar output without polling or input commands
   // A blank cell has no character; a reader counts its width as spaces (docs/spec/terminal-runtime.md#screen-message in core).
   assert.deepEqual(expose.heldScreen(), [[{ width: 1 }]]);
   assert.deepEqual(received, [lines]);
-  assert.deepEqual(sessionMessages(sidecar).map(({ body }) => body.operation), ["open"]);
+  assert.deepEqual(sessionMessages(sidecar).map(({ body }) => body.operation), ["open", "screen.watch"]);
 });
 
 // 테스트 1: 부팅 → attachImage가 한 번 호출되고 sidecar에 open이 간다
@@ -1928,7 +1932,7 @@ test("open is independent of DOM element size", async () => {
   FakeResizeObserver.reset();
   const fakeAttachImage = createFakeAttachImage();
   const fakeSidecar = createFakeSidecar();
-  const fakeExpose = createFakeExpose();
+  const fakeExpose = createFakeExpose({ followScreen: false });
 
   // 초기 크기가 0인 view를 만든다
   const fakeView = Object.assign(createFakeView(), { clientWidth: 0, clientHeight: 0 });
@@ -2348,19 +2352,20 @@ test("a view event publishes the cursor of its frame, moves the input-method car
 });
 
 // Starts a terminal with an open session and returns its sidecar, its exposure and the number of screen reads that it sent.
-async function startWatchedScreen() {
+async function startWatchedScreen(options, overrides = {}) {
   FakeResizeObserver.reset();
-  const fakeSidecar = createFakeSidecar();
+  const fakeSidecar = createFakeSidecar(options);
   const expose = createFakeExpose({ followScreen: false });
-  await startTerminal({
+  const terminal = await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose, scale: 1,
     window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+    ...overrides,
   });
   FakeResizeObserver.triggerAll();
   await new Promise((resolve) => setImmediate(resolve));
   openSession(fakeSidecar);
-  return { fakeSidecar, expose, reads: () => fakeSidecar.getMessages().filter(({ body }) => body.operation === "screen.read").length };
+  return { terminal, fakeSidecar, expose, reads: () => fakeSidecar.getMessages().filter(({ body }) => body.operation === "screen.read").length };
 }
 
 const VIEW_EVENT = {
@@ -2368,7 +2373,141 @@ const VIEW_EVENT = {
   cursor: { col: 0, row: 0, visible: true, focused: true, shape: "Block", blinking: false, blinkVisible: true, caret: { row: 0, col: 0 }, preedit: null },
 };
 
-test("a view event reads the screen for a watcher of the screen status, and only for a watcher", async () => {
+test("a semantic screen watch waits for matching ACK and cancels a disconnected pending registration", { timeout: 10000 }, async () => {
+  const { fakeSidecar, expose, reads } = await startWatchedScreen({ watchAnswers: false });
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
+  assert.equal(expose.getStatus("terminal.session").readFn().error, undefined, "the copied screen fixture must be accepted before the target assertion");
+  const initial = reads();
+  const stop = expose.getStatus("terminal.screen").watchFn(() => {});
+  await fakeSidecar.untilMessage(body => body.operation === "screen.watch");
+  const request = fakeSidecar.getMessages().find(({ body }) => body.operation === "screen.watch").body;
+  assert.equal(reads(), initial, "transport completion is not subscription registration");
+  fakeSidecar.triggerRaw("test-session", { event: "screen.watching", enabled: true }, ["another-request"]);
+  assert.equal(reads(), initial, "another subscription ACK cannot release this read");
+  fakeSidecar.triggerEvent("test-session", { event: "connection", connected: false, reason: "closed" });
+  fakeSidecar.triggerRaw("test-session", { event: "screen.watching", enabled: true }, fakeSidecar.getCids(request));
+  stop();
+  assert.equal(reads(), initial, "a late ACK of the disconnected registration cannot read or restore demand");
+});
+
+test("a semantic screen watch reports a correlated refusal without reading or retaining the pending ACK", { timeout: 10000 }, async () => {
+  const { fakeSidecar, expose, reads } = await startWatchedScreen({ watchAnswers: false });
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
+  assert.equal(expose.getStatus("terminal.session").readFn().error, undefined, "the copied screen fixture must be accepted before the target assertion");
+  const initial = reads();
+  const failure = new Promise(resolve => {
+    const stop = expose.getStatus("terminal.session").watchFn(value => {
+      if (value.error?.includes("unknown screen.watch")) { stop(); resolve(); }
+    });
+  });
+  const stop = expose.getStatus("terminal.screen").watchFn(() => {});
+  await fakeSidecar.untilMessage(body => body.operation === "screen.watch");
+  const request = fakeSidecar.getMessages().find(({ body }) => body.operation === "screen.watch").body;
+  fakeSidecar.triggerRaw("test-session", { error: "unknownOperation", reason: "unknown screen.watch" }, fakeSidecar.getCids(request));
+  await failure;
+  assert.equal(reads(), initial, "a refused subscription must not fall back to unregistered reads");
+  stop();
+  await fakeSidecar.untilMessage(body => body.operation === "screen.watch" && body.enabled === false);
+  const disable = fakeSidecar.getMessages().find(({ body }) => body.operation === "screen.watch" && body.enabled === false).body;
+  fakeSidecar.triggerRaw("test-session", { event: "screen.watching", enabled: false }, fakeSidecar.getCids(disable));
+});
+
+test("a semantic screen watch send failure is public and does not start a read", { timeout: 10000 }, async () => {
+  const { fakeSidecar, expose, reads } = await startWatchedScreen();
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
+  assert.equal(expose.getStatus("terminal.session").readFn().error, undefined, "the copied screen fixture must be accepted before the target assertion");
+  const initial = reads();
+  const failure = new Promise(resolve => {
+    const off = expose.getStatus("terminal.session").watchFn(value => {
+      if (value.error?.includes("watch transport failed")) { off(); resolve(); }
+    });
+  });
+  fakeSidecar.failNext(new Error("watch transport failed"));
+  const stop = expose.getStatus("terminal.screen").watchFn(() => {});
+  await failure;
+  assert.equal(reads(), initial);
+  stop();
+  await fakeSidecar.untilMessage(body => body.operation === "screen.watch" && body.enabled === false);
+});
+
+test("a semantic screen watch abort releases a pending enable and ignores its late ACK", { timeout: 10000 }, async () => {
+  const closing = new AbortController();
+  const { terminal, fakeSidecar, expose, reads } = await startWatchedScreen({ watchAnswers: false }, { closing: closing.signal });
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
+  assert.equal(expose.getStatus("terminal.session").readFn().error, undefined, "the copied screen fixture must be accepted before the target assertion");
+  const initial = reads();
+  const stop = expose.getStatus("terminal.screen").watchFn(() => {});
+  await fakeSidecar.untilMessage(body => body.operation === "screen.watch" && body.enabled === true);
+  const enable = fakeSidecar.getMessages().find(({ body }) => body.operation === "screen.watch" && body.enabled === true).body;
+  closing.abort();
+  await fakeSidecar.untilMessage(body => body.operation === "screen.watch" && body.enabled === false);
+  fakeSidecar.triggerRaw("test-session", { event: "screen.watching", enabled: true }, fakeSidecar.getCids(enable));
+  const disable = fakeSidecar.getMessages().find(({ body }) => body.operation === "screen.watch" && body.enabled === false).body;
+  fakeSidecar.triggerRaw("test-session", { event: "screen.watching", enabled: false }, fakeSidecar.getCids(disable));
+  await terminal.dispose();
+  stop();
+  assert.equal(reads(), initial);
+  assert.equal(fakeSidecar.getMessages().filter(({ body }) => body.operation === "screen.watch" && body.enabled === false).length, 1);
+});
+
+test("a semantic screen watch subscribes before reading and updates without a raster view event", { timeout: 10000 }, async () => {
+  const { fakeSidecar, expose, reads } = await startWatchedScreen();
+  const status = expose.getStatus("terminal.screen");
+  const seen = [];
+  // Complete the bootstrap read before starting this watch's own fresh read.
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
+  assert.equal(expose.getStatus("terminal.session").readFn().error, undefined, "the copied screen fixture must be accepted before the target assertion");
+  const initialReads = reads();
+  const stop = status.watchFn(rows => seen.push(rows));
+  await fakeSidecar.untilMessage(body => body.operation === "screen.read" && reads() > initialReads);
+  const operations = fakeSidecar.getMessages().map(({ body }) => body.operation);
+  assert.ok(operations.includes("screen.watch"), "first status watcher must enable semantic screen notifications");
+  assert.ok(operations.lastIndexOf("screen.watch") < operations.lastIndexOf("screen.read"), "subscription must precede the initial read");
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
+  await new Promise(resolve => setImmediate(resolve));
+  const before = reads();
+  fakeSidecar.triggerRaw("test-session", { event: "screen.changed" });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(reads(), before + 1, "engine change must read fresh cells even without a raster view event");
+  fakeSidecar.triggerRaw("test-session", { event: "screen.changed" });
+  fakeSidecar.triggerRaw("test-session", { event: "screen.changed" });
+  assert.equal(reads(), before + 1, "changes during the read must coalesce");
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(reads(), before + 2, "a change during the read must cause a trailing read");
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: ["line1", "line2", "line3"] });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(seen.at(-1)[0].map(cell => cell.ch ?? " ").join("").trim(), "line1");
+  const stopSecond = status.watchFn(() => {});
+  const watched = () => fakeSidecar.getMessages().filter(({ body }) => body.operation === "screen.watch").map(({ body }) => body.enabled);
+  stop();
+  assert.deepEqual(watched(), [true], "one remaining watcher retains the subscription");
+  stopSecond(); stopSecond();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(watched(), [true, false], "last watcher disables once");
+});
+
+test("a semantic screen watch restores before reconnect read and releases once on dispose", { timeout: 10000 }, async () => {
+  const { terminal, fakeSidecar, expose } = await startWatchedScreen();
+  const stop = expose.getStatus("terminal.screen").watchFn(() => {});
+  await new Promise(resolve => setImmediate(resolve));
+  const begin = fakeSidecar.getMessages().length;
+  fakeSidecar.triggerEvent("test-session", { event: "connection", connected: false, reason: "closed" });
+  fakeSidecar.triggerEvent("test-session", { event: "connection", connected: true });
+  openSession(fakeSidecar);
+  await new Promise(resolve => setImmediate(resolve));
+  const restored = fakeSidecar.getMessages().slice(begin).map(({ body }) => body);
+  const subscribe = restored.findIndex(body => body.operation === "screen.watch" && body.enabled === true);
+  const read = restored.findIndex(body => body.operation === "screen.read");
+  assert.ok(subscribe >= 0 && read > subscribe, JSON.stringify(restored));
+  await terminal.dispose();
+  stop(); stop();
+  await new Promise(resolve => setImmediate(resolve));
+  const disables = fakeSidecar.getMessages().filter(({ body }) => body.operation === "screen.watch" && body.enabled === false);
+  assert.equal(disables.length, 1, "dispose and late unwatch must release one subscription");
+});
+
+test("a view event reads the screen for a watcher of the screen status, and only for a watcher", { timeout: 10000 }, async () => {
   const { fakeSidecar, expose, reads } = await startWatchedScreen();
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
   await new Promise((resolve) => setImmediate(resolve));
@@ -2379,7 +2518,9 @@ test("a view event reads the screen for a watcher of the screen status, and only
   assert.equal(reads(), unwatchedReads, "a view event sends no screen read while nothing watches the screen status");
 
   const seen = [];
+  const beforeWatch = reads();
   const stop = expose.getStatus("terminal.screen").watchFn((rows) => seen.push(rows));
+  await fakeSidecar.untilMessage(body => body.operation === "screen.read" && reads() > beforeWatch);
   const watchedReads = reads();
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
   await new Promise((resolve) => setImmediate(resolve));
@@ -2400,11 +2541,13 @@ test("a view event reads the screen for a watcher of the screen status, and only
   assert.equal(reads(), stoppedReads, "a view event sends no screen read after the watcher stopped");
 });
 
-test("view events during a screen read send one further read when it is answered", async () => {
+test("view events during a screen read send one further read when it is answered", { timeout: 10000 }, async () => {
   const { fakeSidecar, expose, reads } = await startWatchedScreen();
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
   await new Promise((resolve) => setImmediate(resolve));
+  const beforeWatch = reads();
   expose.getStatus("terminal.screen").watchFn(() => {});
+  await fakeSidecar.untilMessage(body => body.operation === "screen.read" && reads() > beforeWatch);
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
   await new Promise((resolve) => setImmediate(resolve));
 
@@ -2591,7 +2734,7 @@ test("native input transaction submits ordered actions and final preedit once", 
   const send = fakeSidecar.send;
   fakeSidecar.send = async (id, body, cids) => {
     requests.push({ id, body, cids });
-    return send(id, body);
+    return send(id, body, cids);
   };
   let regionReference;
   const expose = createFakeExpose();
@@ -4182,7 +4325,7 @@ test("cursor policy sends explicit shape, blink, interval, idle timeout, and unf
 test("declared settings are sent at startup and on effective setting changes", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
-  const fakeExpose = createFakeExpose();
+  const fakeExpose = createFakeExpose({ followScreen: false });
   let notify;
   const settings = {
     read: () => ({
@@ -4266,12 +4409,12 @@ test("input send failures remain observable and later queued input still sends",
   const fakeExpose = createFakeExpose();
   let fail = true;
   const send = fakeSidecar.send;
-  fakeSidecar.send = async function(id, body) {
+  fakeSidecar.send = async function(id, body, cids) {
     if (fail && body.operation === "input") {
       fail = false;
       throw new Error("input unavailable");
     }
-    return send.call(this, id, body);
+    return send.call(this, id, body, cids);
   };
   let regionReference;
   await startTerminal({
@@ -4424,7 +4567,7 @@ test("a caller scale option cannot enter the terminal protocol", async () => {
   FakeResizeObserver.reset();
   const fakeAttachImage = createFakeAttachImage();
   const fakeSidecar = createFakeSidecar();
-  const fakeExpose = createFakeExpose();
+  const fakeExpose = createFakeExpose({ followScreen: false });
   const fakeView = createFakeView();
   const fakeWindow = {
     ResizeObserver: FakeResizeObserver,
@@ -4492,7 +4635,7 @@ test("region input is buffered in order until sidecar state opens the session", 
   FakeResizeObserver.reset();
   const fakeAttachImage = createFakeAttachImage();
   const fakeSidecar = createFakeSidecar();
-  const fakeExpose = createFakeExpose();
+  const fakeExpose = createFakeExpose({ followScreen: false });
   
   // 초기 크기가 0인 view를 만든다
   const fakeView = Object.assign(createFakeView(), { clientWidth: 0, clientHeight: 0 });
@@ -4564,7 +4707,7 @@ test("a sidecar rejection is reported without DOM-driven retry", async () => {
   FakeResizeObserver.reset();
   const fakeAttachImage = createFakeAttachImage();
   const fakeSidecar = createFakeSidecar();
-  const fakeExpose = createFakeExpose();
+  const fakeExpose = createFakeExpose({ followScreen: false });
 
   // 레이아웃 완료 전의 임시 크기 1x1 CSS 픽셀에서 시작한다.
   const fakeView = createFakeView();
@@ -4653,8 +4796,8 @@ test("the font size is 13 points times the text size factor and follows its chan
     "font.family": "Menlo", shell: "/bin/sh",
   };
   const send = fakeSidecar.send;
-  fakeSidecar.send = async (id, body) => {
-    await send(id, body);
+  fakeSidecar.send = async (id, body, cids) => {
+    await send(id, body, cids);
     if (body.operation !== "font") return;
     queueMicrotask(() => fakeSidecar.triggerEvent("test-session",
       { ack: true, event: "font", family: body.family, system: false, skipped: [], size: body.size }));
@@ -4699,8 +4842,8 @@ test("the font.family list is sent at startup and on change, and the applied fam
   };
   // 사이드카는 설치된 첫 family 를 적용하고 확인 이벤트로 알린다. 이 가짜는 D2Coding 이 없다.
   const send = fakeSidecar.send;
-  fakeSidecar.send = async (id, body) => {
-    await send(id, body);
+  fakeSidecar.send = async (id, body, cids) => {
+    await send(id, body, cids);
     if (body.operation !== "font") return;
     const applied = body.family.split(";").map((family) => family.trim()).find((family) => family !== "D2Coding") ?? "Menlo";
     queueMicrotask(() => fakeSidecar.triggerEvent("test-session", { ack: true, event: "font", family: applied, system: false }));
@@ -5310,7 +5453,7 @@ test("the input of a region event reaches the sidecar with the cids of that even
   const sidecar = createFakeSidecar();
   const sent = [];
   const send = sidecar.send;
-  sidecar.send = (id, body, cids) => { sent.push({ body, cids }); return send(id, body); };
+  sidecar.send = (id, body, cids) => { sent.push({ body, cids }); return send(id, body, cids); };
   let region;
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
@@ -5330,7 +5473,7 @@ test("the inputs that waited for the session keep their cids when they are sent"
   const sidecar = createFakeSidecar();
   const sent = [];
   const send = sidecar.send;
-  sidecar.send = (id, body, cids) => { sent.push({ body, cids }); return send(id, body); };
+  sidecar.send = (id, body, cids) => { sent.push({ body, cids }); return send(id, body, cids); };
   let region;
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)), sidecar,
@@ -5819,7 +5962,7 @@ test("the focus that a reattached session reads does not hold the input that wai
   const sidecar = createFakeSidecar();
   const sent = [];
   const send = sidecar.send;
-  sidecar.send = (id, body) => { if (body.operation === "input") sent.push(body.actions); return send(id, body); };
+  sidecar.send = (id, body, cids) => { if (body.operation === "input") sent.push(body.actions); return send(id, body, cids); };
   let region;
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: (...args) => (region = attach.function(...args)),
