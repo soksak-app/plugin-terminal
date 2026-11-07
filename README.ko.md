@@ -1,5 +1,7 @@
 # 터미널 plugin
 
+`terminal.screen.observe` is diagnostic-only: one request obtains a newly drawn renderer reference, atomically returning `requestId`, 2D semantic `rows`, `rowCount`, `columnCount`, `frame`, `cursor`, `render`, `background` and `scrollback`. It is separate from ordinary `screen.read`; unavailable, busy, closed or failed observations reject explicitly. It is a reference obtained after the measured interval, not readiness or a replacement for its earliest-content timing.
+
 [English](README.md)
 
 Plugin 형식은 soksak core spec(`docs/spec/plugins.md`)이 정한다.

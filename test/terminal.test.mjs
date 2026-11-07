@@ -5836,3 +5836,177 @@ test("the focus that a reattached session reads does not hold the input that wai
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(sent, [[{ type: "focus", focused: false }], [inputKey("Enter")]]);
 });
+
+
+// core F696-4-2-1: observations are one-shot renderer references, not ordinary screen reads.
+async function observationOwner(t, enabled = true) {
+  const sidecar = createFakeSidecar();
+  const closing = new AbortController();
+  const expose = createFakeExpose({ followScreen: false });
+  const controller = await startTerminal({ view: createFakeView(), detachRegions: async () => {},
+    attachImage: createFakeAttachImage().function, sidecar, expose,
+    ...(enabled ? { diagnostics: terminalDiagnostics } : {}), closing: closing.signal, window: { TextEncoder: FakeTextEncoder } });
+  let disposed = false;
+  const dispose = async () => { if (!disposed) { disposed = true; await controller.dispose(); } };
+  t.after(dispose);
+  openSession(sidecar);
+  return { sidecar, expose, dispose, abort: () => closing.abort() };
+}
+
+test("terminal.screen.observe is diagnostic-only and declared separately from screen.read", { timeout: 10000 }, async (t) => {
+  const diagnostics = JSON.parse(readFileSync(new URL("../diagnostics.json", import.meta.url), "utf8"));
+  const declaration = diagnostics.exposes.commands.find(({ name }) => name === "terminal.screen.observe");
+  assert.ok(declaration, "missing diagnostic observation declaration");
+  assert.deepEqual(declaration.params, { type: "object", properties: {} });
+  assert.deepEqual(Object.keys(declaration.result.properties).sort(),
+    ["requestId", "rows", "rowCount", "columnCount", "frame", "cursor", "render", "background", "scrollback"].sort());
+  assert.equal(declaration.result.properties.rows.type, "array");
+  assert.equal(declaration.result.properties.rows.items.type, "array");
+  assert.equal(declaration.result.properties.rowCount.type, "integer");
+  assert.equal(declaration.result.properties.columnCount.type, "integer");
+  assert.ok(!terminalManifest.exposes.commands.some(({ name }) => name === "terminal.screen.observe"));
+  const { expose } = await observationOwner(t, false);
+  assert.equal(expose.getCommand("terminal.screen.observe"), undefined);
+});
+
+test("terminal.screen.observe correlates a fresh atomic renderer reply without ordinary-read fallback", { timeout: 10000 }, async (t) => {
+  const { sidecar, expose, dispose } = await observationOwner(t);
+  const observe = expose.getCommand("terminal.screen.observe");
+  assert.equal(typeof observe, "function", "diagnostic observation command is missing");
+  let settled = false;
+  const pending = observe({}).finally(() => { settled = true; });
+  await sidecar.untilMessage((body) => body.operation === "screen.observe");
+  const sent = sidecar.getMessages().find(({ body }) => body.operation === "screen.observe").body;
+  assert.ok(Number.isSafeInteger(sent.requestId) && sent.requestId > 0);
+  const consoleErrors = [];
+  t.mock.method(console, "error", (...args) => { consoleErrors.push(args); });
+  // Ordinary screen acceptance replays the exact SDK hash case, with only
+  // renderer metadata (excluded from the hash projection) added.
+  const screen = { ...structuredClone(SCREEN_FRAME_PREEDIT),
+    render: SCREEN_RENDER(SCREEN_FRAME_PREEDIT.frame) };
+  sidecar.triggerRaw("test-session", screen);
+  await Promise.resolve();
+  assert.equal(settled, false, "ordinary screen event cannot satisfy observation");
+  // The separate observed wire contains the producer's required consumer
+  // fields; it never passes through the ordinary screen hash fake.
+  const reply = { ...screen, event: "screen.observed", requestId: sent.requestId,
+    background: "#ffffff", scrollback: { offset: 0, history: 0 } };
+  sidecar.triggerRaw("test-session", { ...reply, requestId: sent.requestId + 1 });
+  await Promise.resolve();
+  assert.equal(settled, false, "another requestId cannot satisfy observation");
+  sidecar.triggerRaw("test-session", reply);
+  const result = await pending;
+  assert.deepEqual(result.frame, reply.frame);
+  assert.deepEqual(result.render, reply.render);
+  assert.deepEqual(result.cursor, reply.cursor);
+  assert.equal(result.requestId, reply.requestId);
+  assert.equal(result.rowCount, reply.rows);
+  assert.equal(result.columnCount, reply.cols);
+  assert.equal(result.rows.length, reply.rows);
+  assert.deepEqual(result.rows.flat().map(({ ch }) => ch), reply.cells.map(({ grapheme }) => grapheme === "" ? undefined : grapheme));
+  assert.deepEqual(result.rows.flat().map(({ width }) => width), reply.cells.map(({ width }) => width));
+  assert.deepEqual(result.background, reply.background);
+  assert.deepEqual(result.scrollback, reply.scrollback);
+  assert.deepEqual(consoleErrors, [], "valid ordinary/observed messages must not log processing errors");
+  assert.equal(expose.getStatus("terminal.session").readFn().error, undefined);
+});
+
+test("terminal.screen.observe rejects explicit sidecar failure and releases the request", { timeout: 10000 }, async (t) => {
+  const { sidecar, expose, dispose } = await observationOwner(t);
+  const observe = expose.getCommand("terminal.screen.observe");
+  assert.equal(typeof observe, "function", "diagnostic observation command is missing");
+  const pending = observe({});
+  const rejected = assert.rejects(pending, /observationUnavailable.*renderer unavailable/);
+  await sidecar.untilMessage((body) => body.operation === "screen.observe");
+  const sent = sidecar.getMessages().find(({ body }) => body.operation === "screen.observe").body;
+  sidecar.triggerRaw("test-session", { error: "observationUnavailable", requestId: sent.requestId, reason: "renderer unavailable" });
+  await rejected;
+  const next = observe({});
+  const closed = assert.rejects(next, /clos|dispos/i);
+  await Promise.resolve();
+  const requests = sidecar.getMessages().filter(({ body }) => body.operation === "screen.observe");
+  assert.equal(requests.length, 2);
+  assert.notEqual(requests[0].body.requestId, requests[1].body.requestId);
+  await dispose();
+  await closed;
+});
+
+
+test("terminal.screen.observe rejects busy and send failure without retaining stale ownership", { timeout: 10000 }, async (t) => {
+  const { sidecar, expose, dispose } = await observationOwner(t);
+  const observe = expose.getCommand("terminal.screen.observe");
+  sidecar.failNext(new Error("observation transport failed"));
+  await assert.rejects(observe({}), /observation transport failed/);
+  const pending = observe({});
+  const closed = assert.rejects(pending, /clos|dispos/i);
+  await sidecar.untilMessage((body) => body.operation === "screen.observe");
+  await assert.rejects(observe({}), /observationBusy/);
+  assert.equal(sidecar.getMessages().filter(({ body }) => body.operation === "screen.observe").length, 1);
+  await dispose();
+  await closed;
+});
+
+for (const invalid of ["null frame", "different render frame"]) {
+  test(`terminal.screen.observe rejects ${invalid} rather than inventing an association`, { timeout: 10000 }, async (t) => {
+    const { sidecar, expose } = await observationOwner(t);
+    const observe = expose.getCommand("terminal.screen.observe");
+    const pending = observe({});
+    const rejected = assert.rejects(pending, /frame/);
+    await sidecar.untilMessage((body) => body.operation === "screen.observe");
+    const { requestId } = sidecar.getMessages().find(({ body }) => body.operation === "screen.observe").body;
+    const source = structuredClone(SCREEN_FRAME_PREEDIT);
+    const render = SCREEN_RENDER(source.frame);
+    const reply = { ...source, event: "screen.observed", requestId, render,
+      background: "#ffffff", scrollback: { offset: 0, history: 0 } };
+    if (invalid === "null frame") reply.frame = null;
+    else reply.render = { ...render, frame: { ...source.frame, sequence: source.frame.sequence + 1 } };
+    sidecar.triggerRaw("test-session", reply);
+    await rejected;
+  });
+}
+
+test("terminal.screen.observe rejects a pending request on surface abort", { timeout: 10000 }, async (t) => {
+  const { sidecar, expose, abort } = await observationOwner(t);
+  const pending = expose.getCommand("terminal.screen.observe")({});
+  const closed = assert.rejects(pending, /observationClosed/);
+  await sidecar.untilMessage((body) => body.operation === "screen.observe");
+  abort();
+  await closed;
+  await assert.rejects(expose.getCommand("terminal.screen.observe")({}), /observationClosed/);
+});
+
+
+test("terminal.screen.observe rejects semantic/render grid mismatch and releases ownership", { timeout: 10000 }, async (t) => {
+  const { sidecar, expose, dispose } = await observationOwner(t);
+  const observe = expose.getCommand("terminal.screen.observe");
+  const pending = observe({});
+  const rejected = assert.rejects(pending, { message: "observation render.grid must match semantic dimensions" });
+  await sidecar.untilMessage((body) => body.operation === "screen.observe");
+  const request = sidecar.getMessages().find(({ body }) => body.operation === "screen.observe").body;
+  const source = structuredClone(SCREEN_FRAME_PREEDIT);
+  const render = SCREEN_RENDER(source.frame);
+  sidecar.triggerRaw("test-session", { ...source, event: "screen.observed", requestId: request.requestId,
+    render: { ...render, grid: { ...render.grid, cols: source.cols + 1 },
+      pixel: { ...render.pixel, width: render.pixel.width + render.grid.cellWidth,
+        bytesPerRow: (render.pixel.width + render.grid.cellWidth) * 4 } },
+    background: "#ffffff", scrollback: { offset: 0, history: 0 } });
+  await rejected;
+  const next = observe({});
+  const closed = assert.rejects(next, /clos|dispos/i);
+  const requests = sidecar.getMessages().filter(({ body }) => body.operation === "screen.observe");
+  assert.equal(requests.length, 2, "malformed reply must release ownership for the next request");
+  assert.notEqual(requests[0].body.requestId, requests[1].body.requestId);
+  await dispose();
+  await closed;
+});
+
+test("screen.observe default event path guards error classification before allocations", { timeout: 10000 }, () => {
+  const source = readFileSync(new URL("../ui/terminal.js", import.meta.url), "utf8");
+  const start = source.indexOf('if (body.event === "screen.observed"');
+  assert.ok(start >= 0, "separate observation route is missing");
+  const route = source.slice(start, source.indexOf("observedScreen(body)", start));
+  const pendingGuard = route.indexOf("observation !== null");
+  const classification = route.indexOf('["observationUnavailable"');
+  assert.ok(pendingGuard >= 0 && classification > pendingGuard,
+    "pending-owner guard must precede allocating/classifying observation errors on ordinary events");
+});
