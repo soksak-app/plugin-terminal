@@ -1588,60 +1588,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // pty.pending 측정 응답을 기다리는 resolver. 진단 명령이 한 번에 하나만 요청한다.
   let pendingPtyRead = null;
 
-  // Observation requests never share ordinary screen readers or their cached state.
-  let observationSequence = 0;
-  let observation = null;
-  const rejectObservation = (reason) => {
-    if (!observation) return;
-    const pending = observation;
-    observation = null;
-    pending.reject(new Error(reason));
-  };
-  const observationClosed = () => rejectObservation("observationClosed: surface closed");
-  closing.addEventListener("abort", observationClosed, { once: true });
-  const observeScreen = () => {
-    if (closing.aborted || !sessionOpen || session.exited) return Promise.reject(new Error("observationClosed: session is not open"));
-    if (observation) return Promise.reject(new Error("observationBusy: observation already pending"));
-    if (observationSequence === Number.MAX_SAFE_INTEGER) return Promise.reject(new Error("observationFailed: requestId exhausted"));
-    const requestId = ++observationSequence;
-    return new Promise((resolve, reject) => {
-      observation = { requestId, resolve, reject };
-      terminal.send(id, { operation: "screen.observe", requestId }).catch((error) => {
-        if (observation?.requestId === requestId) rejectObservation(error.message);
-      });
-    });
-  };
-  const observedScreen = (body) => {
-    if (!Number.isSafeInteger(body.requestId) || body.requestId <= 0 || body.requestId !== observation?.requestId) return;
-    if (body.error) { rejectObservation(`${body.error}: ${body.reason}`); return; }
-    const pending = observation;
-    observation = null;
-    try {
-      if (body.frame === null || !isScreenFrame(body.frame)) throw new Error("observation frame is missing or invalid");
-      if (!Number.isInteger(body.rows) || body.rows <= 0 || !Number.isInteger(body.cols) || body.cols <= 0 ||
-          !Array.isArray(body.cells) || body.cells.length !== body.rows * body.cols) throw new Error("observation dimensions or cells are invalid");
-      for (const cell of body.cells) {
-        if (!cell || typeof cell.grapheme !== "string" || !Number.isInteger(cell.width) || cell.width < 0 || cell.width > 2 ||
-            !Number.isInteger(cell.attributes) || (cell.link !== undefined && typeof cell.link !== "string")) throw new Error("observation cell is invalid");
-      }
-      const cursor = body.cursor;
-      if (!cursor || !Number.isInteger(cursor.col) || !Number.isInteger(cursor.row) || typeof cursor.visible !== "boolean") throw new Error("observation cursor is invalid");
-      const caretError = screenCaretError(cursor, body.rows, body.cols, body.frame);
-      if (caretError !== null) throw new Error(caretError);
-      if (body.render === null || body.render === undefined) throw new Error("observation renderer metadata is unavailable");
-      const render = normalizeScreenRender(body.render, body.frame);
-      if (render.grid.rows !== body.rows || render.grid.cols !== body.cols) {
-        throw new Error("observation render.grid must match semantic dimensions");
-      }
-      if (typeof body.background !== "string" || !body.scrollback || !Number.isInteger(body.scrollback.offset) ||
-          !Number.isInteger(body.scrollback.history)) throw new Error("observation background or scrollback is invalid");
-      const rows = [];
-      for (let start = 0; start < body.cells.length; start += body.cols) rows.push(screenRow(body.cells.slice(start, start + body.cols)));
-      pending.resolve({ requestId: body.requestId, rows, rowCount: body.rows, columnCount: body.cols,
-        frame: body.frame, cursor, render, background: body.background, scrollback: body.scrollback });
-    } catch (error) { pending.reject(error); }
-  };
-
   // 사이드카 메시지 수신
   const stopSidecar = await terminal.on(id, (body, cids) => {
     // A close can be waiting for its disable ACK after the view aborts.
@@ -1659,13 +1605,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     }
     // The regions detach at the removal; an event after it would operate on a detached region.
     if (closing.aborted) return;
-    if (body.event === "screen.observed" ||
-        (observation !== null && body.requestId === observation.requestId &&
-          ["observationUnavailable", "observationBusy", "observationClosed", "observationFailed", "invalidParams"].includes(body.error))) {
-      observedScreen(body);
-      return;
-    }
-    if ((body.event === "connection" && body.connected === false) || body.event === "exit") observationClosed();
     if (body.event === "exit") {
       screenWatchConnected = false;
       screenWatchEnabled = false;
@@ -2202,7 +2141,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 사이드카는 세션을 끝낼 때 전송 그림을 놓는다. 영역을 먼저 떼므로 그 전에 보낸 프레임은 뗀 영역에서 stale 로 답하고,
   // 붙은 영역이 놓인 그림을 notFound 로 표시하지 못하는 일이 없다(core docs/spec/plugins.md#surface-module-ownership).
   async function endSession() {
-    observationClosed();
     await detachRegions();
     endCopyWaits();
     runtime.log.info("close", {});
@@ -2330,7 +2268,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         return () => pointerObservers.delete(fn);
       },
       readPtyPending,
-      observeScreen,
       readViewHistory: () => window.history.length,
       startViewFrames: diagnostics.startViewFrames,
       viewLog: {
@@ -2376,8 +2313,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         reportInputError(error, "screen");
       }
       closing.removeEventListener("abort", closeScreenWatch);
-      observationClosed();
-      closing.removeEventListener("abort", observationClosed);
       if (diagnostics) for (const type of pointerTraceTypes) view.removeEventListener(type, tracePointer);
       const offTheme = await themeSubscription?.dispose;
       // default: 테마나 설정 구독이 없으면 해제 함수도 없다.
