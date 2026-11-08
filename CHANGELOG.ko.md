@@ -2,7 +2,7 @@
 
 [English](CHANGELOG.md)
 
-- P136 (core F715-5): terminal 화면, keyboard, protocol, font, replay, hidden tab, view 측정의 window check 가 `e2e/`에 있고 `make test-app`으로 공개된 core 앱을 대상으로 실행되며, 실제 입력의 check 는 `make test-app-real`로 실행된다. core v0.0.40 의 window-check export `catalog.mjs`, `chains.mjs`, `drag-measurement.mjs`, `hid.mjs`, `process-table.mjs`, `project-resource.mjs`, `region-raster.mjs`, `view-content.mjs`, `view-frame-geometry.mjs`, `view-metrics-collection.mjs`를 기다린다.
+- P136 (core F715-5): terminal 화면, keyboard, protocol, font, replay, hidden tab, view 측정의 window check 가 `e2e/`에 있고 `make test-app`으로 공개된 core 앱을 대상으로 실행되며, 실제 입력의 check 는 `make test-app-real`로 실행된다. `@soksak/window-check`의 시작 상태와 bin `soksak-test-app`을 쓰고, core v0.0.40 의 window-check export `chains.mjs`, `drag-measurement.mjs`, `hid.mjs`, `process-table.mjs`, `project-resource.mjs`, `region-raster.mjs`, `view-content.mjs`, `view-frame-geometry.mjs`, `view-metrics-collection.mjs`를 기다린다.
 - P135: 진단 command `terminal.screen.observe`를 제거한다. `terminal.screen.read`와 그 frame identity는 유지된다.
 - P132: core 호환성 문서가 `^0.0.40`은 core 0.0.40부터 그 뒤의 모든 0.0 release를 허용한다고 적고, test가 이를 요구한다. Red: 이전 문장에서 test가 실패했다. Green: 통과한다.
 - P116: core 0.0.35부터 0.0.39까지는 F502-13 없이 release되어 `exposes.element`를 거부하므로, `engines.soksak`은 F502-13의 core release인 `^0.0.40`이다. 이 release는 P118과 P129가 읽는 F518과 F617을 담는 첫 core release이기도 하다. Red: version test가 `^0.0.39`에서 실패했다. Green: 통과한다.
