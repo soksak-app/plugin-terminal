@@ -6,8 +6,7 @@ import test from "node:test";
 
 import { findFirstChangedSlotFrame } from "@soksak/window-check/view-frame-geometry.mjs";
 import { TAB_PLACEMENT } from "@soksak/window-check/view-metrics-collection.mjs";
-import { terminalDragGeometryFrame, terminalSourceContentFrame,
-  terminalViewDescriptor, writeTerminalDragLayouts, measureTerminalLayoutFrame,
+import { terminalViewDescriptor, writeTerminalDragLayouts, measureTerminalLayoutFrame,
   setTerminalGeometryBackground, terminalRasterTargetRectPt, TERMINAL_GEOMETRY_BACKGROUND }
   from "../benchmark/cases/terminal.mjs";
 
@@ -103,42 +102,6 @@ test("terminal drag layout evidence is written before frame analysis", { timeout
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
-});
-
-test("terminal drag geometry keeps four measured card and raster edges from the same captured frame", { timeout: 5000 }, () => {
-  assert.deepEqual(terminalDragGeometryFrame(7, {
-    timeMs: 148,
-    cardRectPt: { left: 10, top: 20, right: 209.5, bottom: 180 },
-    nativeRectPt: { left: 11, top: 21, right: 208.5, bottom: 179 },
-  }, { left: 1, top: 1, right: 1, bottom: 1 }), {
-    frameIndex: 7,
-    timeMs: 148,
-    cardRectPt: { left: 10, top: 20, right: 209.5, bottom: 180 },
-    nativeRectPt: { left: 11, top: 21, right: 208.5, bottom: 179 },
-    contentRectPt: { left: 11, top: 21, right: 208.5, bottom: 179 },
-    slotInsetsPt: { left: 1, top: 1, right: 1, bottom: 1 },
-    contentInsetsPt: { left: 0, top: 0, right: 0, bottom: 0 },
-  });
-});
-
-test("terminal source content mapping retains source interval and capture time without placement association", { timeout: 5000 }, () => {
-  const source = { sequence: 4, frameIndex: 7, timeRange: { lowerMs: 147, upperMs: 149 }, width: 198, height: 120,
-    firstResizeAtMs: 31, resizeAtMs: 31, resizeCount: 1, frameTimeMs: 33,
-    source: { documentTimeOriginMs: 1000, eventTsUs: 1_200_000, eventMonoNs: 148_000_000 } };
-  assert.deepEqual(terminalSourceContentFrame(source, { time: 150 }), {
-    sourceSequence: 4, frameIndex: 7, frameTimeMs: 33, captureTimeMs: 150,
-    displayCapture: null, timeRange: { lowerMs: 147, upperMs: 149 }, width: 198, height: 120,
-    source: { sequence: 4, firstResizeAtMs: 31, resizeAtMs: 31, resizeCount: 1, frameTimeMs: 33, documentTimeOriginMs: 1000,
-      eventTsUs: 1_200_000, eventMonoNs: 148_000_000 },
-    displayTimeMs: 150,
-  });
-  assert.deepEqual(terminalSourceContentFrame({ ...source, frameIndex: null }, null), {
-    sourceSequence: 4, frameIndex: null, frameTimeMs: 33, captureTimeMs: null,
-    displayCapture: null, timeRange: { lowerMs: 147, upperMs: 149 }, width: 198, height: 120,
-    source: { sequence: 4, firstResizeAtMs: 31, resizeAtMs: 31, resizeCount: 1, frameTimeMs: 33, documentTimeOriginMs: 1000,
-      eventTsUs: 1_200_000, eventMonoNs: 148_000_000 },
-    displayTimeMs: null,
-  });
 });
 
 test("terminal view descriptor reads browser history and controls only the diagnostic frame observer", { timeout: 5000 }, async () => {

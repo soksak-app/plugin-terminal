@@ -15,6 +15,7 @@ import { valueProof } from "@soksak/window-check/view-content.mjs";
 import { presentsFrame } from "@soksak/window-check/region-raster.mjs";
 import { declaredSlotInsets, effectiveCardCornerRadiusPt, findFirstChangedSlotFrame, measureViewFrameGeometry }
   from "@soksak/window-check/view-frame-geometry.mjs";
+import { dragTailGeometryFrame, sourceContentFrame } from "@soksak/window-check/marker-view.mjs";
 import { PLUGIN } from "../../start.mjs";
 import { readScreenUntil } from "../../terminal-screen.mjs";
 import { readTerminalContent } from "../../view-content.mjs";
@@ -62,73 +63,15 @@ export const terminalViewDescriptor = Object.freeze({
   },
 });
 
+/** The name of the measured view in the errors of the drag evidence. */
+const OWNER = "terminal view";
+
 /** Persists the original drag transaction rows before any frame analysis can fail. */
 export function writeTerminalDragLayouts(directory, layouts) {
   assert.ok(Array.isArray(layouts), "terminal drag layouts must be an array");
   const path = join(directory, "layouts.json");
   writeFileSync(path, JSON.stringify({ layouts }, null, 2) + "\n");
   return path;
-}
-
-/** Preserves the actual card and terminal raster rectangles measured in one captured frame. */
-export function terminalDragGeometryFrame(frameIndex, measured, slotInsetsPt) {
-  assert.ok(Number.isSafeInteger(frameIndex) && frameIndex >= 0, "terminal drag frame index is invalid");
-  assert.ok(Number.isFinite(measured?.timeMs) && measured.timeMs >= 0, "terminal drag frame time is invalid");
-  for (const name of ["cardRectPt", "nativeRectPt"]) {
-    const rect = measured?.[name];
-    assert.ok(rect && ["left", "top", "right", "bottom"].every((edge) => Number.isFinite(rect[edge]))
-      && rect.right >= rect.left && rect.bottom >= rect.top, `terminal drag ${name} is invalid`);
-  }
-  assert.ok(slotInsetsPt && ["left", "top", "right", "bottom"].every((edge) =>
-    Number.isFinite(slotInsetsPt[edge]) && slotInsetsPt[edge] >= 0), "terminal drag slot insets are invalid");
-  return {
-    frameIndex,
-    timeMs: measured.timeMs,
-    cardRectPt: measured.cardRectPt,
-    nativeRectPt: measured.nativeRectPt,
-    contentRectPt: measured.nativeRectPt,
-    slotInsetsPt,
-    contentInsetsPt: { left: 0, top: 0, right: 0, bottom: 0 },
-  };
-}
-
-
-/** Preserves one source document size update and its mapped capture time without assigning a native readback. */
-export function terminalSourceContentFrame(source, displayFrame, displayCapture = null) {
-  const frameIndex = source.frameIndex;
-  if (frameIndex === null) {
-    assert.equal(displayFrame, null, "uncaptured terminal source frame must not have a display frame");
-  } else {
-    assert.ok(Number.isSafeInteger(frameIndex) && frameIndex >= 0, "terminal source frame index is invalid");
-    assert.ok(Number.isFinite(displayFrame?.time) && displayFrame.time >= source.timeRange.upperMs,
-      "terminal source frame must map to a captured frame after its mapped interval");
-  }
-  assert.ok(Number.isFinite(source?.sequence) && source.sequence >= 0, "terminal source event sequence is invalid");
-  assert.ok(Number.isFinite(source?.width) && source.width > 0 && Number.isFinite(source?.height) && source.height > 0,
-    "terminal source content dimensions are invalid");
-  assert.ok(Number.isFinite(source?.source?.documentTimeOriginMs) && source.source.documentTimeOriginMs > 0,
-    "terminal source frame has no document clock origin");
-  return {
-    sourceSequence: source.sequence,
-    frameIndex,
-    frameTimeMs: source.frameTimeMs,
-    captureTimeMs: displayFrame?.time ?? null,
-    displayCapture,
-    timeRange: source.timeRange,
-    width: source.width,
-    height: source.height,
-    source: {
-      sequence: source.sequence,
-      firstResizeAtMs: source.firstResizeAtMs,
-      resizeAtMs: source.resizeAtMs,
-      resizeCount: source.resizeCount,
-      frameTimeMs: source.frameTimeMs,
-      documentTimeOriginMs: source.source.documentTimeOriginMs,
-      eventTsUs: source.source?.eventTsUs,
-      eventMonoNs: source.source?.eventMonoNs,
-    },
-    displayTimeMs: displayFrame?.time ?? null,
-  };
 }
 
 // Keep measured content outside the color tolerance of the card's antialiased focus outline.
@@ -302,12 +245,12 @@ async function terminalDragObservation(t, s, descriptor, surface, card, configDi
   const geometryFrames = [];
   for (let frameIndex = firstGestureFrameIndex; frameIndex <= gestureEndedFrameIndex; frameIndex++) {
     const measured = measureTerminalLayoutFrame(captured[frameIndex], { cornerRadiusPt, targetRect });
-    geometryFrames.push(terminalDragGeometryFrame(frameIndex, measured, slotInsetsPt));
+    geometryFrames.push(dragTailGeometryFrame(frameIndex, measured, slotInsetsPt, OWNER));
   }
   const tailGeometryFrames = [];
   for (let frameIndex = gestureEndedFrameIndex + 1; frameIndex < captured.length; frameIndex++) {
     const measured = measureTerminalLayoutFrame(captured[frameIndex], { cornerRadiusPt, targetRect });
-    tailGeometryFrames.push(terminalDragGeometryFrame(frameIndex, measured, slotInsetsPt));
+    tailGeometryFrames.push(dragTailGeometryFrame(frameIndex, measured, slotInsetsPt, OWNER));
   }
 
   const mapped = requireViewContentFrameCoverage(mapViewContentFramesToCapture(traced.contentFrames, captured), {
@@ -315,8 +258,8 @@ async function terminalDragObservation(t, s, descriptor, surface, card, configDi
   });
   const sourceFrames = mapped.map((source) => {
     const displayCaptureIndex = captured.findIndex((frame) => frame.time >= Math.max(run.displayed, source.timeRange.upperMs));
-    return terminalSourceContentFrame(source, source.frameIndex === null ? null : captured[source.frameIndex],
-      displayCaptureIndex < 0 ? null : { frameIndex: displayCaptureIndex, timeMs: captured[displayCaptureIndex].time });
+    return sourceContentFrame(source, source.frameIndex === null ? null : captured[source.frameIndex].time,
+      displayCaptureIndex < 0 ? null : { frameIndex: displayCaptureIndex, timeMs: captured[displayCaptureIndex].time }, OWNER);
   });
   writeFileSync(join(directory, "source-frames.json"), JSON.stringify({
     frames: sourceFrames, rawEvents: traced.events, contentFrames: traced.contentFrames,
