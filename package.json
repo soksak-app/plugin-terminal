@@ -35,6 +35,7 @@
   },
   "devDependencies": {
     "@soksak/kit": "https://github.com/soksak-app/kit/releases/download/v0.0.14/soksak-kit-0.0.14.tgz",
+    "@soksak/window-check": "https://github.com/soksak-app/core/releases/download/v0.0.40/soksak-window-check-0.0.40.tgz",
     "acorn": "^8.19.0",
     "ajv": "8.20.0",
     "jsdom": "^30.1.1"
