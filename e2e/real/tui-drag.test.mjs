@@ -86,7 +86,7 @@ for (const app of Object.values(APPS)) {
         try {
           await s.until("terminal.pointer.trace", (value) => {
             const up = value.entries.findLast((entry) => entry.kind === "pointer-sent" && entry.body.operation === "mouse" && entry.body.phase === "up");
-            return up && value.entries.some((entry) => entry.kind === "pointer-result" && entry.body.inputId === up.body.inputId);
+            return up !== undefined && value.entries.some((entry) => entry.kind === "pointer-result" && entry.body.inputId === up.body.inputId);
           }, "the current drag has no matching mouse-up result", { surface, timeout: 5000 });
         } catch (error) { waitError = String(error); }
         // Measures the PTY transfer state after the gesture. This observation separates a successful write from reception by the child,

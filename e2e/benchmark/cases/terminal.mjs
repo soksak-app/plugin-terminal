@@ -32,7 +32,7 @@ export const terminalViewDescriptor = Object.freeze({
   readContent: (session, surface) => readTerminalContent(session, surface),
   readinessStatus: "terminal.session",
   readiness: async (s, surface) => {
-    const session = await s.until("terminal.session", (value) => value?.sessionId && value.cols > 0 && value.rows > 0,
+    const session = await s.until("terminal.session", (value) => value.sessionId !== "" && value.cols > 0 && value.rows > 0,
       `terminal view ${surface} did not open its session`, { surface });
     const lines = await readScreenUntil(s, surface, (rows) => rows.some((line) => line.startsWith("sh-3.2$")),
       `terminal view ${surface} did not display its initial shell prompt`).catch(async (error) => {

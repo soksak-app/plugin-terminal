@@ -23,7 +23,7 @@ for (const app of Object.values(APPS)) {
       for (let index = 0; index < 3; index++) {
         const { tab } = await s.run("core.card.add-tab", { card, plugin: "terminal" });
         tabs.push(tab);
-        await s.until("terminal.session", (value) => value?.sessionId && value.cols > 0 && value.rows > 0,
+        await s.until("terminal.session", (value) => value.sessionId !== "" && value.cols > 0 && value.rows > 0,
           `round ${round}: terminal ${tab} did not open its session`, { surface: tab });
         await readScreenUntil(s, tab, (rows) => rows.some((line) => line.startsWith(PROMPT)),
           `round ${round}: terminal ${tab} did not display its prompt`);

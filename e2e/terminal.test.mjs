@@ -514,7 +514,7 @@ for (const app of Object.values(APPS)) {
     // Waits until the terminal sessionId exists.
     await s.until(
       "terminal.session",
-      (session) => session && session.sessionId,
+      (session) => session.sessionId !== "",
       "terminal session did not report sessionId",
       { surface: terminalSurface }
     );

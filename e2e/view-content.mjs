@@ -27,7 +27,7 @@ export function terminalContentCase(s, diagnostic) {
     return s.until(name, predicate, `${tab} did not reach ${name} readiness`, { surface: tab });
   };
   return { ready: async (_, { tab }) => {
-    await status(tab, "terminal.session", value => value.sessionId && value.cols > 0 && value.rows > 0);
+    await status(tab, "terminal.session", value => value.sessionId !== "" && value.cols > 0 && value.rows > 0);
     await s.run("terminal.input", { bytes: `printf '${text}\\n'\r` }, tab);
     await status(tab, "terminal.screen", rows => rows.map(row => row.map(cell => cell.ch ?? " ").join("")).join("\n").includes(text));
     const rect = await s.rect("terminal.view", undefined, tab);

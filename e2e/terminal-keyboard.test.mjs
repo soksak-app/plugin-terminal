@@ -139,7 +139,7 @@ for (const app of Object.values(APPS)) {
         await readScreenUntil(s, surface, (lines) => lines.join("").includes("read x") &&
           !lines.filter(Boolean).at(-1)?.endsWith("$"), "the read command did not start");
         await s.press("c", { modifiers: ["control"] });
-        await readScreenUntil(s, surface, (lines) => lines.filter(Boolean).at(-1)?.endsWith("$"),
+        await readScreenUntil(s, surface, (lines) => lines.filter(Boolean).at(-1)?.endsWith("$") === true,
           "native Ctrl+C did not return the shell to its prompt");
         const interrupted = `interrupted${index}`;
         await type(s, `echo ${interrupted}`);
