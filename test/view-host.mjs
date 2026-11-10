@@ -42,17 +42,23 @@ function fakeSidecar(openError = null) {
   };
 }
 
+// The input handler of the region is the input of composition.create, and core refuses on("input") of such a region.
 function fakeRegion() {
   const listeners = new Map();
   return {
+    input: null,
     on(event, fn) {
+      if (event === "input") throw new Error("image view: the input handler is the input of composition.create");
       if (!listeners.has(event)) listeners.set(event, new Set());
       listeners.get(event).add(fn);
       return () => listeners.get(event)?.delete(fn);
     },
     async focus() {},
     async setCaret() {},
-    trigger(event, value) { for (const fn of listeners.get(event) ?? []) fn(value); },
+    trigger(event, value) {
+      if (event === "input") { this.input?.(value); return; }
+      for (const fn of listeners.get(event) ?? []) fn(value);
+    },
   };
 }
 
@@ -130,7 +136,9 @@ export function createViewPage(_t, caseId, { scheme = "dark", start = START, dia
         const attachment = { name: "view", sidecar: manifest.surface.composition.regions[0].sidecar };
         regionCalls.push(["image.attach", attachment]);
         received.push({ command: "image.attach", params: attachment });
-        places.push({ regions: Object.keys(elements.regions).map((name) => ({ name })), overlays: Object.keys(elements.overlays) });
+        places.push({ regions: Object.keys(elements.regions).map((name) => ({ name })), overlays: Object.keys(elements.overlays),
+          input: Object.keys(elements.input ?? {}) });
+        region.input = elements.input?.view ?? null;
         return {
           region(name) { if (name !== "view") throw new Error("unknown terminal image region: " + name); return region; },
           async dispose() {
