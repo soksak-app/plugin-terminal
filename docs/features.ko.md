@@ -1,5 +1,7 @@
 # 기능
 
+- [ ] P138 — P1, sidecar-alacritty S115와 연결: 뷰의 위나 아래 가장자리를 넘는 텍스트 선택 드래그가 기록을 스크롤한다. 페이지 쪽. 입력: 페이지는 뷰 밖의 드래그 점을 뷰 안의 가장 가까운 점으로 옮기고 모든 이동을 기다리는 선택 갱신에 합치므로, 사이드카는 포인터가 가장자리를 넘었는지 알 수 없다. 기대: 각 `selection.update`는 가장 가까운 점을 `x`와 `y`로, 뷰 가장자리를 넘은 포인트 단위 세로 거리를 `overflow`로 담는다(위 가장자리 위는 음수, 아래 가장자리 아래는 양수, 안은 0). 이동은 기다리는 갱신과 둘 다 뷰 안일 때만 합친다. `mouse` 연산은 가장 가까운 점을 유지한다. Red: 뷰 위와 아래로 하는 드래그가 overflow를 보내고, 뷰 밖의 각 이동이 자기 갱신이며, 뷰 안의 이동은 여전히 합쳐지는 node test.
+
 - [ ] P137 — P1, sidecar-alacritty S114와 연결: 스크롤바 트랙과 여백 띠가 터미널의 현재 기본 배경을 따른다. 입력: 페이지는 그 색을 `screen` 메시지의 `background`에서만 정하는데, 그 메시지는 첫 `theme`보다 먼저인 bootstrap 읽기에만 오므로 트랙과 띠가 light 모드와 dark 모드 모두에서 `#1e1e1e`로 남는다. 기대: 페이지는 트랙과 띠를 각 `view` 이벤트의 `background`로 칠하고 다른 메시지로는 칠하지 않는다. `theme` 답은 여전히 `terminal.session.background`를 정하며, `#rrggbb` `background`가 없는 `view` 이벤트는 입력 오류다. Red: theme 답 뒤와 OSC 11 변경 뒤에 트랙과 띠가 `view` 배경을 따르고, `screen` 메시지는 그것을 칠하지 않는 node test.
 
 - [ ] P136 — P0, core F715-5 와 연결: terminal 화면, keyboard 와 protocol, font, replay, hidden tab의 window check 가 이 저장소에서 공개된 core 를 대상으로 실행된다. 입력: core window check 가 이 plugin 을 실제 이름과 값으로 검증해서, core release 가 이 plugin 의 release 를 기다리고 core 의 contract 변경 때 양쪽이 서로를 기다린다(core F715). 기대: core F715-1 이 이 plugin 에 배정한 check 가 이곳에서 공개된 `@soksak/window-check` 로 공개된 core 앱을 대상으로 실행되고, 이 plugin 의 release 를 막는다.
