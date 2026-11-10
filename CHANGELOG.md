@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- P138: Each selection update carries `overflow`, the vertical distance from its nearest point in the view to the pointer, and a move outside the view is never merged into the waiting update, so the sidecar scrolls a drag past the edge (sidecar-alacritty S115). Red: the drag tests failed on updates without `overflow`. Green: they pass.
 - P137: The scrollbar track and the padding strips take the color of the `background` of each `view` event and of no other message, so they follow the theme and OSC 11 in light and dark mode; the plugin requires a sidecar-alacritty release that carries S114. Red: the track and padding tests failed. Green: they pass.
 - P135: The diagnostic command `terminal.screen.observe` is removed; `terminal.screen.read` and its frame identity remain.
 - P132: The core compatibility documents state that `^0.0.40` admits core 0.0.40 and every later 0.0 release, and a test requires it. Red: the test failed on the earlier statement. Green: it passes.
