@@ -863,9 +863,8 @@ test("the scrollbar shows the scrollback position and dragging its thumb moves t
     cursor: { col: 0, row: 0, visible: false, focused: false, shape: "Block", blinking: false }, scrollback: { offset, history: 50 } });
   screen(25);
   assert.equal(track.hidden, false);
-  // 트랙은 네이티브 그림이 잘린 자리를 칠하므로 터미널의 현재 기본 배경색이어야 한다.
-  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], background: "#102030",
-    cursor: { col: 0, row: 0, visible: false, focused: false, shape: "Block", blinking: false }, scrollback: { offset: 25, history: 50 } });
+  // 트랙은 네이티브 그림이 잘린 자리를 칠하므로 터미널의 현재 기본 배경색, 즉 view 이벤트의 background 여야 한다.
+  fakeSidecar.triggerRaw("test-session", viewEvent({ background: "#102030", scrollback: { offset: 25, history: 50 } }));
   assert.equal(track.style.background, "#102030");
   assert.deepEqual([thumb.style.height, thumb.style.top], ["300px", "150px"]);
 
@@ -905,8 +904,7 @@ test("scrollbar settings set the track background, thumb color, width, and shape
     window: { TextEncoder: FakeTextEncoder },
   });
   openSession(fakeSidecar);
-  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], background: "#102030",
-    cursor: { col: 0, row: 0, visible: true, focused: false, shape: "Block", blinking: false }, scrollback: { offset: 0, history: 50 } });
+  fakeSidecar.triggerRaw("test-session", viewEvent({ background: "#102030", scrollback: { offset: 0, history: 50 } }));
   assert.deepEqual([track.style.width, track.style.background, thumb.style.background, thumb.style.borderRadius],
     ["16px", "#102030", "#ff000080", "0px"]);
 
@@ -941,8 +939,7 @@ test("padding settings inset the region on each side and show the terminal backg
   assert.deepEqual(inset(), ["absolute", "4px", "8px", "12px", "16px"]);
   assert.deepEqual([track.style.top, track.style.right, track.style.bottom], ["4px", "8px", "12px"]);
   openSession(fakeSidecar);
-  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], background: "#102030",
-    cursor: { col: 0, row: 0, visible: true, focused: false, shape: "Block", blinking: false } });
+  fakeSidecar.triggerRaw("test-session", viewEvent({ background: "#102030" }));
   assert.deepEqual(Object.values(strips).map((strip) => strip.style.background), Array(4).fill("#102030"),
     "the padding shows the terminal background");
   assert.deepEqual([strips.left.style.top, strips.left.style.bottom, strips.left.style.width], ["4px", "12px", "16px"]);
@@ -952,6 +949,62 @@ test("padding settings inset the region on each side and show the terminal backg
   assert.deepEqual(inset(), ["absolute", "0px", "8px", "12px", "2px"]);
   assert.equal(track.style.top, "0px");
   assert.deepEqual([strips.top.hidden, strips.left.hidden, strips.left.style.width], [true, false, "2px"]);
+});
+
+// A view event of a drawn frame (docs/spec/alacritty-core.md of the sidecar): its cursor, caret, scrollback and default
+// background. The members of `overrides` replace those of the event.
+function viewEvent(overrides = {}) {
+  return {
+    event: "view", frame: { generation: 1, raster: 1, sequence: 4 }, rows: 24, cols: 80, scrollback: { offset: 0, history: 0 },
+    cursor: { col: 0, row: 0, visible: true, focused: true, shape: "Block", blinking: false, blinkVisible: true, caret: { row: 0, col: 0 }, preedit: null },
+    background: "#1e1e1e",
+    ...overrides,
+  };
+}
+
+test("the scrollbar track and the padding follow the background of the view event and of no other message", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  const strips = Object.fromEntries(["top", "right", "bottom", "left"].map((side) => [side, { style: {}, hidden: true }]));
+  const track = Object.assign(createFakeView(), { style: {}, hidden: true });
+  const thumb = Object.assign(createFakeView(), { style: {} });
+  const values = { ...SHELL_SETTINGS.read(), "padding.top": 4, "padding.right": 4, "padding.bottom": 4, "padding.left": 4 };
+  await startTerminal({
+    view: Object.assign(createFakeView(), { style: {} }), padding: strips, detachRegions: async () => {},
+    attachImage: createFakeAttachImage().function, sidecar: fakeSidecar, expose: fakeExpose, scrollbar: { track, thumb },
+    settings: { read: () => values, on: () => () => {} },
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(fakeSidecar);
+  const painted = () => [track.style.background, ...Object.values(strips).map((strip) => strip.style.background)];
+
+  // The screen of a read carries a background for its reader, and the theme answer the applied theme background: neither
+  // paints the track or the padding.
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], background: "#102030",
+    cursor: { col: 0, row: 0, visible: true, focused: false, shape: "Block", blinking: false } });
+  assert.equal(fakeExpose.getStatus("terminal.session").readFn().error, undefined, "the screen of the read is accepted");
+  fakeSidecar.triggerRaw("test-session", { event: "theme", mode: "light", background: "#f7f7f5" });
+  assert.equal(fakeExpose.getStatus("terminal.session").readFn().background, "#f7f7f5", "the theme answer sets the session background");
+  assert.deepEqual(painted(), Array(5).fill(""), "only a view event paints the track and the padding");
+
+  // The frame of the theme sends its view with the theme background.
+  fakeSidecar.triggerRaw("test-session", viewEvent({ background: "#f7f7f5", scrollback: { offset: 0, history: 5 } }));
+  assert.deepEqual(painted(), Array(5).fill("#f7f7f5"), "the track and the padding follow the theme background of the view");
+
+  // A program sets the default background with OSC 11; the next frame sends its view with that color.
+  fakeSidecar.triggerRaw("test-session", viewEvent({ frame: { generation: 1, raster: 1, sequence: 5 }, background: "#204060",
+    scrollback: { offset: 0, history: 5 } }));
+  assert.deepEqual(painted(), Array(5).fill("#204060"), "the track and the padding follow the OSC 11 color of the view");
+
+  assert.equal(fakeExpose.getStatus("terminal.session").readFn().error, undefined);
+
+  // A view without a #rrggbb background is refused and paints nothing.
+  for (const background of [undefined, "red", "#1020"]) {
+    fakeSidecar.triggerRaw("test-session", viewEvent({ frame: { generation: 1, raster: 1, sequence: 6 }, background }));
+    assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "", /invalid view background/, String(background));
+    assert.deepEqual(painted(), Array(5).fill("#204060"), String(background));
+  }
 });
 
 test("the region reports an unknown action as an input error", async () => {
@@ -2329,7 +2382,7 @@ test("a view event publishes the cursor of its frame, moves the input-method car
   const frame = { generation: 1, raster: 1, sequence: 4 };
   const cursor = { col: 3, row: 1, visible: true, focused: true, shape: "Block", blinking: false, blinkVisible: true, caret: { row: 1, col: 3 } };
 
-  fakeSidecar.triggerRaw("test-session", { event: "view", frame, rows: 24, cols: 80, cursor, scrollback: { offset: 0, history: 12 } });
+  fakeSidecar.triggerRaw("test-session", { event: "view", frame, rows: 24, cols: 80, cursor, scrollback: { offset: 0, history: 12 }, background: "#1e1e1e" });
   await new Promise((resolve) => setImmediate(resolve));
 
   const status = expose.getStatus("terminal.cursor").readFn();
@@ -2339,14 +2392,14 @@ test("a view event publishes the cursor of its frame, moves the input-method car
   assert.deepEqual(expose.getStatus("terminal.session").readFn().scrollback, { offset: 0, history: 12 });
 
   fakeSidecar.triggerRaw("test-session", { event: "view", frame: { ...frame, sequence: 5 }, rows: 24, cols: 80, cursor: { ...cursor, caret: { row: 50, col: 0 } },
-    scrollback: { offset: 0, history: 13 } });
+    scrollback: { offset: 0, history: 13 }, background: "#1e1e1e" });
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(expose.getStatus("terminal.cursor").readFn().frame, frame, "a caret outside the grid does not replace the cursor");
   assert.deepEqual(expose.getStatus("terminal.session").readFn().scrollback, { offset: 0, history: 12 }, "a refused view changes no scrollback");
   assert.match(expose.getStatus("terminal.session").readFn().error ?? "", /invalid view/, "a refused view is reported as an error");
   // The grid of the frame judges its caret: the state event of a new grid can follow the first view of that grid.
   fakeSidecar.triggerRaw("test-session", { event: "view", frame: { ...frame, sequence: 6 }, rows: 60, cols: 200, cursor: { ...cursor, caret: { row: 50, col: 150 } },
-    scrollback: { offset: 0, history: 14 } });
+    scrollback: { offset: 0, history: 14 }, background: "#1e1e1e" });
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(expose.getStatus("terminal.cursor").readFn().caret, { row: 50, col: 150 }, "a caret inside the grid of its frame was refused");
 });
@@ -2371,6 +2424,7 @@ async function startWatchedScreen(options, overrides = {}) {
 const VIEW_EVENT = {
   event: "view", frame: { generation: 1, raster: 1, sequence: 4 }, rows: 24, cols: 80, scrollback: { offset: 0, history: 0 },
   cursor: { col: 0, row: 0, visible: true, focused: true, shape: "Block", blinking: false, blinkVisible: true, caret: { row: 0, col: 0 }, preedit: null },
+  background: "#1e1e1e",
 };
 
 test("a semantic screen watch waits for matching ACK and cancels a disconnected pending registration", { timeout: 10000 }, async () => {
