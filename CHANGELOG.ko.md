@@ -2,6 +2,7 @@
 
 [English](CHANGELOG.md)
 
+- P139: terminal이 입력 handler를 `composition.create`의 `input`으로 주므로 region의 모든 입력 event가 dispatch 중에 그 handler에 닿고 어떤 event도 붙잡히지 않는다. page는 `on("input")`을 등록하지 않는다. release는 F718-7을 담은 core를 pin한다. Red: core를 따르는 fake로 test가 실패했다. Green: 통과한다.
 - P138: 각 선택 갱신이 뷰 안의 가장 가까운 점에서 포인터까지의 세로 거리 `overflow`를 담고, 뷰 밖의 이동은 기다리는 갱신에 합치지 않으므로 sidecar가 가장자리를 넘는 드래그를 스크롤한다(sidecar-alacritty S115). Red: drag test가 `overflow` 없는 갱신에서 실패했다. Green: 통과한다.
 - P137: 스크롤바 트랙과 여백 띠는 각 `view` 이벤트의 `background` 색만 쓰므로 light와 dark 모드에서 테마와 OSC 11을 따른다. plugin은 S114를 담은 sidecar-alacritty release를 요구한다. Red: 트랙과 여백 test가 실패했다. Green: 통과한다.
 - P135: 진단 command `terminal.screen.observe`를 제거한다. `terminal.screen.read`와 그 frame identity는 유지된다.
