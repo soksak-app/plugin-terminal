@@ -1,6 +1,6 @@
 # 터미널 plugin
 
-`terminal.screen` watch는 첫 read 전에 semantic PTY 화면 변경을 구독한다. native image가 그리지 않거나 raster copy가 대기 중이어도 engine 출력은 관찰 중인 cells를 무효화하며, 기존 read 병합이 read 도중 변경에 후속 read 하나를 유지한다. 첫 watcher가 `screen.watch`를 켜고 마지막 watcher는 한 번 끄며 재연결은 새 read 전에 복원하고 dispose·abort는 해제한다. watcher가 없는 surface는 semantic 알림을 요청하지 않는다. `screen.changed`는 raster·presentation을 증명하지 않는다. 등록은 고유한 기존 wire CID에 맞는 `screen.watching` 확인 응답을 기다리며 전송 완료만으로 첫 read를 시작하지 않는다. 거부·전송 실패·응답 누락은 기존 session 오류 상태로 보고한다. 전송 API에는 semantic 응답 deadline이 없으므로 대기 중인 전환마다 screen.read와 같은 5초 응답 한계를 두고 ACK·대체·연결 해제·exit·abort가 timer를 끝낸다. 늦은 CID는 끝난 등록을 복원하지 못한다.
+`terminal.screen` watch는 첫 read 전에 semantic PTY 화면 변경을 구독한다. native image가 그리지 않거나 raster copy가 대기 중이어도 engine 출력은 관찰 중인 cells를 무효화하며, 기존 read 병합이 read 도중 변경에 후속 read 하나를 유지한다. 첫 watcher가 `screen.watch`를 켜고 마지막 watcher는 한 번 끄며 재연결은 새 read 전에 복원하고 dispose·abort는 해제한다. watcher가 없는 surface는 semantic 알림을 요청하지 않는다. `screen.changed`는 raster·presentation을 증명하지 않는다. 등록은 고유한 기존 wire CID에 맞는 `screen.watching` 확인 응답을 기다리며 전송 완료만으로 첫 read를 시작하지 않는다. 거부·전송 실패·surface의 `sidecar-failure`는 기존 session 오류 상태로 보고한다. 대기 중인 전환에는 시간 한도가 없고, 확인 응답·거부·전송 실패·대체·connection event·exit·surface의 `sidecar-failure`·view의 닫힘이 그것을 끝낸다. 늦은 CID는 끝난 등록을 복원하지 못한다.
 
 [English](README.md)
 
