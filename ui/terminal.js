@@ -1300,6 +1300,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   };
   // 스크롤바 설정(docs/spec/terminal-runtime.md). 잘못된 값은 입력 오류로 보고하고 적용하지 않는다.
   const COLOR = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
+  // The default background of a view event (docs/spec/alacritty-core.md of the sidecar).
+  const BACKGROUND = /^#[0-9a-fA-F]{6}$/;
   const scrollbarStyle = { track: "terminal", thumb: "#8f98a080", width: 10, shape: "rounded" };
   let terminalBackground = null;
   const applyScrollbarSettings = (values) => {
@@ -1342,14 +1344,14 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // padding 은 터미널의 현재 기본 배경색을 보인다.
   const paintPadding = () => {
     if (!paddingStrips) return;
-    // default: 첫 화면의 배경을 받기 전에는 padding 을 아직 색칠하지 않는다.
+    // default: 첫 view 이벤트의 배경을 받기 전에는 padding 을 아직 색칠하지 않는다.
     for (const side of PADDING_SIDES) paddingStrips[side].style.background = terminalBackground ?? "";
   };
   // 트랙은 네이티브 그림이 잘린 자리를 칠한다. terminal 은 터미널의 현재 기본 배경색이다.
   const paintScrollbar = () => {
     if (!scrollbar) return;
     scrollbar.track.style.width = `${scrollbarStyle.width}px`;
-    // default: 첫 화면의 배경을 받기 전에는 트랙을 아직 색칠하지 않는다.
+    // default: 첫 view 이벤트의 배경을 받기 전에는 트랙을 아직 색칠하지 않는다.
     scrollbar.track.style.background = scrollbarStyle.track === "terminal" ? (terminalBackground ?? "") : scrollbarStyle.track;
     scrollbar.thumb.style.background = scrollbarStyle.thumb;
     scrollbar.thumb.style.borderRadius = scrollbarStyle.shape === "square" ? "0px" : "999px";
@@ -1786,11 +1788,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
       screenFrame = body.frame;
       changed("screen");
-      if (typeof body.background === "string" && body.background !== terminalBackground) {
-        terminalBackground = body.background;
-        paintScrollbar();
-        paintPadding();
-      }
       if (body.scrollback !== undefined) {
         const { offset, history } = body.scrollback;
         if (!Number.isInteger(offset) || !Number.isInteger(history) || offset < 0 || history < 0) {
@@ -1848,6 +1845,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         if (!Number.isInteger(offset) || !Number.isInteger(history) || offset < 0 || history < 0) {
           throw new Error(`invalid view scrollback from sidecar: ${JSON.stringify(body.scrollback)}`);
         }
+        if (typeof body.background !== "string" || !BACKGROUND.test(body.background)) {
+          throw new Error(`invalid view background from sidecar: ${JSON.stringify(body.background)}`);
+        }
       } catch (error) {
         reportInputError(error, "view");
         return;
@@ -1857,6 +1857,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         session = { ...session, scrollback: { offset, history } };
         changed("session");
         drawScrollbar();
+      }
+      // The track and the padding show the default background of the presented frame, which only the view event reports.
+      if (body.background !== terminalBackground) {
+        terminalBackground = body.background;
+        paintScrollbar();
+        paintPadding();
       }
       const { col, row, visible, focused, shape, blinking } = body.cursor;
       const drawn = { ...cursor.drawn };
