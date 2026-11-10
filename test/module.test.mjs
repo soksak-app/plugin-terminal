@@ -11,7 +11,6 @@ const diagnostics = JSON.parse(readFileSync(new URL("../diagnostics.json", impor
 
 async function mountView(host) {
   host.page = await mountTerminalPage(host.context, host.report, host.window.document);
-  await host.settle();
 }
 
 // The check of a view page (core docs/spec/plugin-processes.md, rule 4): the page begins with its doctype and holds no import map,
@@ -37,7 +36,6 @@ const declared = (kind) => manifest.exposes[kind].map((entry) => entry.name).sor
 test("the view page opens the sidecar session of its surface and registers the declared entries", async (t) => {
   const host = createViewPage(t, "open");
   await mountView(host);
-  await host.settle();
   // The session of the sidecar is keyed by the surface id of the view, and it opens the declared image region.
   const open = host.sidecar.sent.find(({ body }) => body.operation === "open");
   assert.equal(open.id, START.surface);
@@ -62,7 +60,7 @@ test("the view page opens the sidecar session of its surface and registers the d
 test("the theme of the view reaches the session with the card colors", async (t) => {
   const host = createViewPage(t, "theme");
   await mountView(host);
-  await host.settle();
+  await host.until(() => host.sidecar.sent.some(({ body }) => body.operation === "theme"));
   assert.deepEqual(host.sidecar.sent.find(({ body }) => body.operation === "theme")?.body,
     { operation: "theme", mode: "dark", background: "#ffffff", foreground: "#252735", cursor: "#252735", selection: "#5962e8" });
 });
@@ -73,11 +71,9 @@ const carriesInput = (body) => body.operation === "input" && !body.actions.every
 test("a registered terminal command reaches its handler", async (t) => {
   const host = createViewPage(t, "command");
   await mountView(host);
-  await host.settle();
   host.sidecar.trigger(START.surface, { event: "state", sessionId: "s1", cols: 80, rows: 24, cellWidth: 8, cellHeight: 16 });
-  await host.settle();
+  // The command answers after its input is sent.
   const answer = await host.exposureRequest(9001, "command.run", { name: "terminal.input", params: { bytes: "bHM=" } });
-  await host.settle();
   assert.equal(answer, null);
   const input = host.sidecar.sent.find(({ body }) => carriesInput(body));
   assert.equal(input.id, START.surface, "the input travels to the session of the surface");
@@ -87,9 +83,8 @@ test("a registered terminal command reaches its handler", async (t) => {
 test("terminal.close detaches the image region before it ends the sidecar session", async (t) => {
   const host = createViewPage(t, "close-order");
   await mountView(host);
-  await host.settle();
+  // The command answers after the region is detached and the session is closed.
   const answer = await host.exposureRequest(9002, "command.run", { name: "terminal.close", params: {} });
-  await host.settle();
   assert.equal(answer, null);
   const detach = host.received.findIndex(({ command }) => command === "image.detach");
   const closeSend = host.received.filter(({ command, params }) =>
@@ -103,7 +98,8 @@ test("terminal.close detaches the image region before it ends the sidecar sessio
 test("the view page reports a failed sidecar startup and releases its composition", async (t) => {
   const host = createViewPage(t, "open-failure", { openError: "connect authenticated service: socket missing" });
   await mountView(host);
-  await host.settle();
+  // The report of the failed mount is the last event of the failed startup.
+  await host.until(() => host.logs.some(({ event }) => event === "plugin.terminal.report"));
   assert.deepEqual(host.regionCalls.map(([command]) => command), ["image.attach", "image.detach"],
     "a failed sidecar startup releases the native image composition");
   const report = host.logs.find(({ event }) => event === "plugin.terminal.report");
@@ -115,7 +111,6 @@ test("the view page reports a failed sidecar startup and releases its compositio
 test("a build without a diagnostic declaration registers the declared entries only", async (t) => {
   const host = createViewPage(t, "release", { diagnostic: false });
   await mountView(host);
-  await host.settle();
   assert.deepEqual([...host.commands].sort(), declared("commands"));
   const diagnosticStatuses = diagnostics.exposes.status.map((entry) => entry.name);
   assert.equal(host.registrations.some(({ name }) => diagnosticStatuses.includes(name)), false,
@@ -130,14 +125,13 @@ test("terminal input and send records carry the sidecar correlation identifiers"
     (event, fields, options) => records.push({ level, event, fields: typeof fields === "function" ? fields() : fields, cids: options?.cids })]));
   await mountView(host);
   host.sidecar.trigger(START.surface, { event: "state", sessionId: "s1", cols: 80, rows: 24, cellWidth: 8, cellHeight: 16 });
-  await host.settle();
   host.region.trigger("input", {
     type: "input",
     actions: [{ type: "insert", text: "ls", replacementRange: null, attributed: false }],
     preedit: { text: "", markedRange: null, selectedRange: { location: 0, length: 0 }, replacementRange: null, attributed: false },
     errors: [], cids: ["native-input-49-5"],
   });
-  await host.settle();
+  await host.until(() => host.sidecar.sent.some(({ body }) => carriesInput(body)));
   const input = host.sidecar.sent.find(({ body }) => carriesInput(body));
   assert.ok(input.cids.length > 0, "input has a real correlation chain");
   for (const event of ["input", "send"]) {
@@ -164,7 +158,7 @@ test("a primary press in the separate view runs terminal.focus and requests nati
   const host = createViewPage(t, "pointer-focus");
   await mountView(host);
   const event = terminalPointer(host);
-  await host.settle();
+  await host.until(() => host.regionCalls.some(([name]) => name === "image.focus"));
   assert.deepEqual(host.commandRuns, [{ name: "terminal.focus", params: {} }], "the view press did not run its declared focus command");
   assert.deepEqual(host.regionCalls.filter(([name]) => name === "image.focus"), [["image.focus", { name: "view" }]],
     "the focus command did not transfer keyboard ownership to the native region");
@@ -177,13 +171,12 @@ test("the view focus binding ignores another button and is removed when the page
   const host = createViewPage(t, "pointer-focus-dispose");
   await mountView(host);
   assert.equal(host.bindings.length, 1, "the view has no focus binding to dispose");
+  // The binding decides in the call of the event whether the press runs its command.
   terminalPointer(host, 2);
-  await host.settle();
   assert.deepEqual(host.commandRuns, []);
   const view = host.context.exposure.getElement("terminal.view");
   await host.page.dispose();
   view.dispatchEvent(new host.window.MouseEvent("pointerdown", { button: 0 }));
-  await host.settle();
   assert.deepEqual(host.commandRuns, [], "a disposed page still runs its focus command");
 });
 
@@ -193,7 +186,8 @@ test("a rejected focus from a view press reaches the session and the surface err
   const failure = new Error("native focus refused");
   host.region.focus = async () => { throw failure; };
   terminalPointer(host);
-  await host.settle();
+  // The error report of the surface follows the error of the session.
+  await host.until(() => host.reports.some(([kind, phase]) => kind === "status" && phase === "error"));
   assert.match(host.context.exposure.getStatus("terminal.session").read().error ?? "", /native focus refused/);
   assert.deepEqual(host.reports.filter(([kind, phase]) => kind === "status" && phase === "error"), [["status", "error", failure]]);
   await host.page.dispose();

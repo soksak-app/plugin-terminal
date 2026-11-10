@@ -516,6 +516,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         return handler(body, cids);
       });
     },
+    // The host sends the sidecar-failure of the surface when the sidecar ended (core docs/spec/sidecars.md).
+    onFailure(surface, handler) {
+      return sidecar.onFailure(surface, handler);
+    },
   };
 
   // The image region. attachImage creates it with the composition of the view after the input handler below exists, and its
@@ -1522,7 +1526,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     if (!screenWatchRequest) return;
     const pending = screenWatchRequest;
     screenWatchRequest = null;
-    clearTimeout(pending.timeout);
     if (error) pending.reject(error);
     else pending.resolve();
   };
@@ -1532,14 +1535,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     screenWatchEnabled = enabled;
     screenWatchRegistered = false;
     endScreenWatchRequest(new DOMException("screen watch superseded", "AbortError"));
-    // sidecar.send completes transport, not the semantic reply. There is no
-    // generic response deadline in that API, so use the existing screen.read
-    // response budget for this one CID-correlated transition (never a poll).
+    // sidecar.send completes transport, not the semantic reply. A call has no time limit (core docs/spec/plugin-processes.md, rule
+    // 3): the CID-correlated acknowledgement, a failed send, the sidecar-failure of the surface, a connection event, an exit or the
+    // next transition ends this one.
     screenWatchPending = new Promise((resolve, reject) => {
       const cid = `${unansweredPrefix}-screen-watch-${++screenWatchSequence}`;
-      const pending = { cid, enabled, resolve, reject, timeout: setTimeout(() => {
-        if (screenWatchRequest === pending) endScreenWatchRequest(new Error("screen.watch acknowledgement timeout"));
-      }, 5000) };
+      const pending = { cid, enabled, resolve, reject };
       screenWatchRequest = pending;
       terminal.send(id, { operation: "screen.watch", enabled }, [cid]).catch((error) => {
         if (screenWatchRequest === pending) endScreenWatchRequest(error);
@@ -1575,18 +1576,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       updateScreenWatch().catch(reportScreenWatchError);
     };
   };
-  // Resolves with the full form that answers a read of its own.
+  // Resolves with the full form that answers a read of its own. The answer, a failed send, the sidecar-failure of the surface, a
+  // connection event or the close of the view ends the wait (endSidecarWaits).
   const awaitScreen = () => new Promise((resolve, reject) => {
-    const entry = {
-      resolve,
-      timeout: setTimeout(() => {
-        screenReads.delete(entry);
-        reject(new Error("screen.read timeout"));
-      }, 5000),
-    };
+    const entry = { resolve, reject };
     screenReads.add(entry);
     readScreen().catch((error) => {
-      clearTimeout(entry.timeout);
       screenReads.delete(entry);
       reject(error);
     });
@@ -1596,8 +1591,35 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     if (!sessionOpen || session.exited) return screen;
     return (await awaitScreen()).rows;
   };
-  // pty.pending 측정 응답을 기다리는 resolver. 진단 명령이 한 번에 하나만 요청한다.
+  // pty.pending 측정 응답을 기다리는 resolver. 진단 명령이 한 번에 하나만 요청하고, 다음 요청은 이전 요청을 끝낸다.
   let pendingPtyRead = null;
+
+  // Ends each wait for a reply of the sidecar: the reads of the screen and the pty.pending measurement with error. The
+  // acknowledgement of screen.watch ends where its state changes.
+  const endSidecarWaits = (error) => {
+    const reads = [...screenReads];
+    screenReads.clear();
+    for (const entry of reads) entry.reject(error);
+    const waiter = pendingPtyRead;
+    pendingPtyRead = null;
+    waiter?.reject(error);
+  };
+  // A sidecar that ended answers none of the requests of the surface (core docs/spec/plugin-processes.md, rule 3). The watch is
+  // registered with that sidecar no more, so a new connection restores it.
+  const stopFailure = await terminal.onFailure(id, (reason) => {
+    const error = new Error(`the sidecar ended before it answered: ${reason}`);
+    screenWatchRegistered = false;
+    screenWatchEnabled = false;
+    endScreenWatchRequest(error);
+    screenWatchPending = Promise.resolve();
+    screenReadAwaited = false;
+    screenReadAgain = false;
+    endSidecarWaits(error);
+  });
+  // The close of the view ends the waits that no event of the detached view answers. The disable acknowledgement of the watch is
+  // still matched, because its listener runs before the guard of the closed view.
+  const closeSidecarWaits = () => endSidecarWaits(new DOMException("the view closed", "AbortError"));
+  closing.addEventListener("abort", closeSidecarWaits, { once: true });
 
   // 사이드카 메시지 수신
   const stopSidecar = await terminal.on(id, (body, cids) => {
@@ -1704,6 +1726,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       screenWatchPending = Promise.resolve();
       screenReadAwaited = false;
       screenReadAgain = false;
+      endSidecarWaits(new Error("the sidecar connection changed before it answered"));
       // 영속 사이드카의 연결이 다시 맺혔다(V5-106). 이전 연결이 남긴 사이드카 오류는
       // 해소하고 세션을 다시 연다 — 재스폰된 서비스에는 이 표면의 세션이 없다. 실패했으면
       // 연결 끊김과 그 까닭을 세션 오류로 남긴다. 입력은 다시 열릴 때까지 대기열에 쌓인다.
@@ -1823,10 +1846,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
       // The sidecar answers a screen read with the full form.
       if (body.base === true) {
-        for (const entry of screenReads) {
-          clearTimeout(entry.timeout);
-          entry.resolve({ rows: screen, frame: screenFrame });
-        }
+        for (const entry of screenReads) entry.resolve({ rows: screen, frame: screenFrame });
         screenReads.clear();
         if (screenReadAgain) {
           screenReadAgain = false;
@@ -2239,34 +2259,27 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   await expose.command("terminal.drop", dropFiles);
   // 진단 측정: 현재 세션에서 마스터가 쓰고 자식이 아직 읽지 않은 입력 바이트 수와 reader 가 읽은
   // 자식 출력 누적 바이트 수를 한 번의 왕복으로 사이드카에 묻는다.
+  // The answer, a failed send, the next request, the sidecar-failure of the surface, a connection event or the close of the view
+  // ends the wait.
   const readPtyPending = () => new Promise((resolve, reject) => {
+    pendingPtyRead?.reject(new DOMException("pty.pending superseded", "AbortError"));
     let settled = false;
-    const timeout = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      pendingPtyRead = null;
-      reject(new Error("pty.pending timeout"));
-    }, 5000);
-    pendingPtyRead = {
+    const waiter = {
       resolve: (pending) => {
         if (settled) return;
         settled = true;
-        clearTimeout(timeout);
         resolve(pending);
       },
       reject: (error) => {
         if (settled) return;
         settled = true;
-        clearTimeout(timeout);
         reject(error);
       },
     };
+    pendingPtyRead = waiter;
     terminal.send(id, { operation: "pty.pending" }).catch((error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      pendingPtyRead = null;
-      reject(error);
+      if (pendingPtyRead === waiter) pendingPtyRead = null;
+      waiter.reject(error);
     });
   });
   // 진단 빌드에서는 진단 모듈이 preedit 주입, 입력 기록, PTY 전송 상태 측정 항목을 이 연산으로 등록한다.
@@ -2328,6 +2341,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         reportInputError(error, "screen");
       }
       closing.removeEventListener("abort", closeScreenWatch);
+      closing.removeEventListener("abort", closeSidecarWaits);
       if (diagnostics) for (const type of pointerTraceTypes) view.removeEventListener(type, tracePointer);
       const offTheme = await themeSubscription?.dispose;
       // default: 테마나 설정 구독이 없으면 해제 함수도 없다.
@@ -2337,6 +2351,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       textSizeSubscription();
       // default: 사이드카 구독을 만들지 못한 경우에는 해제 함수가 없다.
       stopSidecar?.();
+      stopFailure?.();
       view.removeEventListener("pointerdown", preventDefaultFocus);
       view.removeEventListener("pointerdown", beginSelection);
       view.removeEventListener("pointermove", updateSelection);

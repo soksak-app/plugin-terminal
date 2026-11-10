@@ -209,7 +209,6 @@ test("the mounted terminal view reads its live history and emits source content-
   { timeout: 5000 }, async (t) => {
   const host = createViewPage(t, "view-frame-diagnostics");
   await mountPage(host.context, host.report, host.window.document);
-  await host.settle();
   const history = (params = {}) => host.exposureRequest(9001, "command.run", {
     name: "terminal.view.history", params,
   });

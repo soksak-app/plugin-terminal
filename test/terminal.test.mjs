@@ -247,6 +247,11 @@ function createFakeAttachImage() {
  */
 function recorder(lines) {
   lines.builders = new Set();
+  const waiters = [];
+  // Resolves when the predicate holds after a record: each record is the event that can change what the predicate reads.
+  lines.until = async (holds) => {
+    while (!holds()) await new Promise((resolve) => waiters.push(resolve));
+  };
   // The stored level of each class (runtime.log.levels of the view bridge): every class stores every level unless the test sets
   // lines.levels.
   const levels = () => lines.levels ?? { lifecycle: "trace", input: "trace", call: "trace", io: "trace", frame: "trace" };
@@ -254,6 +259,7 @@ function recorder(lines) {
     assert.ok(!name.startsWith("plugin."), `the log adds the prefix plugin.terminal., got ${name}`);
     if (typeof fields === "function") lines.builders.add(name);
     lines.push([name, JSON.parse(JSON.stringify(typeof fields === "function" ? fields() : fields)), level, options.cids]);
+    for (const waiter of waiters.splice(0)) waiter();
   }])]);
 }
 
@@ -273,6 +279,8 @@ function createFakeSidecar({ delay = () => null, answers = true, watchAnswers = 
   const focusBodies = [];
   const waiters = [];
   const listeners = new Map();
+  // The sidecar-failure listeners of each surface (core docs/spec/sidecars.md, onFailure).
+  const failureListeners = new Map();
   let failure = null;
 
   return {
@@ -305,12 +313,26 @@ function createFakeSidecar({ delay = () => null, answers = true, watchAnswers = 
       listeners.get(id).push(handler);
       return Promise.resolve();
     },
+    onFailure: async function(id, fn) {
+      if (!failureListeners.has(id)) failureListeners.set(id, new Set());
+      failureListeners.get(id).add(fn);
+      return () => failureListeners.get(id).delete(fn);
+    },
+    // Delivers the sidecar-failure of the surface, which the host sends when the sidecar ended.
+    triggerFailure: (id, reason) => {
+      for (const fn of [...(failureListeners.get(id) ?? [])]) fn(reason);
+    },
+    failureListeners: (id) => failureListeners.get(id)?.size ?? 0,
     getMessages: () => messages,
     getFocusBodies: () => focusBodies,
     getFocusMessages: () => focusBodies.flatMap(({ actions }) => actions).filter(({ type }) => type === "focus"),
     // Resolves when a message that the predicate accepts has been sent.
     untilMessage: async function(accepts) {
       while (!messages.some(({ body }) => accepts(body))) await new Promise((resolve) => waiters.push(resolve));
+    },
+    // Resolves when the predicate holds after a send: each send is the event that can change what the predicate reads.
+    until: async function(holds) {
+      while (!holds()) await new Promise((resolve) => waiters.push(resolve));
     },
     triggerEvent: function(id, event) {
       if (listeners.has(id)) {
@@ -326,6 +348,7 @@ function createFakeSidecar({ delay = () => null, answers = true, watchAnswers = 
     reset: () => {
       messages.length = 0;
       listeners.clear();
+      failureListeners.clear();
     },
   };
 }
@@ -333,6 +356,22 @@ function createFakeSidecar({ delay = () => null, answers = true, watchAnswers = 
 /** A plugin-local registry for recorded terminal registrations and user-driven command calls. */
 // The fake follows the screen status as a watcher does and holds the last rows that it received, because a read of the status asks the
 // sidecar. A test of the follow itself passes `followScreen: false`.
+// A list whose until resolves when the predicate holds after a push: each push is the event that can change what the predicate reads.
+function watchedList() {
+  const list = [];
+  const waiters = [];
+  // The members of the list are not enumerable, so the list compares as the array of its items.
+  Object.defineProperty(list, "push", { value: (...items) => {
+    const length = Array.prototype.push.apply(list, items);
+    for (const waiter of waiters.splice(0)) waiter();
+    return length;
+  } });
+  Object.defineProperty(list, "until", { value: async (holds) => {
+    while (!holds()) await new Promise((resolve) => waiters.push(resolve));
+  } });
+  return list;
+}
+
 function createFakeExpose({ followScreen = true } = {}) {
   let heldRows = [];
   const statuses = new Map();
@@ -354,6 +393,23 @@ function createFakeExpose({ followScreen = true } = {}) {
     },
     async dispose() {},
     getStatus: (name) => statuses.get(name),
+    // Resolves with the value of the status when the predicate holds: each change of the status is the event that can make it hold.
+    untilStatus: (name, holds) => new Promise((resolve) => {
+      const { readFn, watchFn } = statuses.get(name);
+      if (holds(readFn())) {
+        resolve(readFn());
+        return;
+      }
+      let done = false;
+      let stop = null;
+      stop = watchFn((value) => {
+        if (done || !holds(value)) return;
+        done = true;
+        stop?.();
+        resolve(value);
+      });
+      if (done) stop();
+    }),
     getCommand: (name) => commands.get(name),
     getElement: (name) => exposedElements.get(name),
     getStatuses: () => statuses,
@@ -376,9 +432,9 @@ test("modified native character keys preserve their text before and after sessio
   region._trigger("input", inputEvent([action]));
   openSession(sidecar);
   region._trigger("input", inputEvent([action]));
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(sidecar.getMessages().filter(({ body }) => body.operation === "input").map(({ body }) => body.actions[0]),
-    [action, action]);
+  const inputs = () => sidecar.getMessages().filter(({ body }) => body.operation === "input");
+  await sidecar.until(() => inputs().length === 2);
+  assert.deepEqual(inputs().map(({ body }) => body.actions[0]), [action, action]);
 });
 
 test("native image errors remain visible after later session state updates", async () => {
@@ -561,7 +617,6 @@ test("an input event dispatched before the composition creation answers reaches 
     sidecar: fakeSidecar, expose: createFakeExpose(),
     window: { TextEncoder: FakeTextEncoder },
   });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(typeof input, "function", "the creation receives the input handler before it answers");
   input({ type: "input", actions: [{ type: "insert", text: "ls", replacementRange: null, attributed: false }],
     preedit: { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false }, errors: [], cids: ["scope-1"] });
@@ -630,7 +685,7 @@ test("Region insert event sends base64-encoded bytes to sidecar", async () => {
 
   // 이제 region에 input transaction을 trigger한다
   regionReference._trigger("input", inputEvent([inputInsert("ls\r")]));
-  await new Promise((resolve) => setImmediate(resolve));
+  await fakeSidecar.untilMessage((body) => body.operation === "input");
 
   // sidecar 메시지를 확인한다
   const messages = fakeSidecar.getMessages();
@@ -775,18 +830,16 @@ test("terminal.paste waits for the copy of the released selection", async () => 
   view._trigger("pointerdown", { button: 0, pointerId: 4, clientX: 10, clientY: 12 });
   view._trigger("pointermove", { pointerId: 4, clientX: 42, clientY: 12 });
   view._trigger("pointerup", { pointerId: 4, clientX: 42, clientY: 12 });
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.ok(fakeSidecar.getMessages().some(({ body }) => body.operation === "selection.end"), "the gesture released the selection");
+  // The gesture released the selection.
+  await fakeSidecar.untilMessage((body) => body.operation === "selection.end");
 
+  // The clipboard holds the chosen text only after the copy, so a paste that read it before the copy sends the earlier text.
   const paste = fakeExpose.getCommand("terminal.paste");
   let pasted = null;
   const pasting = paste().then(() => { pasted = fakeSidecar.getMessages().at(-1).body.text; });
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(pasted, null, "the paste read the clipboard before the copy of the released selection arrived");
   fakeSidecar.triggerEvent("test-session", { event: "selection.copy", text: "chosen text", userInitiated: true });
   await pasting;
-  assert.equal(pasted, "chosen text", "the paste sent the text of the released selection");
+  assert.equal(pasted, "chosen text", "the paste read the clipboard before the copy of the released selection arrived");
 });
 
 test("the region's copy action runs terminal.copy and writes the sidecar's selection text once", async () => {
@@ -794,7 +847,7 @@ test("the region's copy action runs terminal.copy and writes the sidecar's selec
   const fakeSidecar = createFakeSidecar();
   const fakeExpose = createFakeExpose();
   const attach = createFakeAttachImage();
-  const writes = [];
+  const writes = watchedList();
   const clipboard = { read: async () => null, writeText: async (text) => { writes.push(text); } };
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: attach.function,
@@ -809,12 +862,11 @@ test("the region's copy action runs terminal.copy and writes the sidecar's selec
   await attach.trigger("action", { type: "action", name: "copy" });
   assert.deepEqual(sessionMessages(fakeSidecar).map(({ body }) => body.operation), ["copy"]);
   fakeSidecar.triggerEvent("test-session", { event: "copy", text: "chosen", userInitiated: true });
-  await new Promise((resolve) => setImmediate(resolve));
+  await writes.until(() => writes.length === 1);
   assert.deepEqual(writes, ["chosen"]);
 
   // 선택이 없으면 클립보드를 바꾸지 않으며 오류도 아니다.
   fakeSidecar.triggerEvent("test-session", { event: "copy", copied: false });
-  await new Promise((resolve) => setImmediate(resolve));
   const session = fakeExpose.getStatus("terminal.session").readFn();
   assert.deepEqual(writes, ["chosen"]);
   assert.equal(session.error, undefined);
@@ -842,7 +894,6 @@ test("wheel input is sent as whole scroll lines at the pointer cell and the scre
   view._trigger("wheel", { deltaY: 10, deltaMode: 0, clientX: 20, clientY: 40 });
   view._trigger("wheel", { deltaY: 10, deltaMode: 0, clientX: 20, clientY: 40 });
   view._trigger("wheel", { deltaY: 2, deltaMode: 1, clientX: 20, clientY: 40 });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(scrolls(), [
     { operation: "scroll", lines: 3, col: 2, row: 2, shift: false },
     { operation: "scroll", lines: -1, col: 2, row: 2, shift: false },
@@ -851,7 +902,6 @@ test("wheel input is sent as whole scroll lines at the pointer cell and the scre
 
   // A wheel gesture with Shift sends shift true; the carry of -0.25 lines plus 2 lines leaves 1 whole line.
   view._trigger("wheel", { deltaY: -32, deltaMode: 0, clientX: 20, clientY: 40, shiftKey: true });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(scrolls().slice(3), [{ operation: "scroll", lines: 1, col: 2, row: 2, shift: true }]);
 
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], cursor: { col: 0, row: 0, visible: false, focused: false, shape: "Block", blinking: false },
@@ -909,7 +959,7 @@ test("the scrollbar shows the scrollback position and dragging its thumb moves t
   thumb._trigger("pointermove", { pointerId: 4, clientX: 795, clientY: 10 });
   thumb._trigger("pointermove", { pointerId: 4, clientX: 795, clientY: 460 });
   thumb._trigger("pointerup", { pointerId: 4, clientX: 795, clientY: 460 });
-  await new Promise((resolve) => setImmediate(resolve));
+  await fakeSidecar.until(() => sessionMessages(fakeSidecar).length === 2);
   assert.deepEqual(sessionMessages(fakeSidecar).map(({ body }) => body), [
     { operation: "viewport", offset: 50 },
     { operation: "viewport", offset: 0 },
@@ -1214,7 +1264,6 @@ test("program clipboard queries are explicitly denied and do not remain pending"
   openSession(fakeSidecar);
 
   fakeSidecar.triggerEvent("test-session", { event: "clipboard.query", requestId: 7, selection: "clipboard" });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(fakeSidecar.getMessages().filter(({ body }) => body.operation === "clipboard.reject").map(({ body }) => body), [
     { operation: "clipboard.reject", requestId: 7, reason: "program clipboard query denied by policy" },
   ]);
@@ -1224,7 +1273,7 @@ test("allowed program clipboard handles only text through the host capability", 
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
   const fakeExpose = createFakeExpose();
-  const writes = [];
+  const writes = watchedList();
   const settings = { read: () => ({ ...SHELL_SETTINGS.read(), "clipboard.program": "allow" }), on: () => () => {} };
   const clipboard = {
     read: async (type) => { assert.equal(type, "text"); return "from host"; },
@@ -1238,7 +1287,8 @@ test("allowed program clipboard handles only text through the host capability", 
   openSession(fakeSidecar);
   fakeSidecar.triggerEvent("test-session", { event: "clipboard.store", selection: "clipboard", text: "program copy" });
   fakeSidecar.triggerEvent("test-session", { event: "clipboard.query", requestId: 8, selection: "clipboard" });
-  await new Promise((resolve) => setImmediate(resolve));
+  await writes.until(() => writes.length === 1);
+  await fakeSidecar.untilMessage((body) => body.operation === "clipboard.resolve");
 
   assert.deepEqual(writes, ["program copy"]);
   assert.deepEqual(fakeSidecar.getMessages().filter(({ body }) => body.operation === "clipboard.resolve").map(({ body }) => body), [
@@ -1260,7 +1310,6 @@ test("user selection copy writes non-empty text independently of program clipboa
   openSession(fakeSidecar);
 
   fakeSidecar.triggerEvent("test-session", { event: "selection.copy", userInitiated: true, text: "selected text" });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(writes, ["selected text"]);
 });
 
@@ -1279,9 +1328,10 @@ test("selection copy rejects non-user or empty payloads without writing", async 
 
   fakeSidecar.triggerEvent("test-session", { event: "selection.copy", userInitiated: false, text: "secret" });
   fakeSidecar.triggerEvent("test-session", { event: "selection.copy", userInitiated: true, text: "" });
-  await new Promise((resolve) => setImmediate(resolve));
+  // The refusal of the second payload is the last event of the two, and it ends with the error of the session.
+  const { error } = await fakeExpose.untilStatus("terminal.session", (value) => /selection.copy/.test(value.error ?? ""));
+  assert.match(error, /selection.copy/);
   assert.deepEqual(writes, []);
-  assert.match(fakeExpose.getStatus("terminal.session").readFn().error, /selection.copy/);
 });
 
 test("a selection release without text is accepted without a copy or an error", async () => {
@@ -1298,7 +1348,6 @@ test("a selection release without text is accepted without a copy or an error", 
   openSession(fakeSidecar);
 
   fakeSidecar.triggerEvent("test-session", { event: "selection.end", copied: false });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(writes, []);
   const state = fakeExpose.getStatus("terminal.session").readFn();
   assert.equal(state.error, undefined);
@@ -1320,7 +1369,6 @@ test("sidecar acknowledgements of selection and paste operations are not unsuppo
   for (const event of ["selection.start", "selection.update", "paste"]) {
     fakeSidecar.triggerEvent("test-session", { ack: true, event });
   }
-  await new Promise((resolve) => setImmediate(resolve));
   const state = fakeExpose.getStatus("terminal.session").readFn();
   assert.deepEqual(state.unsupported, []);
   assert.equal(state.error, undefined);
@@ -1360,7 +1408,7 @@ test("Region key event for Enter sends correct message format", async () => {
 
   fakeSidecar.reset();
   regionReference._trigger("input", inputEvent([inputKey("Enter")]));
-  await new Promise((resolve) => setImmediate(resolve));
+  await fakeSidecar.untilMessage((body) => body.operation === "input");
 
   const messages = fakeSidecar.getMessages();
   const keyMessage = messages.find((m) => m.body.operation === "input");
@@ -1402,7 +1450,7 @@ test("Region key event for ArrowUp sends Up key (no escape sequences)", async ()
 
   fakeSidecar.reset();
   regionReference._trigger("input", inputEvent([inputKey("Up")]));
-  await new Promise((resolve) => setImmediate(resolve));
+  await fakeSidecar.untilMessage((body) => body.operation === "input");
 
   const messages = fakeSidecar.getMessages();
   const keyMessage = messages.find((m) => m.body.operation === "input");
@@ -1480,7 +1528,7 @@ test("terminal pointer drag sends one complete selection gesture to the sidecar"
   view._trigger("pointerdown", { button: 0, pointerId: 4, clientX: 10, clientY: 12 });
   view._trigger("pointermove", { pointerId: 4, clientX: 42, clientY: 12 });
   view._trigger("pointerup", { pointerId: 4, clientX: 42, clientY: 12 });
-  await new Promise((resolve) => setImmediate(resolve));
+  await fakeSidecar.untilMessage((body) => body.operation === "mouse" && body.phase === "up");
 
   // 포인터 입력은 mouse 로도 알린다. 뗌은 선택 연산 뒤에 온다.
   assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body.operation === "mouse" ? `mouse.${body.phase}` : body.operation), [
@@ -1500,7 +1548,13 @@ test("a fast drag whose replies are slow keeps one selection update waiting and 
   // changes (cells of 8 by 16 CSS pixels).
   FakeResizeObserver.reset();
   const reply = Promise.withResolvers();
-  const fakeSidecar = createFakeSidecar({ delay: (body) => body.operation === "selection.start" ? reply.promise : null });
+  // The selection start is held until the reply; started resolves when its send has begun.
+  const started = Promise.withResolvers();
+  const fakeSidecar = createFakeSidecar({ delay: (body) => {
+    if (body.operation !== "selection.start") return null;
+    started.resolve();
+    return reply.promise;
+  } });
   const view = createFakeView();
   await startTerminal({
     view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
@@ -1513,7 +1567,7 @@ test("a fast drag whose replies are slow keeps one selection update waiting and 
   view._trigger("pointerdown", { button: 0, pointerId: 4, clientX: 10, clientY: 12 });
   for (let x = 11; x <= 50; x++) view._trigger("pointermove", { pointerId: 4, clientX: x, clientY: 12 });
   view._trigger("pointerup", { pointerId: 4, clientX: 50, clientY: 12 });
-  await new Promise((resolve) => setImmediate(resolve));
+  await started.promise;
   reply.resolve();
   await fakeSidecar.untilMessage((body) => body.operation === "mouse" && body.phase === "up");
 
@@ -1540,7 +1594,6 @@ test("a failed pointer capture does not leave terminal selection ownership stuck
   openSession(fakeSidecar);
   fakeSidecar.reset();
   view._trigger("pointerdown", { button: 0, pointerId: 4, clientX: 10, clientY: 12 });
-  await new Promise((resolve) => setImmediate(resolve));
   const state = fakeExpose.getStatus("terminal.session").readFn();
   assert.equal(state.selecting, false, "capture failure must not publish selecting state");
   assert.equal(fakeSidecar.getMessages().length, 0, "capture failure must not send a stale mouse down");
@@ -1550,7 +1603,13 @@ test("a failed pointer capture does not leave terminal selection ownership stuck
 test("terminal pointer gesture serializes selection commands when sidecar replies finish out of order", async () => {
   FakeResizeObserver.reset();
   const reply = Promise.withResolvers();
-  const fakeSidecar = createFakeSidecar({ delay: (body) => body.operation === "selection.start" ? reply.promise : null });
+  // The selection start is held until the reply; started resolves when its send has begun.
+  const started = Promise.withResolvers();
+  const fakeSidecar = createFakeSidecar({ delay: (body) => {
+    if (body.operation !== "selection.start") return null;
+    started.resolve();
+    return reply.promise;
+  } });
   const fakeExpose = createFakeExpose();
   const view = createFakeView();
   await startTerminal({
@@ -1564,7 +1623,7 @@ test("terminal pointer gesture serializes selection commands when sidecar replie
   view._trigger("pointerdown", { button: 0, pointerId: 4, clientX: 10, clientY: 12 });
   view._trigger("pointermove", { pointerId: 4, clientX: 42, clientY: 12 });
   view._trigger("pointerup", { pointerId: 4, clientX: 42, clientY: 12 });
-  await new Promise((resolve) => setImmediate(resolve));
+  await started.promise;
   reply.resolve();
   await fakeSidecar.untilMessage((body) => body.operation === "mouse" && body.phase === "up");
 
@@ -1593,7 +1652,8 @@ test("a lost pointer capture resets terminal drag ownership for the next card fo
   view._trigger("pointerdown", { button: 0, pointerId: 5, clientX: 18, clientY: 20 });
   view._trigger("pointermove", { pointerId: 5, clientX: 50, clientY: 20 });
   view._trigger("pointerup", { pointerId: 5, clientX: 50, clientY: 20 });
-  await new Promise((resolve) => setImmediate(resolve));
+  // The release of the second drag is its last mouse message.
+  await fakeSidecar.until(() => fakeSidecar.getMessages().filter(({ body }) => body.operation === "mouse" && body.phase === "up").length === 2);
 
   const mouse = fakeSidecar.getMessages().filter(({ body }) => body.operation === "mouse");
   assert.deepEqual(mouse.map(({ body }) => `${body.phase}.${body.pressed}`), [
@@ -1620,7 +1680,8 @@ test("a lost capture that rejects release still permits the next idempotent drag
   view._trigger("pointerdown", { button: 0, pointerId: 5, clientX: 18, clientY: 20 });
   view._trigger("pointermove", { pointerId: 5, clientX: 50, clientY: 20 });
   view._trigger("pointerup", { pointerId: 5, clientX: 50, clientY: 20 });
-  await new Promise((resolve) => setImmediate(resolve));
+  // The release of the second drag is its last mouse message.
+  await fakeSidecar.until(() => fakeSidecar.getMessages().filter(({ body }) => body.operation === "mouse" && body.phase === "up").length === 2);
 
   const mouse = fakeSidecar.getMessages().filter(({ body }) => body.operation === "mouse");
   assert.deepEqual(mouse.map(({ body }) => `${body.phase}.${body.pressed}`), [
@@ -1645,11 +1706,12 @@ test("a drag that leaves the view selects to the nearest edge point", async () =
   view._trigger("pointerdown", { button: 0, pointerId: 9, clientX: 44, clientY: 20 });
   view._trigger("pointermove", { pointerId: 9, clientX: -30, clientY: 20 });
   // A move while the update before it waits changes that update, so each move waits for the update before it to be sent.
-  await new Promise((resolve) => setImmediate(resolve));
+  const updates = () => fakeSidecar.getMessages().filter(({ body }) => body.operation === "selection.update").length;
+  await fakeSidecar.until(() => updates() === 1);
   view._trigger("pointermove", { pointerId: 9, clientX: 900, clientY: 700 });
-  await new Promise((resolve) => setImmediate(resolve));
+  await fakeSidecar.until(() => updates() === 2);
   view._trigger("pointerup", { pointerId: 9, clientX: -30, clientY: -5 });
-  await new Promise((resolve) => setImmediate(resolve));
+  await fakeSidecar.untilMessage((body) => body.operation === "selection.end");
 
   const selection = sessionMessages(fakeSidecar).filter(({ body }) => body.operation.startsWith("selection."))
     .map(({ body }) => body);
@@ -1744,7 +1806,7 @@ test("a terminal click clears the selection with an empty selection at the press
 
   view._trigger("pointerdown", { button: 0, pointerId: 8, clientX: 10, clientY: 12 });
   view._trigger("pointerup", { pointerId: 8, clientX: 10, clientY: 12 });
-  await new Promise((resolve) => setImmediate(resolve));
+  await fakeSidecar.untilMessage((body) => body.operation === "selection.end");
 
   // 빈 선택의 뗌은 이전 선택을 지운다(docs/spec/terminal-runtime.md). 움직이지 않은 클릭은 그 뗌을 보내야 한다.
   assert.deepEqual(fakeSidecar.getMessages().map((message) => message.body.operation).filter((operation) => operation !== "mouse"),
@@ -1837,12 +1899,12 @@ test("terminal.screen.read sends request and returns lines on screen event", asy
   const screenReadCommand = fakeExpose.getCommand("terminal.screen.read");
   assert(screenReadCommand, "terminal.screen.read command registered");
 
-  // 비동기로 sidecar screen event를 trigger하자 (지금은 region이 아니라 sidecar에서 온다)
-  setTimeout(() => {
-    fakeSidecar.triggerEvent("test-session", { event: "screen", lines: ["line1", "line2", "line3"] });
-  }, 10);
+  // The screen event answers the read after the read is sent (the event comes from the sidecar, not from the region).
+  const reading = screenReadCommand();
+  await fakeSidecar.untilMessage((body) => body.operation === "screen.read");
+  fakeSidecar.triggerEvent("test-session", { event: "screen", lines: ["line1", "line2", "line3"] });
 
-  const { rows } = await screenReadCommand();
+  const { rows } = await reading;
   assert.deepEqual(rows.map((row) => row.map((cell) => cell.ch).join("")), ["line1", "line2", "line3"],
     "screen.read returns the cell rows of the sidecar screen event");
 
@@ -2154,7 +2216,6 @@ test("DOM resize never sends terminal raster messages", async () => {
 
   // 세션 상태가 생겨도 페이지는 래스터를 관리하지 않는다.
   fakeSidecar.triggerEvent("test-session", { event: "state", sessionId: "s1", cols: 100, rows: 50, cellWidth: 8, cellHeight: 16 });
-  await new Promise((resolve) => setImmediate(resolve));
 
   // 크기를 0x0으로 변경한다
   fakeView.clientWidth = 0;
@@ -2187,6 +2248,7 @@ test("input_before_open: terminal.input is buffered until open", async () => {
     devicePixelRatio: 1,
   };
 
+  const lines = [];
   await startTerminal({
     view: fakeView,
     detachRegions: async () => {}, attachImage: fakeAttachImage.function,
@@ -2194,6 +2256,7 @@ test("input_before_open: terminal.input is buffered until open", async () => {
     expose: fakeExpose,
     scale: 1,
     window: fakeWindow,
+    runtime: { log: recorder(lines) },
   });
 
   // ResizeObserver 콜백을 호출하지 않으므로 open이 전송되지 않는다
@@ -2201,10 +2264,9 @@ test("input_before_open: terminal.input is buffered until open", async () => {
   assert(inputCommand, "terminal.input command registered");
 
   const pending = inputCommand({ bytes: "test" });
-  let settled = false;
-  pending.finally(() => { settled = true; });
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(settled, false, "pre-open command remains pending");
+  // The input record states the decision of the page: the input waits in the queue for the session.
+  await lines.until(() => lines.some(([event]) => event === "input"));
+  assert.equal(lines.find(([event]) => event === "input")[1].queued, true, "pre-open command remains pending");
   openSession(fakeSidecar);
   await pending;
   const input = fakeSidecar.getMessages().find(({ body }) => body.operation === "input");
@@ -2319,7 +2381,7 @@ test("compose events are sent with ranges and published as preedit state", async
     replacementRange: { location: 0, length: 1 }, attributed: true,
   });
   regionReference._trigger("input", inputEvent([], expectedCompose));
-  await new Promise((resolve) => setImmediate(resolve));
+  await fakeSidecar.untilMessage((body) => body.operation === "input" && body.preedit?.text === "한글");
 
   assert.deepEqual(composeStatus.readFn(), expectedCompose);
   const message = fakeSidecar.getMessages().at(-1).body;
@@ -2350,10 +2412,10 @@ test("native insert callbacks preserve compatibility jamo instead of discarding 
 
   regionReference._trigger("input", inputEvent([inputInsert("ㅎ")]));
   regionReference._trigger("input", inputEvent([inputInsert("ㄴ")]));
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
+  const inserts = () => fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.actions.some(({ type }) => type === "insert"));
+  await fakeSidecar.until(() => inserts().length >= 2);
 
-  const byteInputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.actions.some(({ type }) => type === "insert"));
+  const byteInputs = inserts();
   assert.deepEqual(byteInputs.map(({ body }) => body.actions[0].text), ["ㅎ", "ㄴ"],
     "every native insert must be preserved exactly unless the native input client identifies it as preedit");
 });
@@ -2382,10 +2444,11 @@ test("a cleared Korean preedit commits insertText and keeps later typing live", 
   regionReference._trigger("input", inputEvent([inputInsert("한")], inputPreedit("한", { attributed: true })));
   regionReference._trigger("input", inputEvent([], inputPreedit()));
   regionReference._trigger("input", inputEvent([inputInsert("글")]));
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
+  // The insert of "글" is the last input of the four events, and the inputs reach the sidecar in order.
+  const inserts = () => fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.actions.some(({ type }) => type === "insert"));
+  await fakeSidecar.until(() => inserts().some(({ body }) => body.actions[0].text === "글"));
 
-  const byteInputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.actions.some(({ type }) => type === "insert"));
+  const byteInputs = inserts();
   assert.equal(byteInputs.length, 2, "the committed syllable and following character must reach the PTY");
   assert.deepEqual(byteInputs.map(({ body }) => body.actions[0].text), ["한", "글"]);
   assert.equal(expose.getStatus("terminal.compose").readFn().text, "", "insertText must end the stale preedit");
@@ -2413,8 +2476,8 @@ test("clearing a native preedit cancels it without writing the uncommitted text 
 
   regionReference._trigger("input", inputEvent([], inputPreedit("한글", { attributed: true })));
   regionReference._trigger("input", inputEvent([], inputPreedit()));
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
+  // The input of the cleared preedit is the last input of the two events, and the inputs reach the sidecar in order.
+  await fakeSidecar.until(() => fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.preedit !== undefined).length === 2);
 
   assert.equal(expose.getStatus("terminal.compose").readFn().text, "", "the cancelled preedit must clear");
   const byteInputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.actions.some(({ type }) => type === "insert"));
@@ -2446,7 +2509,6 @@ test("screen events publish the raw cursor and move the input-method caret to it
     cursor: { ...SCREEN_CARET_MESSAGE.cursor, caret: { row: 0, col: 2 } },
     render: null,
   });
-  await new Promise((resolve) => setImmediate(resolve));
 
   const status = expose.getStatus("terminal.cursor").readFn();
   assert.deepEqual({ col: status.col, row: status.row, visible: status.visible, focused: status.focused, caret: status.caret },
@@ -2456,7 +2518,6 @@ test("screen events publish the raw cursor and move the input-method caret to it
     "the input-method caret follows the frame-effective screen cell");
 
   fakeSidecar.triggerEvent("test-session", { event: "screen", cols: 100, rows: 50, cursor: { col: 1, row: 1 }, lines: [] });
-  await new Promise((resolve) => setImmediate(resolve));
   const after = expose.getStatus("terminal.cursor").readFn();
   assert.deepEqual({ col: after.col, row: after.row }, { col: 0, row: 0 }, "an incomplete cursor does not replace the status");
   assert.match(expose.getStatus("terminal.session").readFn().error ?? "", /invalid screen cursor/,
@@ -2486,7 +2547,6 @@ test("a view event publishes the cursor of its frame, moves the input-method car
   const cursor = { col: 3, row: 1, visible: true, focused: true, shape: "Block", blinking: false, blinkVisible: true, caret: { row: 1, col: 3 } };
 
   fakeSidecar.triggerRaw("test-session", { event: "view", frame, rows: 24, cols: 80, cursor, scrollback: { offset: 0, history: 12 }, background: "#1e1e1e" });
-  await new Promise((resolve) => setImmediate(resolve));
 
   const status = expose.getStatus("terminal.cursor").readFn();
   assert.deepEqual({ col: status.col, row: status.row, visible: status.visible, caret: status.caret, frame: status.frame, render: status.render },
@@ -2496,14 +2556,12 @@ test("a view event publishes the cursor of its frame, moves the input-method car
 
   fakeSidecar.triggerRaw("test-session", { event: "view", frame: { ...frame, sequence: 5 }, rows: 24, cols: 80, cursor: { ...cursor, caret: { row: 50, col: 0 } },
     scrollback: { offset: 0, history: 13 }, background: "#1e1e1e" });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(expose.getStatus("terminal.cursor").readFn().frame, frame, "a caret outside the grid does not replace the cursor");
   assert.deepEqual(expose.getStatus("terminal.session").readFn().scrollback, { offset: 0, history: 12 }, "a refused view changes no scrollback");
   assert.match(expose.getStatus("terminal.session").readFn().error ?? "", /invalid view/, "a refused view is reported as an error");
   // The grid of the frame judges its caret: the state event of a new grid can follow the first view of that grid.
   fakeSidecar.triggerRaw("test-session", { event: "view", frame: { ...frame, sequence: 6 }, rows: 60, cols: 200, cursor: { ...cursor, caret: { row: 50, col: 150 } },
     scrollback: { offset: 0, history: 14 }, background: "#1e1e1e" });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(expose.getStatus("terminal.cursor").readFn().caret, { row: 50, col: 150 }, "a caret inside the grid of its frame was refused");
 });
 
@@ -2519,7 +2577,6 @@ async function startWatchedScreen(options, overrides = {}) {
     ...overrides,
   });
   FakeResizeObserver.triggerAll();
-  await new Promise((resolve) => setImmediate(resolve));
   openSession(fakeSidecar);
   return { terminal, fakeSidecar, expose, reads: () => fakeSidecar.getMessages().filter(({ body }) => body.operation === "screen.read").length };
 }
@@ -2621,45 +2678,41 @@ test("a semantic screen watch subscribes before reading and updates without a ra
   assert.ok(operations.includes("screen.watch"), "first status watcher must enable semantic screen notifications");
   assert.ok(operations.lastIndexOf("screen.watch") < operations.lastIndexOf("screen.read"), "subscription must precede the initial read");
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
-  await new Promise(resolve => setImmediate(resolve));
   const before = reads();
   fakeSidecar.triggerRaw("test-session", { event: "screen.changed" });
-  await new Promise(resolve => setImmediate(resolve));
   assert.equal(reads(), before + 1, "engine change must read fresh cells even without a raster view event");
   fakeSidecar.triggerRaw("test-session", { event: "screen.changed" });
   fakeSidecar.triggerRaw("test-session", { event: "screen.changed" });
   assert.equal(reads(), before + 1, "changes during the read must coalesce");
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
-  await new Promise(resolve => setImmediate(resolve));
   assert.equal(reads(), before + 2, "a change during the read must cause a trailing read");
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: ["line1", "line2", "line3"] });
-  await new Promise(resolve => setImmediate(resolve));
   assert.equal(seen.at(-1)[0].map(cell => cell.ch ?? " ").join("").trim(), "line1");
   const stopSecond = status.watchFn(() => {});
   const watched = () => fakeSidecar.getMessages().filter(({ body }) => body.operation === "screen.watch").map(({ body }) => body.enabled);
   stop();
   assert.deepEqual(watched(), [true], "one remaining watcher retains the subscription");
   stopSecond(); stopSecond();
-  await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(watched(), [true, false], "last watcher disables once");
 });
 
 test("a semantic screen watch restores before reconnect read and releases once on dispose", { timeout: 10000 }, async () => {
   const { terminal, fakeSidecar, expose } = await startWatchedScreen();
   const stop = expose.getStatus("terminal.screen").watchFn(() => {});
-  await new Promise(resolve => setImmediate(resolve));
+  // The watch is registered when its read follows its acknowledged enable.
+  await fakeSidecar.untilMessage(body => body.operation === "screen.read");
   const begin = fakeSidecar.getMessages().length;
   fakeSidecar.triggerEvent("test-session", { event: "connection", connected: false, reason: "closed" });
   fakeSidecar.triggerEvent("test-session", { event: "connection", connected: true });
   openSession(fakeSidecar);
-  await new Promise(resolve => setImmediate(resolve));
-  const restored = fakeSidecar.getMessages().slice(begin).map(({ body }) => body);
-  const subscribe = restored.findIndex(body => body.operation === "screen.watch" && body.enabled === true);
-  const read = restored.findIndex(body => body.operation === "screen.read");
-  assert.ok(subscribe >= 0 && read > subscribe, JSON.stringify(restored));
+  const restored = () => fakeSidecar.getMessages().slice(begin).map(({ body }) => body);
+  const subscribe = () => restored().findIndex(body => body.operation === "screen.watch" && body.enabled === true);
+  // The restored watch is the event that lets the read follow, so the wait ends at the first read after the restore.
+  await fakeSidecar.until(() => subscribe() >= 0 && restored().slice(subscribe()).some(body => body.operation === "screen.read"));
+  const read = restored().findIndex(body => body.operation === "screen.read");
+  assert.ok(read > subscribe(), JSON.stringify(restored()));
   await terminal.dispose();
   stop(); stop();
-  await new Promise(resolve => setImmediate(resolve));
   const disables = fakeSidecar.getMessages().filter(({ body }) => body.operation === "screen.watch" && body.enabled === false);
   assert.equal(disables.length, 1, "dispose and late unwatch must release one subscription");
 });
@@ -2667,11 +2720,9 @@ test("a semantic screen watch restores before reconnect read and releases once o
 test("a view event reads the screen for a watcher of the screen status, and only for a watcher", { timeout: 10000 }, async () => {
   const { fakeSidecar, expose, reads } = await startWatchedScreen();
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
-  await new Promise((resolve) => setImmediate(resolve));
 
   const unwatchedReads = reads();
   fakeSidecar.triggerRaw("test-session", VIEW_EVENT);
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(reads(), unwatchedReads, "a view event sends no screen read while nothing watches the screen status");
 
   const seen = [];
@@ -2680,54 +2731,43 @@ test("a view event reads the screen for a watcher of the screen status, and only
   await fakeSidecar.untilMessage(body => body.operation === "screen.read" && reads() > beforeWatch);
   const watchedReads = reads();
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
-  await new Promise((resolve) => setImmediate(resolve));
   seen.length = 0;
   const afterAnswer = reads();
   fakeSidecar.triggerRaw("test-session", VIEW_EVENT);
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(reads(), afterAnswer + 1, `a view event sends one screen read for the watcher (reads when the watch started: ${watchedReads})`);
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: ["line1", "line2", "line3"] });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(seen.length, 1, "the answer of the read notifies the watcher");
   assert.equal(seen[0][0].map((cell) => cell.ch ?? " ").join("").trim(), "line1");
 
   stop();
   const stoppedReads = reads();
   fakeSidecar.triggerRaw("test-session", VIEW_EVENT);
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(reads(), stoppedReads, "a view event sends no screen read after the watcher stopped");
 });
 
 test("view events during a screen read send one further read when it is answered", { timeout: 10000 }, async () => {
   const { fakeSidecar, expose, reads } = await startWatchedScreen();
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
-  await new Promise((resolve) => setImmediate(resolve));
   const beforeWatch = reads();
   expose.getStatus("terminal.screen").watchFn(() => {});
   await fakeSidecar.untilMessage(body => body.operation === "screen.read" && reads() > beforeWatch);
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
-  await new Promise((resolve) => setImmediate(resolve));
 
   const start = reads();
   fakeSidecar.triggerRaw("test-session", VIEW_EVENT);
   fakeSidecar.triggerRaw("test-session", VIEW_EVENT);
   fakeSidecar.triggerRaw("test-session", VIEW_EVENT);
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(reads(), start + 1, "the view events while a read is open send no read of their own");
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(reads(), start + 2, "the answer of the open read is older than the last view event, so one more read follows");
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: ["line1", "line2", "line3"] });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(reads(), start + 2, "the last answer sends no further read");
 });
 
 test("a read of the screen status returns the screen that the sidecar answers", async () => {
   const { fakeSidecar, expose } = await startWatchedScreen();
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [[{ ch: "x", width: 1 }]] });
-  await new Promise((resolve) => setImmediate(resolve));
   const value = Promise.resolve(expose.getStatus("terminal.screen").readFn());
-  await new Promise((resolve) => setImmediate(resolve));
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: ["line1", "line2", "line3"] });
   const rows = await value;
   assert.equal(rows[0].map((cell) => cell.ch ?? " ").join("").trim(), "line1");
@@ -2834,9 +2874,11 @@ test("an input method's edited syllables reach the PTY once and in order before 
   send([], inputPreedit(" "));
   send([inputInsert(" ")], inputPreedit());
   send([inputKey("Enter")], inputPreedit());
-  for (let i = 0; i < 4; i++) await new Promise((resolve) => setImmediate(resolve));
+  // The Enter key is the last input of the fixture, and the inputs reach the sidecar in order.
+  const sentInputs = () => fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.actions.length > 0);
+  await fakeSidecar.until(() => sentInputs().some(({ body }) => body.actions.some(({ key }) => key === "Enter")));
 
-  const inputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.actions.length > 0);
+  const inputs = sentInputs();
   const written = inputs.flatMap(({ body }) => body.actions.map((action) => action.type === "insert" ? action.text : `<${action.key}>`));
   assert.deepEqual(written, ["d", "d", "d", "한", "글", " ", "<Enter>"],
     "only committed text reaches the PTY, once and in order, before the Enter key");
@@ -2867,7 +2909,6 @@ test("a partial native insert carries its remaining preedit snapshot", async () 
   const remaining = inputPreedit("ㅏ");
   await fakeAttachImage.triggerRaw("input", inputEvent([], initial, { cids: ["ime.1"] }));
   await fakeAttachImage.triggerRaw("input", inputEvent([inputInsert("ㅏ")], remaining, { cids: ["ime.2"] }));
-  await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(expose.getStatus("terminal.compose").readFn().text, "ㅏ",
     "the resulting snapshot contains only the remaining preedit");
@@ -3025,7 +3066,8 @@ test("native input reports callback errors when its VT request fails", async () 
   });
   FakeResizeObserver.triggerAll();
   openSession(fakeSidecar);
-  await new Promise((resolve) => setImmediate(resolve));
+  // The session that opens reads the focus first, so the failed send is the send of the input below.
+  await fakeSidecar.until(() => fakeSidecar.getFocusBodies().length >= 1);
   fakeSidecar.failNext(new Error("input unavailable"));
 
   await fakeAttachImage.triggerRaw("input", inputEvent([], inputPreedit(), {
@@ -3099,7 +3141,6 @@ test("a native insert without a resulting preedit snapshot is rejected before se
   await fakeAttachImage.triggerRaw("input", {
     type: "input", actions: [inputInsert("ㅏㅏ")], errors: [], cids: ["ime.missing-snapshot"],
   });
-  await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(fakeSidecar.getMessages().filter(({ body }) => body.operation === "input").length, 0,
     "missing final state cannot be sent as a committed insert");
@@ -3132,8 +3173,7 @@ test("a native insert and same-turn Backspace reach the sidecar in callback orde
   };
   regionReference._trigger("input", inputEvent([inputInsert("a")], emptyPreedit, { cids: ["ime.same-turn-insert"] }));
   regionReference._trigger("input", inputEvent([inputKey("Backspace")], emptyPreedit, { cids: ["ime.same-turn-backspace"] }));
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
+  await fakeSidecar.until(() => fakeSidecar.getMessages().filter(({ body }) => body.operation === "input").length >= 2);
 
   const inputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input");
   assert.equal(inputs.length, 2, "both native callbacks reach the sidecar");
@@ -3343,8 +3383,8 @@ test("accepting native marked text writes it to the PTY exactly once", async () 
   // macOS unmarkText 가 보고하는 순서: 조합 해제 뒤 확정 insert 하나.
   regionReference._trigger("input", inputEvent([], inputPreedit("한글", { attributed: true })));
   regionReference._trigger("input", inputEvent([inputInsert("한글", { replacementRange: { location: 0, length: 2 } })], inputPreedit()));
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
+  // The insert is the last input of the two events, and the inputs reach the sidecar in order.
+  await fakeSidecar.untilMessage((body) => body.operation === "input" && body.actions.some(({ type }) => type === "insert"));
 
   assert.equal(expose.getStatus("terminal.compose").readFn().text, "", "the accepted preedit must clear");
   const byteInputs = fakeSidecar.getMessages().filter(({ body }) => body.operation === "input" && body.actions.some(({ type }) => type === "insert"));
@@ -3448,8 +3488,6 @@ test("terminal.ime.trace records native transactions and terminal input, and rep
   regionReference._trigger("input", first);
   regionReference._trigger("input", second);
   regionReference._trigger("input", third);
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
   const result = await expose.getCommand("terminal.ime.trace")({ action: "stop" });
   assert.equal(result.overflow, false);
   assert.equal(Object.hasOwn(result, "frames"), false,
@@ -3498,7 +3536,8 @@ test("native focus transaction and cursor state route without moving an unframed
     cursor: { row: 2, col: 3 },
   });
   regionReference._trigger("input", inputEvent([{ type: "focus", focused: true }]));
-  await new Promise((resolve) => setImmediate(resolve));
+  // The session that opened read the focus once, and the focus action of the region is the next focus body.
+  await fakeSidecar.until(() => fakeSidecar.getFocusBodies().length >= 2);
   assert.equal(regionReference._caret, undefined, "an unframed state cursor moved the native caret");
   assert.equal(fakeExpose.getStatus("terminal.session").readFn().error, undefined,
     "a valid focus action was rejected");
@@ -4015,15 +4054,12 @@ test("input of a caller does not wait for a session whose open failed", { timeou
   const paste = expose.getCommand("terminal.paste");
   const session = () => expose.getStatus("terminal.session").readFn();
   const sent = (operation) => sidecar.getMessages().filter(({ body }) => body.operation === operation);
-  const settle = async (predicate, what) => {
-    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
-    assert.ok(predicate(), what);
-  };
+  // A wait ends by the send that makes its predicate hold.
+  const settle = (predicate) => sidecar.until(predicate);
 
   const waiting = input({ bytes: "waited" });
   const waitingPaste = paste();
   region._trigger("input", inputEvent([inputKey("Enter")]));
-  await new Promise((resolve) => setImmediate(resolve));
   sidecar.triggerEvent("test-session", { error: "openFailed", reason: "terminal shell is not a file" });
   await assert.rejects(waiting, /terminal shell is not a file/, "the input that waited ends with the reason");
   await assert.rejects(waitingPaste, /terminal shell is not a file/, "the paste that waited ends with the reason");
@@ -4035,9 +4071,11 @@ test("input of a caller does not wait for a session whose open failed", { timeou
   // The next configure tries the open again, and a session that opens ends the failure.
   openSession(sidecar);
   assert.equal(session().error, undefined, "the session that opened resolves the open failure");
-  await settle(() => sent("input").length === 1, "the typed input stays queued for the session that opens");
+  // The typed input that stayed queued flows into the session that opens.
+  await settle(() => sent("input").length === 1);
   await input({ bytes: "after" });
-  await settle(() => sent("input").length === 2, "input flows into the session that opened");
+  // Waits until input flows into the session that opened.
+  await settle(() => sent("input").length === 2);
   assert.equal(sent("paste").length, 0, "a refused paste is not sent later");
   assert.deepEqual(sent("input").at(-1).body.actions, [{ type: "insert", text: "after", replacementRange: null, attributed: false }],
     "a refused input is not sent later");
@@ -4054,10 +4092,8 @@ test("input of a caller does not wait for a connection that failed", { timeout: 
   openSession(sidecar);
   const input = expose.getCommand("terminal.input");
   const inputs = () => sidecar.getMessages().filter(({ body }) => body.operation === "input");
-  const settle = async (predicate, what) => {
-    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
-    assert.ok(predicate(), what);
-  };
+  // A wait ends by the send that makes its predicate hold.
+  const settle = (predicate) => sidecar.until(predicate);
 
   sidecar.triggerEvent("test-session", { event: "connection", connected: false, reason: "spawn failed" });
   await assert.rejects(input({ bytes: "down" }), /sidecar connection failed: spawn failed/, "input during the failed connection ends at once");
@@ -4065,7 +4101,6 @@ test("input of a caller does not wait for a connection that failed", { timeout: 
   // A connection that comes back reopens the session, and input waits for that open.
   sidecar.triggerEvent("test-session", { event: "connection", connected: true });
   const waiting = input({ bytes: "reopening" });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(inputs().length, 0, "input waits while the session reopens");
   // A reopening that ends in a failed connection ends the input that waited.
   sidecar.triggerEvent("test-session", { event: "connection", connected: false, reason: "closed" });
@@ -4077,7 +4112,8 @@ test("input of a caller does not wait for a connection that failed", { timeout: 
   const reopened = input({ bytes: "flows" });
   sidecar.triggerEvent("test-session", { event: "session", sessionId: "s1" });
   await reopened;
-  await settle(() => inputs().length === 1, "input flows into the session that reopened");
+  // Waits until input flows into the session that reopened.
+  await settle(() => inputs().length === 1);
   assert.deepEqual(inputs()[0].body.actions, [{ type: "insert", text: "flows", replacementRange: null, attributed: false }],
     "a refused input is not sent later");
 });
@@ -4097,29 +4133,30 @@ test("input that a respawned service refused flows into the session that reopens
   const session = () => expose.getStatus("terminal.session").readFn();
   const sent = () => sidecar.getMessages().filter(({ body }) => body.operation === "input" || body.operation === "paste").map(({ body }) => body);
   const opens = () => sidecar.getMessages().filter(({ body }) => body.operation === "open").length;
-  const settle = async (predicate, what) => {
-    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
-    assert.ok(predicate(), what);
-  };
+  // A wait ends by the send that makes its predicate hold.
+  const settle = (predicate) => sidecar.until(predicate);
   const insert = (text) => ({ type: "insert", text, replacementRange: null, attributed: false });
 
   // Two inputs reach the respawned service before the view hears of it, and the service refuses them in order.
   await expose.getCommand("terminal.input")({ bytes: "first" });
   await expose.getCommand("terminal.input")({ bytes: "second" });
-  await settle(() => sent().length === 2, "both inputs are sent");
+  // Waits until both inputs are sent.
+  await settle(() => sent().length === 2);
   const [first, second] = sent();
   sidecar.triggerEvent("test-session", { error: "Session not open", request: first });
-  await settle(() => opens() === 2, "the refusal reopens the session without waiting for a connection event");
+  // Waits until the refusal reopens the session without waiting for a connection event.
+  await settle(() => opens() === 2);
   sidecar.triggerEvent("test-session", { event: "connection", connected: true });
-  await settle(() => opens() === 3, "the connection event reopens the session as well");
+  // Waits until the connection event reopens the session as well.
+  await settle(() => opens() === 3);
   sidecar.triggerEvent("test-session", { error: "Session not open", request: second });
   const waiting = expose.getCommand("terminal.input")({ bytes: "third" });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(sent().length, 2, "input waits for the session that reopens");
 
   sidecar.triggerEvent("test-session", { event: "state", sessionId: "s2", cols: 100, rows: 50, cellWidth: 8, cellHeight: 16 });
   await waiting;
-  await settle(() => sent().length === 5, "the refused input and the input that waited are sent");
+  // Waits until the refused input and the input that waited are sent.
+  await settle(() => sent().length === 5);
   assert.deepEqual(sent().slice(2).map((body) => body.actions[0]), [insert("first"), insert("second"), insert("third")],
     "the refused input keeps its place before the input that waited");
   assert.equal(session().error, undefined, "input that is sent again is not an error of the session");
@@ -4139,7 +4176,6 @@ test("input refused by a session that ended is an error and is not sent again", 
   sidecar.triggerEvent("test-session", { event: "exit" });
   const request = { operation: "paste", text: "late" };
   sidecar.triggerEvent("test-session", { error: "Session not open", request });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(expose.getStatus("terminal.session").readFn().error, "Session not open");
   assert.equal(sidecar.getMessages().filter(({ body }) => body.operation === "paste" || body.operation === "open").length, 1,
     "the ended session is not reopened and the input is not sent again");
@@ -4159,28 +4195,33 @@ const startForAnswers = async (log = null) => {
   state("s1");
   const typed = () => sidecar.getMessages().map(({ body }) => body)
     .filter((body) => body.operation === "input" || body.operation === "paste");
-  const settle = async (predicate, what) => {
-    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
-    assert.ok(predicate(), what);
-  };
+  // A wait ends by the send that makes its predicate hold.
+  const settle = (predicate) => sidecar.until(predicate);
   const reopen = (sessionId) => {
     sidecar.triggerEvent("test-session", { event: "connection", connected: true });
     state(sessionId);
   };
-  const quiet = async () => { for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve)); };
   const answer = (body, cids) => sidecar.triggerRaw("test-session", body, cids);
   const texts = () => typed().map((body) => body.actions[0].text);
-  return { sidecar, expose, typed, texts, settle, reopen, quiet, answer };
+  // Sends the input "mark" and waits until it is sent. The input that a session sends again goes before the input that comes later,
+  // so a list that ends with "mark" is all that the session sent before it.
+  const mark = async () => {
+    await expose.getCommand("terminal.input")({ bytes: "mark" });
+    await settle(() => texts().includes("mark"));
+  };
+  return { sidecar, expose, typed, texts, settle, reopen, mark, answer };
 };
 
 test("input without an answer of a service that ended is sent to the new session", { timeout: 10000 }, async () => {
   const { expose, texts, settle, reopen } = await startForAnswers();
   // The send answers: the bytes are in the socket of a service that has just been killed, and no answer of the service will come.
   await expose.getCommand("terminal.input")({ bytes: "killed" });
-  await settle(() => texts().length === 1, "the input is sent");
+  // Waits until the input is sent.
+  await settle(() => texts().length === 1);
 
   reopen("s2");
-  await settle(() => texts().length === 2, "the input is lost: it did not arrive in the new session");
+  // The input without an answer is sent to the new session.
+  await settle(() => texts().length === 2);
   assert.deepEqual(texts(), ["killed", "killed"]);
 });
 
@@ -4188,7 +4229,8 @@ test("each input without a native input names a cid of its own", { timeout: 1000
   const { sidecar, expose, typed, settle } = await startForAnswers();
   await expose.getCommand("terminal.input")({ bytes: "one" });
   await expose.getCommand("terminal.input")({ bytes: "two" });
-  await settle(() => typed().length === 2, "both inputs are sent");
+  // Waits until both inputs are sent.
+  await settle(() => typed().length === 2);
   const [one, two] = typed().map((body) => sidecar.getCids(body));
   assert.equal(one.length, 1);
   assert.equal(two.length, 1);
@@ -4208,19 +4250,19 @@ test("input of a native input names its cids alone, is ended by their answer, an
   const state = (sessionId) => sidecar.triggerEvent("test-session", { event: "state", sessionId, cols: 100, rows: 50, cellWidth: 8, cellHeight: 16 });
   state("s1");
   const inserted = () => sidecar.getMessages().map(({ body }) => body).filter((body) => body.operation === "input" && body.actions[0]?.type === "insert");
-  const settle = async (predicate, what) => {
-    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
-    assert.ok(predicate(), what);
-  };
+  // A wait ends by the send that makes its predicate hold.
+  const settle = (predicate) => sidecar.until(predicate);
   region._trigger("input", inputEvent([inputInsert("answered")], inputPreedit(), { cids: ["b1.7"] }));
   region._trigger("input", inputEvent([inputInsert("killed")], inputPreedit(), { cids: ["b1.8"] }));
-  await settle(() => inserted().length === 2, "both inputs are sent");
+  // Waits until both inputs are sent.
+  await settle(() => inserted().length === 2);
   assert.deepEqual(inserted().map((body) => sidecar.getCids(body)), [["b1.7"], ["b1.8"]]);
   sidecar.triggerRaw("test-session", { ack: true }, ["b1.7"]);
 
   sidecar.triggerEvent("test-session", { event: "connection", connected: true });
   state("s2");
-  await settle(() => inserted().length === 3, "the input without an answer is sent again");
+  // Waits until the input without an answer is sent again.
+  await settle(() => inserted().length === 3);
   assert.equal(inserted()[2].actions[0].text, "killed");
   assert.match(sidecar.getCids(inserted()[2])[0], /^view-/);
 });
@@ -4237,152 +4279,168 @@ test("two requests of one native input are each ended by one answer", { timeout:
   const state = (sessionId) => sidecar.triggerEvent("test-session", { event: "state", sessionId, cols: 100, rows: 50, cellWidth: 8, cellHeight: 16 });
   state("s1");
   const inserted = () => sidecar.getMessages().map(({ body }) => body).filter((body) => body.operation === "input" && body.actions[0]?.type === "insert");
-  const settle = async (predicate, what) => {
-    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
-    assert.ok(predicate(), what);
-  };
+  // A wait ends by the send that makes its predicate hold.
+  const settle = (predicate) => sidecar.until(predicate);
   region._trigger("input", inputEvent([inputInsert("first")], inputPreedit(), { cids: ["b1.7"] }));
   region._trigger("input", inputEvent([inputInsert("second")], inputPreedit(), { cids: ["b1.7"] }));
-  await settle(() => inserted().length === 2, "both requests are sent");
+  // Waits until both requests are sent.
+  await settle(() => inserted().length === 2);
   sidecar.triggerRaw("test-session", { ack: true }, ["b1.7"]);
 
   sidecar.triggerEvent("test-session", { event: "connection", connected: true });
   state("s2");
-  await settle(() => inserted().length === 3, "the request without an answer is sent again");
+  // Waits until the request without an answer is sent again.
+  await settle(() => inserted().length === 3);
   assert.equal(inserted()[2].actions[0].text, "second");
 });
 
 test("input that the service answered is not sent again to the new session", { timeout: 10000 }, async () => {
-  const { sidecar, expose, typed, texts, settle, reopen, quiet, answer } = await startForAnswers();
+  const { sidecar, expose, typed, texts, settle, reopen, mark, answer } = await startForAnswers();
   await expose.getCommand("terminal.input")({ bytes: "applied" });
   await expose.getCommand("terminal.input")({ bytes: "killed" });
-  await settle(() => texts().length === 2, "both inputs are sent");
+  // Waits until both inputs are sent.
+  await settle(() => texts().length === 2);
   answer({ ack: true }, sidecar.getCids(typed()[0]));
 
   reopen("s2");
-  await settle(() => texts().length === 3, "the input without an answer is sent again");
-  await quiet();
-  assert.deepEqual(texts(), ["applied", "killed", "killed"]);
+  // Waits until the input without an answer is sent again.
+  await settle(() => texts().length === 3);
+  await mark();
+  assert.deepEqual(texts(), ["applied", "killed", "killed", "mark"]);
 });
 
 test("one answer that names several cids ends each of their inputs, and a cid that nothing holds changes nothing", { timeout: 10000 }, async () => {
-  const { sidecar, expose, typed, texts, settle, reopen, quiet, answer } = await startForAnswers();
+  const { sidecar, expose, typed, texts, settle, reopen, mark, answer } = await startForAnswers();
   await expose.getCommand("terminal.input")({ bytes: "one" });
   await expose.getCommand("terminal.input")({ bytes: "two" });
   await expose.getCommand("terminal.input")({ bytes: "three" });
-  await settle(() => texts().length === 3, "the inputs are sent");
+  // Waits until the inputs are sent.
+  await settle(() => texts().length === 3);
   answer({ ack: true }, [...sidecar.getCids(typed()[0]), ...sidecar.getCids(typed()[1]), "b1.99"]);
 
   reopen("s2");
-  await settle(() => texts().length === 4, "the input without an answer is sent again");
-  await quiet();
-  assert.deepEqual(texts(), ["one", "two", "three", "three"]);
+  // Waits until the input without an answer is sent again.
+  await settle(() => texts().length === 4);
+  await mark();
+  assert.deepEqual(texts(), ["one", "two", "three", "three", "mark"]);
 });
 
 test("input that is sent again names a new cid, and its answer ends it", { timeout: 10000 }, async () => {
-  const { sidecar, expose, typed, texts, settle, reopen, quiet, answer } = await startForAnswers();
+  const { sidecar, expose, typed, texts, settle, reopen, mark, answer } = await startForAnswers();
   await expose.getCommand("terminal.input")({ bytes: "killed" });
-  await settle(() => texts().length === 1, "the input is sent");
+  // Waits until the input is sent.
+  await settle(() => texts().length === 1);
   const first = sidecar.getCids(typed()[0]);
   reopen("s2");
-  await settle(() => texts().length === 2, "the input is sent again");
+  // Waits until the input is sent again.
+  await settle(() => texts().length === 2);
   const second = sidecar.getCids(typed()[1]);
   assert.notDeepEqual(second, first);
   answer({ ack: true }, first);
   reopen("s3");
-  await settle(() => texts().length === 3, "an answer of the earlier send does not end the input that was sent again");
+  // An answer of the earlier send does not end the input that was sent again, so it is sent once more.
+  await settle(() => texts().length === 3);
   answer({ ack: true }, sidecar.getCids(typed()[2]));
   reopen("s4");
-  await quiet();
-  assert.equal(texts().length, 3);
+  await mark();
+  assert.deepEqual(texts(), ["killed", "killed", "killed", "mark"]);
 });
 
 test("input without an answer is not sent again to the session that stayed open, and leaves a record", { timeout: 10000 }, async () => {
   const log = capturedLog();
-  const { sidecar, expose, texts, settle, reopen, quiet } = await startForAnswers(log);
+  const { sidecar, expose, texts, settle, reopen, mark } = await startForAnswers(log);
   await expose.getCommand("terminal.input")({ bytes: "one" });
   await expose.getCommand("terminal.input")({ bytes: "two" });
-  await settle(() => texts().length === 2, "the inputs are sent");
+  // Waits until the inputs are sent.
+  await settle(() => texts().length === 2);
 
   reopen("s1");
-  await settle(() => sidecar.getMessages().filter(({ body }) => body.operation === "open").length === 2, "the session reopens");
-  await quiet();
-  assert.equal(texts().length, 2, "a service that kept the session may have applied the input");
+  // Waits until the session reopens.
+  await settle(() => sidecar.getMessages().filter(({ body }) => body.operation === "open").length === 2);
+  await mark();
+  assert.deepEqual(texts(), ["one", "two", "mark"], "a service that kept the session may have applied the input");
   assert.deepEqual(log.records.filter(([event]) => event === "input.unanswered.discarded").map(([, fields, level]) => [fields, level]),
     [[{ count: 2, reason: "session-kept" }, "warn"]]);
 });
 
 test("input that a new service refused is sent again once", { timeout: 10000 }, async () => {
-  const { sidecar, expose, typed, texts, settle, reopen, quiet, answer } = await startForAnswers();
+  const { sidecar, expose, typed, texts, settle, reopen, mark, answer } = await startForAnswers();
   await expose.getCommand("terminal.input")({ bytes: "refused" });
-  await settle(() => texts().length === 1, "the input is sent");
+  // Waits until the input is sent.
+  await settle(() => texts().length === 1);
   answer({ error: "Session not open", request: typed()[0] }, sidecar.getCids(typed()[0]));
 
   reopen("s2");
-  await settle(() => texts().length === 2, "the refused input is sent again");
-  await quiet();
-  assert.equal(texts().length, 2, "the refused input is not also sent as input without an answer");
+  // Waits until the refused input is sent again.
+  await settle(() => texts().length === 2);
+  await mark();
+  assert.deepEqual(texts(), ["refused", "refused", "mark"], "the refused input is not also sent as input without an answer");
 });
 
 test("the input of an ended service goes before the input that a new service refused and the input that waited", { timeout: 10000 }, async () => {
   const { sidecar, expose, typed, texts, settle, reopen, answer } = await startForAnswers();
   await expose.getCommand("terminal.input")({ bytes: "killed" });
   await expose.getCommand("terminal.input")({ bytes: "refused" });
-  await settle(() => texts().length === 2, "both inputs are sent");
+  // Waits until both inputs are sent.
+  await settle(() => texts().length === 2);
   answer({ error: "Session not open", request: typed()[1] }, sidecar.getCids(typed()[1]));
   const waiting = expose.getCommand("terminal.input")({ bytes: "waited" });
-  await new Promise((resolve) => setImmediate(resolve));
 
   reopen("s2");
   await waiting;
-  await settle(() => texts().length === 5, "all three inputs reach the new session");
+  // Waits until all three inputs reach the new session.
+  await settle(() => texts().length === 5);
   assert.deepEqual(texts().slice(2), ["killed", "refused", "waited"]);
 });
 
 test("input that a service answered with an error is not sent again", { timeout: 10000 }, async () => {
-  const { sidecar, expose, typed, settle, reopen, quiet, answer } = await startForAnswers();
+  const { sidecar, expose, typed, texts, settle, reopen, mark, answer } = await startForAnswers();
   await expose.getCommand("terminal.input")({ bytes: "failed" });
-  await settle(() => typed().length === 1, "the input is sent");
+  // Waits until the input is sent.
+  await settle(() => typed().length === 1);
   answer({ error: "Write failed" }, sidecar.getCids(typed()[0]));
 
   reopen("s2");
-  await quiet();
-  assert.equal(typed().length, 1);
+  await mark();
+  assert.deepEqual(texts(), ["failed", "mark"]);
 });
 
 test("input whose send failed answers with the failure and is not sent again", { timeout: 10000 }, async () => {
-  const { sidecar, expose, typed, reopen, quiet } = await startForAnswers();
+  const { sidecar, expose, texts, reopen, mark } = await startForAnswers();
   sidecar.failNext(new Error("restart limit"));
   await assert.rejects(expose.getCommand("terminal.input")({ bytes: "failed" }), /restart limit/);
 
   reopen("s2");
-  await quiet();
-  assert.equal(typed().length, 0);
+  await mark();
+  assert.deepEqual(texts(), ["mark"]);
 });
 
 test("input of a session that ended is not sent to the session that opens later, and leaves a record", { timeout: 10000 }, async () => {
   const log = capturedLog();
-  const { sidecar, expose, typed, settle, reopen, quiet } = await startForAnswers(log);
+  const { sidecar, expose, typed, texts, settle, reopen, mark } = await startForAnswers(log);
   await expose.getCommand("terminal.input")({ bytes: "exit\n" });
-  await settle(() => typed().length === 1, "the input is sent");
+  // Waits until the input is sent.
+  await settle(() => typed().length === 1);
   sidecar.triggerEvent("test-session", { event: "exit" });
 
   reopen("s2");
-  await quiet();
-  assert.equal(typed().length, 1);
+  await mark();
+  assert.deepEqual(texts(), ["exit\n", "mark"]);
   assert.deepEqual(log.records.filter(([event]) => event === "input.unanswered.discarded").map(([, fields]) => fields),
     [{ count: 1, reason: "session-ended" }]);
 });
 
 test("input that only reports focus names no cid and is not held", { timeout: 10000 }, async () => {
-  const { sidecar, reopen, settle, quiet } = await startForAnswers();
+  const { sidecar, reopen, settle, mark } = await startForAnswers();
   const focusBodies = () => sidecar.getFocusBodies();
-  await settle(() => focusBodies().length >= 1, "the opened session reads the focus");
+  // Waits until the opened session reads the focus.
+  await settle(() => focusBodies().length >= 1);
   assert.deepEqual(sidecar.getCids(focusBodies().at(-1)), []);
   const before = focusBodies().length;
   reopen("s2");
-  await settle(() => focusBodies().length === before + 1, "the session that opens reads the focus once");
-  await quiet();
+  // Waits until the session that opens reads the focus once.
+  await settle(() => focusBodies().length === before + 1);
+  await mark();
   assert.equal(focusBodies().length, before + 1);
 });
 
@@ -4390,30 +4448,34 @@ const records = (log, event) => log.records.filter(([name]) => name === event).m
 
 test("input above the limit of the characters that its service answers is not held and nothing is lost", { timeout: 60000 }, async () => {
   const log = capturedLog();
-  const { sidecar, expose, typed, texts, settle, reopen, quiet, answer } = await startForAnswers(log);
+  const { sidecar, expose, typed, texts, settle, reopen, mark, answer } = await startForAnswers(log);
   await expose.getCommand("terminal.input")({ bytes: "x".repeat(1048577) });
-  await settle(() => texts().length === 1, "the input is sent");
+  // Waits until the input is sent.
+  await settle(() => texts().length === 1);
   assert.deepEqual(records(log, "input.unanswered.unheld"), [[{ characters: 1048577, maxCharacters: 1048576 }, "info"]]);
 
   answer({ ack: true }, sidecar.getCids(typed()[0]));
   reopen("s2");
-  await quiet();
-  assert.equal(texts().length, 1);
+  await mark();
+  assert.equal(texts().length, 2);
+  assert.equal(texts()[1], "mark");
   assert.deepEqual(records(log, "input.unanswered.lost"), []);
 });
 
 test("input above the limit of the characters that its service never answers is recorded as lost, and the input that fits is sent again", { timeout: 60000 }, async () => {
   const log = capturedLog();
-  const { expose, texts, settle, reopen, quiet } = await startForAnswers(log);
+  const { expose, texts, settle, reopen, mark } = await startForAnswers(log);
   await expose.getCommand("terminal.input")({ bytes: "small" });
   await expose.getCommand("terminal.input")({ bytes: "x".repeat(1048577) });
-  await settle(() => texts().length === 2, "both inputs are sent");
+  // Waits until both inputs are sent.
+  await settle(() => texts().length === 2);
   assert.deepEqual(records(log, "input.unanswered.lost"), []);
 
   reopen("s2");
-  await settle(() => texts().length === 3, "the input that fits is sent again");
-  await quiet();
-  assert.equal(texts()[2], "small");
+  // Waits until the input that fits is sent again.
+  await settle(() => texts().length === 3);
+  await mark();
+  assert.deepEqual(texts().slice(2), ["small", "mark"]);
   assert.deepEqual(records(log, "input.unanswered.resent").map(([fields]) => fields), [{ count: 1 }]);
   assert.deepEqual(records(log, "input.unanswered.lost"), [[{ count: 1, characters: 1048577 }, "warn"]]);
 });
@@ -4423,11 +4485,13 @@ test("the text of the oldest input leaves when the characters of a new input pas
   const { expose, texts, settle, reopen } = await startForAnswers(log);
   await expose.getCommand("terminal.input")({ bytes: `a${"x".repeat(699999)}` });
   await expose.getCommand("terminal.input")({ bytes: `b${"x".repeat(699999)}` });
-  await settle(() => texts().length === 2, "both inputs are sent");
+  // Waits until both inputs are sent.
+  await settle(() => texts().length === 2);
   assert.deepEqual(records(log, "input.unanswered.unheld"), [[{ characters: 700000, maxCharacters: 1048576 }, "info"]]);
 
   reopen("s2");
-  await settle(() => texts().length === 3, "the input that fits is sent again");
+  // Waits until the input that fits is sent again.
+  await settle(() => texts().length === 3);
   assert.equal(texts()[2][0], "b");
   assert.deepEqual(records(log, "input.unanswered.lost"), [[{ count: 1, characters: 700000 }, "warn"]]);
 });
@@ -4436,7 +4500,8 @@ test("close of a session with input without an answer leaves a record", { timeou
   const log = capturedLog();
   const { expose, texts, settle } = await startForAnswers(log);
   await expose.getCommand("terminal.input")({ bytes: "x" });
-  await settle(() => texts().length === 1, "the input is sent");
+  // Waits until the input is sent.
+  await settle(() => texts().length === 1);
   await expose.getCommand("terminal.close")({});
   assert.deepEqual(log.records.filter(([event]) => event === "input.unanswered.discarded").map(([, fields]) => fields),
     [{ count: 1, reason: "session-closed" }]);
@@ -4446,10 +4511,12 @@ test("the oldest input above the limit of the count is no longer followed, and l
   const log = capturedLog();
   const { expose, texts, settle, reopen } = await startForAnswers(log);
   for (let i = 0; i < 1025; i++) await expose.getCommand("terminal.input")({ bytes: `i${i}` });
-  await settle(() => texts().length === 1025, "every input is sent");
+  // Waits until every input is sent.
+  await settle(() => texts().length === 1025);
 
   reopen("s2");
-  await settle(() => texts().length === 2049, "1024 inputs are sent again");
+  // Waits until 1024 inputs are sent again.
+  await settle(() => texts().length === 2049);
   assert.deepEqual([texts()[1025], texts()[2048]], ["i1", "i1024"]);
   assert.deepEqual(log.records.filter(([event]) => event === "input.unanswered.unfollowed").map(([, fields, level]) => [fields, level]),
     [[{ max: 1024 }, "warn"]]);
@@ -4512,7 +4579,6 @@ test("declared settings are sent at startup and on effective setting changes", a
     "cursor.shape": "beam", "cursor.blink": "Never", "cursor.interval": 1000,
     "cursor.idleTimeout": 5000, "cursor.unfocused": "solid", "clipboard.program": "deny",
   });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(fakeSidecar.getMessages().at(-1).body, {
     operation: "cursor", shape: "beam", blink: "Never", interval: 1000,
     idleTimeout: 5000, unfocused: "solid",
@@ -4583,8 +4649,8 @@ test("input send failures remain observable and later queued input still sends",
   openSession(fakeSidecar);
   regionReference._trigger("input", inputEvent([inputInsert("a")]));
   regionReference._trigger("input", inputEvent([inputInsert("b")]));
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.match(fakeExpose.getStatus("terminal.session").readFn().error, /input unavailable/);
+  await fakeSidecar.untilMessage((body) => body.operation === "input" && body.actions[0]?.text === "b");
+  await fakeExpose.untilStatus("terminal.session", (value) => /input unavailable/.test(value.error ?? ""));
   assert.equal(fakeSidecar.getMessages().at(-1).body.actions[0].text, "b");
 });
 
@@ -4831,7 +4897,7 @@ test("region input is buffered in order until sidecar state opens the session", 
 
   // 사이드카가 state 이벤트로 세션을 연다
   fakeSidecar.triggerEvent("test-session", { event: "state", sessionId: "s1", cols: 100, rows: 50, cellWidth: 8, cellHeight: 16 });
-  await new Promise((resolve) => setImmediate(resolve));
+  await fakeSidecar.until(() => sessionMessages(fakeSidecar).length >= 3);
 
   messages = sessionMessages(fakeSidecar);
   assert.equal(messages.length, 3, "open and two inputs are sent after state");
@@ -4854,8 +4920,7 @@ test("startup input overflow is visible and does not report success", async () =
   for (let index = 0; index <= 1024; index += 1) {
     regionReference._trigger("input", inputEvent([inputInsert(String(index))]));
   }
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.match(fakeExpose.getStatus("terminal.session").readFn().error, /queue overflow/);
+  await fakeExpose.untilStatus("terminal.session", (value) => /queue overflow/.test(value.error ?? ""));
   assert.equal(fakeSidecar.getMessages().filter(({ body }) => body.operation === "input").length, 0);
 });
 
@@ -4968,17 +5033,18 @@ test("the font size is 13 points times the text size factor and follows its chan
     settings: { read: () => values, on: () => () => {} },
     window: { TextEncoder: FakeTextEncoder },
   });
-  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  // The acknowledgement of each font is the event that reports its size. The page decides to send a font in the call that
+  // changes its size, so an unchanged size has sent nothing when the call returns.
+  const applied = (size) => fakeExpose.untilStatus("terminal.session", (value) => value.fontSize === size);
   const fonts = () => fakeSidecar.getMessages().filter(({ body }) => body.operation === "font")
     .map(({ body }) => [body.family, body.size]);
-  await settle();
+  await applied(19.5);
   assert.deepEqual(fonts(), [["Menlo", 19.5]], "the startup font uses the current factor");
   factor = 2;
   notify(factor);
-  await settle();
+  await applied(26);
   assert.deepEqual(fonts(), [["Menlo", 19.5], ["Menlo", 26]]);
   notify(factor);
-  await settle();
   assert.equal(fonts().length, 2, "an unchanged size is not sent again");
   assert.equal(fakeExpose.getStatus("terminal.session").readFn().fontSize, 26, "the applied size is reported");
   await terminal.dispose();
@@ -5012,9 +5078,11 @@ test("the font.family list is sent at startup and on change, and the applied fam
     reportSurfaceError: (error) => errors.push(error.message),
     window: { TextEncoder: FakeTextEncoder },
   });
-  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  // The acknowledgement of each font is the event that reports its family. The page decides to send a font in the call of the
+  // settings change, so an unchanged list has sent nothing when the call returns.
+  const applied = (family) => fakeExpose.untilStatus("terminal.session", (value) => value.font === family);
   const fonts = () => fakeSidecar.getMessages().filter(({ body }) => body.operation === "font").map(({ body }) => body.family);
-  await settle();
+  await applied("Menlo");
   assert.deepEqual(fonts(), ["D2Coding;Menlo"], "the configured list is sent at startup");
   assert.equal(fakeSidecar.getMessages().find(({ body }) => body.operation === "font").body.size, 13,
     "without a text size source the factor is 1");
@@ -5024,12 +5092,11 @@ test("the font.family list is sent at startup and on change, and the applied fam
 
   values = { ...values, "cursor.shape": "beam" };
   notify(values);
-  await settle();
   assert.deepEqual(fonts(), ["D2Coding;Menlo"], "an unchanged list is not sent again");
 
   values = { ...values, "font.family": "Courier;Menlo" };
   notify(values);
-  await settle();
+  await applied("Courier");
   assert.deepEqual(fonts(), ["D2Coding;Menlo", "Courier;Menlo"]);
   session = fakeExpose.getStatus("terminal.session").readFn();
   assert.equal(session.font, "Courier");
@@ -5228,7 +5295,6 @@ test("a pointer before the first state of the session sends no input", async () 
   view._trigger("pointermove", { pointerId: 1, clientX: 20, clientY: 5 });
   view._trigger("pointerdown", { button: 0, pointerId: 2, clientX: 20, clientY: 5 });
   view._trigger("pointerup", { button: 0, pointerId: 2, clientX: 20, clientY: 5 });
-  await new Promise((resolve) => setImmediate(resolve));
   const sent = fakeSidecar.getMessages().map(({ body }) => String(body.operation));
   assert.deepEqual(sent.filter((operation) => operation === "mouse" || operation.startsWith("selection")), []);
 });
@@ -5248,17 +5314,17 @@ test("the pointer is a hand over a linked cell and the session reports the hover
 });
 
 test("a Command-click on a linked cell opens the link through terminal.link.open without selecting", async () => {
-  const opened = [];
+  const opened = watchedList();
   const { fakeSidecar, view, link } = await startWithLink({ links: { open: async (url) => { opened.push(url); } } });
   view._trigger("pointerdown", { button: 0, pointerId: 2, clientX: 20, clientY: 5, metaKey: true });
   view._trigger("pointerup", { button: 0, pointerId: 2, clientX: 20, clientY: 5, metaKey: true });
-  await new Promise((resolve) => setImmediate(resolve));
+  await opened.until(() => opened.length === 1);
   assert.deepEqual(opened, [link]);
   assert.equal(fakeSidecar.getMessages().some(({ body }) => String(body.operation).startsWith("selection")), false);
 
   view._trigger("pointerdown", { button: 0, pointerId: 3, clientX: 20, clientY: 5 });
   view._trigger("pointerup", { button: 0, pointerId: 3, clientX: 20, clientY: 5 });
-  await new Promise((resolve) => setImmediate(resolve));
+  await fakeSidecar.untilMessage((body) => body.operation === "selection.end");
   assert.deepEqual(opened, [link], "a click without Command opened the link");
   assert.equal(fakeSidecar.getMessages().some(({ body }) => body.operation === "selection.start"), true);
 });
@@ -5268,9 +5334,7 @@ test("a link that the host rejects is an input session error", async () => {
     links: { open: async () => { throw new Error('link URL scheme "file" is not opened'); } },
   });
   view._trigger("pointerdown", { button: 0, pointerId: 2, clientX: 20, clientY: 5, metaKey: true });
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.match(fakeExpose.getStatus("terminal.session").readFn().error ?? "", /is not opened/);
+  await fakeExpose.untilStatus("terminal.session", (value) => /is not opened/.test(value.error ?? ""));
 });
 
 test("a session without an origin directory opens in the project root, and without a project in the home directory", async () => {
@@ -5320,7 +5384,7 @@ test("pointer trace correlates new gestures and records capture and focus withou
     view._trigger("pointermove", { buttons: 1, pointerId: 4, clientX: 42, clientY: 12 });
     view._trigger("pointerup", { button: 0, buttons: 0, pointerId: 4, clientX: 42, clientY: 12 });
   }
-  await new Promise((resolve) => setImmediate(resolve));
+  await sidecar.until(() => sidecar.getMessages().filter(({ body }) => body.operation === "mouse").length >= 6);
   const inputs = sidecar.getMessages().filter(({ body }) => body.operation === "mouse").map(({ body }) => body);
   assert.equal(inputs.length, 6);
   assert.ok(inputs.every((body) => typeof body.inputId === "string" && body.inputId.length > 0));
@@ -5386,6 +5450,83 @@ test("pty pending reads the session transport measurement and rejects explicit e
   assert.match(expose.getStatus("terminal.session").readFn().error, /unexpected pty\.pending response/);
 });
 
+// Starts a terminal with an open session, a screen status that does not follow and the diagnostic commands, whose waits for a reply
+// of the sidecar the cases below end (core docs/spec/plugin-processes.md, calls across a boundary, rule 3).
+async function startWaitingTerminal(options = {}, overrides = {}) {
+  FakeResizeObserver.reset();
+  const sidecar = createFakeSidecar(options);
+  const expose = createFakeExpose({ followScreen: false });
+  const terminal = await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
+    diagnostics: terminalDiagnostics, scale: 1, window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+    ...overrides,
+  });
+  FakeResizeObserver.triggerAll();
+  openSession(sidecar);
+  const sent = (operation) => sidecar.getMessages().some(({ body }) => body.operation === operation);
+  const waits = async () => {
+    const read = expose.getCommand("terminal.screen.read")();
+    const pending = expose.getCommand("terminal.pty.pending")();
+    await sidecar.until(() => sent("screen.read") && sent("pty.pending"));
+    return { read, pending };
+  };
+  return { terminal, sidecar, expose, sent, waits };
+}
+
+test("the view subscribes to the sidecar-failure of its surface and ends the subscription at dispose", async () => {
+  const { terminal, sidecar } = await startWaitingTerminal();
+  assert.equal(sidecar.failureListeners("test-session"), 1, "the view did not subscribe to the sidecar-failure of its surface");
+  await terminal.dispose();
+  assert.equal(sidecar.failureListeners("test-session"), 0, "the dispose did not end the subscription");
+});
+
+test("a sidecar-failure ends a waiting screen read, pty pending and screen watch acknowledgement", async () => {
+  const { sidecar, expose, sent, waits } = await startWaitingTerminal({ watchAnswers: false });
+  const { read, pending } = await waits();
+  const reported = new Promise((resolve) => {
+    const off = expose.getStatus("terminal.session").watchFn((value) => {
+      if (value.error?.includes("the sidecar ended before it answered")) { off(); resolve(value.error); }
+    });
+  });
+  const stop = expose.getStatus("terminal.screen").watchFn(() => {});
+  await sidecar.until(() => sent("screen.watch"));
+  sidecar.triggerFailure("test-session", "the service exited");
+  const ended = { message: "the sidecar ended before it answered: the service exited" };
+  await assert.rejects(read, ended, "the failure did not end the screen read");
+  await assert.rejects(pending, ended, "the failure did not end the pty pending");
+  assert.equal(await reported, `terminal input failed: ${ended.message}`, "the failure did not end the screen watch acknowledgement");
+  stop();
+});
+
+test("a connection event ends a waiting screen read and pty pending", async () => {
+  const { sidecar, waits } = await startWaitingTerminal();
+  const { read, pending } = await waits();
+  sidecar.triggerEvent("test-session", { event: "connection", connected: false, reason: "closed" });
+  const changed = { message: "the sidecar connection changed before it answered" };
+  await assert.rejects(read, changed, "the connection event did not end the screen read");
+  await assert.rejects(pending, changed, "the connection event did not end the pty pending");
+});
+
+test("the close of the view ends a waiting screen read and pty pending", async () => {
+  const closing = new AbortController();
+  const { waits } = await startWaitingTerminal({}, { closing: closing.signal });
+  const { read, pending } = await waits();
+  closing.abort();
+  await assert.rejects(read, { name: "AbortError" }, "the close did not end the screen read");
+  await assert.rejects(pending, { name: "AbortError" }, "the close did not end the pty pending");
+});
+
+test("a pty pending request ends the request that it replaces, and the answer ends the new one", async () => {
+  const { sidecar, expose } = await startWaitingTerminal();
+  const read = expose.getCommand("terminal.pty.pending");
+  const first = read();
+  const second = read();
+  await sidecar.until(() => sidecar.getMessages().filter(({ body }) => body.operation === "pty.pending").length === 2);
+  await assert.rejects(first, { name: "AbortError" }, "the replaced request did not end");
+  sidecar.triggerEvent("test-session", { event: "pty.pending", pending: 0, written: 1 });
+  assert.deepEqual(await second, { pending: 0, written: 1 });
+});
+
 test("a sidecar reconnection reopens the session and re-sends the bootstrap", async () => {
   const attach = createFakeAttachImage();
   const sidecar = createFakeSidecar();
@@ -5402,15 +5543,13 @@ test("a sidecar reconnection reopens the session and re-sends the bootstrap", as
   });
   openSession(sidecar);
   const messages = () => sidecar.getMessages();
-  const settle = async (predicate, what) => {
-    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
-    assert.ok(predicate(), what);
-  };
+  // A wait ends by the send that makes its predicate hold.
+  const settle = (predicate) => sidecar.until(predicate);
 
   // 연결이 다시 맺히면(V5-106) 재부트스트랩이 열기·테마·글꼴·커서 정책을 다시 보낸다.
   sidecar.triggerEvent("test-session", { event: "connection", connected: true });
-  await settle(() => messages().filter(({ body }) => body.operation === "open").length >= 2,
-    "open was not re-sent after the reconnection");
+  // The reconnection sends open again.
+  await settle(() => messages().filter(({ body }) => body.operation === "open").length >= 2);
   const reopened = messages().filter(({ body }) => body.operation === "open").at(-1).body;
   assert.equal(reopened.shell, "/bin/sh");
   assert.equal(reopened.image, "view");
@@ -5425,10 +5564,10 @@ test("a sidecar reconnection reopens the session and re-sends the bootstrap", as
   // 새 세션이 열리기 전까지 입력은 대기하고, state 이벤트가 오면 흘러간다.
   region._trigger("input", inputEvent([inputKey("Enter")]));
   const inputs = () => messages().filter(({ body }) => body.operation === "input").length;
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(inputs(), 0, "input did not wait for the reopened session");
   sidecar.triggerEvent("test-session", { event: "state", sessionId: "s2", cols: 100, rows: 50, cellWidth: 8, cellHeight: 16 });
-  await settle(() => inputs() === 1, "queued input did not flow after the reopened session");
+  // The queued input flows into the reopened session.
+  await settle(() => inputs() === 1);
   assert.equal(expose.getStatus("terminal.session").readFn().sessionId, "s2");
 });
 
@@ -5439,23 +5578,23 @@ test("a replaced service opens the new shell in the last directory that the shel
     tab: createFakeTab(), origin: { directory: "/tmp/origin" }, window: { TextEncoder: FakeTextEncoder },
   });
   openSession(sidecar);
-  const settle = async (predicate, what) => {
-    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
-    assert.ok(predicate(), what);
-  };
+  // A wait ends by the send that makes its predicate hold.
+  const settle = (predicate) => sidecar.until(predicate);
   const opens = () => sidecar.getMessages().filter(({ body }) => body.operation === "open").map(({ body }) => body.directory);
   assert.deepEqual(opens(), ["/tmp/origin"]);
 
   // The shell reports a directory; the next open after a reconnection starts in it.
   sidecar.triggerEvent("test-session", { event: "directory", uri: "file:///tmp/a%20b", path: "/tmp/a b" });
   sidecar.triggerEvent("test-session", { event: "connection", connected: true });
-  await settle(() => opens().length === 2, "open was not re-sent after the reconnection");
+  // The reconnection sends open again.
+  await settle(() => opens().length === 2);
   assert.deepEqual(opens(), ["/tmp/origin", "/tmp/a b"]);
 
   // A directory of another machine clears the recorded directory, so the open starts where the tab started.
   sidecar.triggerEvent("test-session", { event: "directory", uri: "file://remote/tmp", path: null });
   sidecar.triggerEvent("test-session", { event: "connection", connected: true });
-  await settle(() => opens().length === 3, "open was not re-sent after the second reconnection");
+  // The second reconnection sends open again.
+  await settle(() => opens().length === 3);
   assert.deepEqual(opens(), ["/tmp/origin", "/tmp/a b", "/tmp/origin"]);
 });
 
@@ -5471,18 +5610,16 @@ test("input queued during a reconnection flows when the preserved session answer
   openSession(sidecar);
   const messages = () => sidecar.getMessages();
   const inputs = () => messages().filter(({ body }) => body.operation === "input").length;
-  const settle = async (predicate, what) => {
-    for (let i = 0; i < 50 && !predicate(); i++) await new Promise((resolve) => setImmediate(resolve));
-    assert.ok(predicate(), what);
-  };
+  // A wait ends by the send that makes its predicate hold.
+  const settle = (predicate) => sidecar.until(predicate);
   // A live service keeps the session across the reconnection and answers the reattached surface with a session event,
   // not with a state event, so that event opens the session gate (docs/spec/terminal-runtime.md in core).
   sidecar.triggerEvent("test-session", { event: "connection", connected: true });
   region._trigger("input", inputEvent([inputKey("Enter")]));
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(inputs(), 0, "input did not wait for the reattached session");
   sidecar.triggerEvent("test-session", { event: "session", sessionId: "s1" });
-  await settle(() => inputs() === 1, "input queued during the reconnection did not flow when the preserved session answered");
+  // The input queued during the reconnection flows when the preserved session answers.
+  await settle(() => inputs() === 1);
 });
 
 test("the trace records each input with its text, the session gate and the flush", async () => {
@@ -5497,7 +5634,6 @@ test("the trace records each input with its text, the session gate and the flush
   const event = inputEvent([inputInsert("secret")]);
   region._trigger("input", event);
   openSession(sidecar);
-  await new Promise((resolve) => setImmediate(resolve));
   const recorded = lines.map(([event, fields]) => [event, JSON.parse(JSON.stringify(fields))]);
   assert.deepEqual(recorded.filter(([event]) => ["ime", "input", "input.flush"].includes(event)), [
     ["ime", { kind: "native-input", input: { actions: event.actions, preedit: event.preedit, errors: [] }, cids: event.cids }],
@@ -5524,7 +5660,6 @@ test("the trace records one native input transaction with its actions and final 
   ], inputPreedit("비밀", { markedRange: { location: 0, length: 2 }, selectedRange: { location: 2, length: 0 },
     replacementRange: { location: 4, length: 1 } }));
   region._trigger("input", transaction);
-  await new Promise((resolve) => setImmediate(resolve));
   const ime = lines.filter(([event]) => event === "ime").map(([, fields]) => JSON.parse(JSON.stringify(fields)));
   assert.deepEqual(ime, [{ kind: "native-input", input: {
     actions: transaction.actions, preedit: transaction.preedit, errors: [],
@@ -5545,7 +5680,11 @@ test("the trace records every message sent to the sidecar with its result, every
   const focusTransaction = inputEvent([{ type: "focus", focused: true }]);
   region._trigger("input", focusTransaction);
   sidecar.triggerEvent("test-session", { event: "directory", uri: "file:///tmp/a", path: "/tmp/a" });
-  await new Promise((resolve) => setImmediate(resolve));
+  // The result of the input message is recorded after its send.
+  await lines.until(() => {
+    const sentInput = lines.findIndex(([event, fields]) => event === "send" && carriesInput(fields.body));
+    return sentInput >= 0 && lines.slice(sentInput).some(([event, fields]) => event === "send.result" && fields.operation === "input");
+  });
   const of = (name) => lines.filter(([event]) => event === name).map(([, fields]) => fields);
   // Every message that the plugin sends is recorded with its whole body before it is sent and with its result after.
   const sent = of("send");
@@ -5575,7 +5714,7 @@ test("a failed send is recorded with its error", async () => {
   openSession(sidecar);
   sidecar.failNext(new Error("denied"));
   region._trigger("input", inputEvent([inputInsert("x")]));
-  await new Promise((resolve) => setImmediate(resolve));
+  await lines.until(() => lines.some(([event, fields]) => event === "send.result" && fields.ok === false));
   const failed = lines.filter(([event]) => event === "send.result").map(([, fields]) => fields).find((fields) => fields.ok === false);
   assert.ok(failed, "the failed send was not recorded");
   assert.equal(failed.error, "-32603: denied");
@@ -5596,7 +5735,7 @@ test("the session gate, the session open, the refused input, the shown error and
   const of = (name) => lines.filter(([event]) => event === name);
   assert.deepEqual(of("session.open").map(([, fields, level]) => [fields.shell, fields.directory, level]), [["/bin/sh", null, "info"]]);
   for (let index = 0; index <= 1024; index += 1) region._trigger("input", inputEvent([inputInsert("a")]));
-  await new Promise((resolve) => setImmediate(resolve));
+  await lines.until(() => of("error").some(([, fields]) => fields.source === "input" && /queue overflow/.test(fields.message)));
   assert.deepEqual(of("input.overflow").map(([, fields, level]) => [fields, level]), [[{ kind: "input", max: 1024, queue: 1024 }, "warn"]]);
   assert.ok(of("error").some(([, fields, level]) => level === "error" && fields.source === "input" && /queue overflow/.test(fields.message)), "the shown error was not stored");
   openSession(sidecar);
@@ -5620,7 +5759,7 @@ test("the input of a region event reaches the sidecar with the cids of that even
   region._trigger("input", inputEvent([inputKey("Enter")], inputPreedit(), { cids: ["b1.7"] }));
   region._trigger("input", inputEvent([inputInsert("x")], inputPreedit(), { cids: ["b1.8"] }));
   region._trigger("input", inputEvent([inputKey("Tab")], inputPreedit(), { cids: ["b1.9"] }));
-  await new Promise((resolve) => setImmediate(resolve));
+  await sidecar.until(() => sent.filter(({ body }) => carriesInput(body)).length >= 3);
   const inputs = sent.filter(({ body }) => carriesInput(body));
   assert.deepEqual(inputs.map(({ cids }) => cids), [["b1.7"], ["b1.8"], ["b1.9"]]);
 });
@@ -5638,10 +5777,10 @@ test("the inputs that waited for the session keep their cids when they are sent"
   });
   region._trigger("input", inputEvent([inputKey("Enter")], inputPreedit(), { cids: ["b1.7"] }));
   region._trigger("input", inputEvent([inputInsert("x")], inputPreedit(), { cids: ["b1.8"] }));
-  await new Promise((resolve) => setImmediate(resolve));
+  // The page queues an input in the call of its event while the session is not open.
   assert.deepEqual(sent.filter(({ body }) => body.operation === "input"), []);
   openSession(sidecar);
-  await new Promise((resolve) => setImmediate(resolve));
+  await sidecar.until(() => sent.filter(({ body }) => carriesInput(body)).length >= 2);
   assert.deepEqual(sent.filter(({ body }) => carriesInput(body)).map(({ cids }) => cids), [["b1.7"], ["b1.8"]]);
 });
 
@@ -5656,7 +5795,6 @@ test("cids that are no list of identifiers are an observable input error", async
   });
   openSession(sidecar);
   region._trigger("input", { ...inputEvent([inputInsert("x")]), cids: "b1.7" });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.match(expose.getStatus("terminal.session").readFn().error, /cids/);
   assert.equal(sidecar.getMessages().filter(({ body }) => body.operation === "input").length, 0);
 });
@@ -5673,18 +5811,13 @@ test("a failed reconnection reports the reason and keeps input queued", async ()
   openSession(sidecar);
   sidecar.triggerEvent("test-session", { event: "connection", connected: false, reason: "spawn failed" });
   region._trigger("input", inputEvent([inputKey("Enter")]));
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(sidecar.getMessages().filter(({ body }) => body.operation === "input").length, 0,
     "input did not wait while the connection is down");
   assert.equal(expose.getStatus("terminal.session").readFn().error, "sidecar connection failed: spawn failed");
   // 다음 연결 이벤트가 오면 재부트스트랩이 다시 흐른다.
   sidecar.triggerEvent("test-session", { event: "connection", connected: true });
-  let reopened = false;
-  for (let i = 0; i < 50 && !reopened; i++) {
-    await new Promise((resolve) => setImmediate(resolve));
-    reopened = sidecar.getMessages().filter(({ body }) => body.operation === "open").length >= 2;
-  }
-  assert.ok(reopened, "the bootstrap did not rerun after the failed reconnection");
+  // The bootstrap reruns after the failed reconnection: it sends open again.
+  await sidecar.until(() => sidecar.getMessages().filter(({ body }) => body.operation === "open").length >= 2);
   assert.equal(expose.getStatus("terminal.session").readFn().error, undefined,
     "the successful reconnection resolved the connection error");
 });
@@ -5699,10 +5832,11 @@ test("a mouse result that carries an error is shown and keeps the later results 
     window: { TextEncoder: FakeTextEncoder },
   });
   openSession(sidecar);
+  const moves = () => sidecar.getMessages().filter(({ body }) => body.operation === "mouse").length;
   view._trigger("pointermove", { pointerId: 1, clientX: 10, clientY: 12 });
-  await new Promise((resolve) => setImmediate(resolve));
+  await sidecar.until(() => moves() === 1);
   view._trigger("pointermove", { pointerId: 1, clientX: 42, clientY: 12 });
-  await new Promise((resolve) => setImmediate(resolve));
+  await sidecar.until(() => moves() === 2);
   const [first, second] = sidecar.getMessages().filter(({ body }) => body.operation === "mouse").map(({ body }) => body);
   const result = (body, error) => ({ event: "mouse", inputId: body.inputId, phase: body.phase, x: error ? null : 1, y: error ? null : 0,
     pressed: false, shift: false, alt: false, ctrl: false, reported: false, written: false,
@@ -5733,7 +5867,6 @@ test("a closing surface stops handling sidecar events before its regions are det
     event: "screen", cols: 100, rows: 50, lines: [],
     cursor: { col: 7, row: 3, shape: "Block", visible: true, blinking: false, blink_visible: true, focused: true, preedit: null },
   });
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(region._caret, undefined, "the caret of a region that is about to detach was set");
 });
 
@@ -5748,7 +5881,6 @@ test("the high-rate events pass their fields as a builder so that a closed level
   });
   openSession(sidecar);
   region._trigger("input", inputEvent([inputKey("Enter")]));
-  await new Promise((resolve) => setImmediate(resolve));
   for (const name of ["ime", "input", "send", "send.result", "sidecar.event", "region"]) {
     assert.ok(lines.some(([event]) => event === name), `${name} was not stored`);
     assert.ok(lines.builders.has(name), `${name} was not passed as a builder`);
@@ -5766,7 +5898,7 @@ test("the events input and send carry the cids of their input", async () => {
   });
   openSession(sidecar);
   region._trigger("input", inputEvent([inputKey("Enter")], inputPreedit(), { cids: ["b1.7"] }));
-  await new Promise((resolve) => setImmediate(resolve));
+  await lines.until(() => lines.some(([event, fields]) => event === "send" && carriesInput(fields.body)));
   const input = lines.find(([event, fields]) => event === "input" && fields.kind === "input" && !onlyFocus(fields.actions));
   assert.deepEqual(input?.[3], ["b1.7"], "the input event did not carry the cids");
   const send = lines.find(([event, fields]) => event === "send" && carriesInput(fields.body));
@@ -5774,12 +5906,10 @@ test("the events input and send carry the cids of their input", async () => {
 });
 
 
-// The hash of a screen is computed asynchronously: yields until the event log holds `count` frame events.
+// The hash of a screen is computed asynchronously: waits until the event log holds `count` frame events.
 async function framesStored(lines, count) {
-  for (let turn = 0; turn < 10000 && lines.filter(([name]) => name === "frame").length < count; turn++) {
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-  assert.equal(lines.filter(([name]) => name === "frame").length, count, "the frame event was not stored");
+  await lines.until(() => lines.filter(([name]) => name === "frame").length >= count);
+  assert.equal(lines.filter(([name]) => name === "frame").length, count, "the event log holds more frame events");
 }
 
 async function startScreenTerminal(lines) {
@@ -5815,11 +5945,16 @@ test("a screen message is not hashed and writes no frame record while the class 
   lines.levels = { lifecycle: "error", input: "error", call: "error", io: "error", frame: "error" };
   const sidecar = await startScreenTerminal(lines);
   sidecar.triggerEvent("test-session", SCREEN_MESSAGE.message);
-  for (let turn = 0; turn < 100; turn++) await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(lines.filter(([name]) => name === "frame"), [], "the page hashed a screen whose frame record the writer would refuse");
+  // The hashes of the two messages are computed in their order, so the record of the second message, which has a sequence of its
+  // own, comes after any record of the first.
   lines.levels = { ...lines.levels, frame: "debug" };
-  sidecar.triggerEvent("test-session", SCREEN_MESSAGE.message);
-  await framesStored(lines, 1);
+  const second = structuredClone(SCREEN_FRAME_PREEDIT);
+  const { sequence } = second;
+  assert.notEqual(sequence, SCREEN_MESSAGE.message.sequence, "the two messages must have sequences of their own");
+  sidecar.triggerEvent("test-session", second);
+  await lines.until(() => lines.some(([name, fields]) => name === "frame" && fields.sequence === sequence));
+  assert.deepEqual(lines.filter(([name]) => name === "frame").map(([, fields]) => fields.sequence), [sequence],
+    "the page hashed a screen whose frame record the writer would refuse");
 });
 
 test("a frame record preserves the accepted native frame tuple before asynchronous hashing", async () => {
@@ -5850,7 +5985,6 @@ test("valid copied screen messages do not leave a screen hash error in terminal.
     const message = { ...source, cursor: { ...source.cursor, caret: null }, render: null };
     sidecar.triggerRaw("test-session", message);
   }
-  await new Promise((resolve) => setImmediate(resolve));
 
   const screenErrors = lines.filter(([name, fields]) => name === "error" && fields.source === "screen");
   assert.equal(screenErrors.length, 0, JSON.stringify(screenErrors));
@@ -5898,7 +6032,6 @@ test("the view reads the screen when it opens a session and refuses a change bef
   const operations = sidecar.getMessages().map(({ body }) => body.operation);
   assert.ok(operations.indexOf("open") < operations.indexOf("screen.read"), JSON.stringify(operations));
   sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.change-one-row"));
-  await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(lines.filter(([name]) => name === "error"), [], "a change before the full form is expected after the read");
   assert.deepEqual(lines.filter(([name]) => name === "screen.refused").map(([, fields]) => fields), [{ number: 2, previous: 1 }]);
   assert.deepEqual(screenText(expose), []);
@@ -5914,13 +6047,11 @@ test("a refused change reports its error, reads the screen and refuses the chang
   sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.full-two-rows"));
   await framesStored(lines, 1);
   sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.refuses-unfollowed-change"));
-  await new Promise((resolve) => setImmediate(resolve));
   const errors = lines.filter(([name]) => name === "error").map(([, fields]) => fields.message);
   assert.equal(errors.length, 1, JSON.stringify(errors));
   assert.match(errors[0], /a change of previous 3 does not follow number 1/);
   assert.equal(screenReads(sidecar), 2, "the refusal reads the screen again");
   sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.change-one-row"));
-  await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(screenText(expose), ["ab", "cd"], "a change before the full form leaves the screen");
   assert.deepEqual(lines.filter(([name]) => name === "screen.refused").map(([, fields]) => fields), [{ number: 2, previous: 1 }]);
   assert.equal(lines.filter(([name]) => name === "error").length, 1);
@@ -6068,26 +6199,28 @@ test("a session that opens reads the current focus of the region", async () => {
   const focusSent = () => sidecar.getFocusMessages().map(({ focused }) => focused);
   region._trigger("input", inputEvent([{ type: "focus", focused: true }]));
   openSession(sidecar);
-  await new Promise((resolve) => setImmediate(resolve));
+  await sidecar.until(() => focusSent().length >= 1);
   assert.equal(focusSent().at(-1), true, "the focus of the region before the session did not reach it");
   // A respawned service holds no session and no focus.
   const before = focusSent().length;
+  const opens = () => sidecar.getMessages().filter(({ body }) => body.operation === "open").length;
   sidecar.triggerEvent("test-session", { event: "connection", connected: true });
-  await new Promise((resolve) => setImmediate(resolve));
+  // The connection reruns the bootstrap, which sends open again.
+  await sidecar.until(() => opens() === 2);
   openSession(sidecar);
-  await new Promise((resolve) => setImmediate(resolve));
+  await sidecar.until(() => focusSent().length >= before + 1);
   assert.equal(focusSent().length, before + 1, "the reopened session did not read the focus");
   assert.equal(focusSent().at(-1), true);
-  // A state event of a session that stays open, such as a resize, sends nothing.
+  // A state event of a session that stays open, such as a resize, sends nothing in the call of its event.
   openSession(sidecar);
-  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(focusSent().length, before + 1);
   // The region lost the focus while the connection was down, and a preserved session answers the reattach.
   sidecar.triggerEvent("test-session", { event: "connection", connected: true });
   region._trigger("input", inputEvent([{ type: "focus", focused: false }]));
-  await new Promise((resolve) => setImmediate(resolve));
+  await sidecar.until(() => opens() === 3);
+  const reattached = focusSent().length;
   sidecar.triggerEvent("test-session", { event: "session", sessionId: "s1" });
-  await new Promise((resolve) => setImmediate(resolve));
+  await sidecar.until(() => focusSent().length > reattached);
   assert.equal(focusSent().at(-1), false);
 });
 
@@ -6108,7 +6241,7 @@ for (const [name, event] of [
     // The focus of the session starts as the earlier view left it, and each input that carries a focus changes it.
     const sessionFocus = () => sidecar.getFocusMessages().at(-1)?.focused ?? true;
     sidecar.triggerEvent("test-session", event);
-    await new Promise((resolve) => setImmediate(resolve));
+    await sidecar.until(() => sidecar.getFocusMessages().length >= 1);
     assert.equal(sessionFocus(), false, "the session draws a focused cursor while the region holds no keyboard");
   });
 }
@@ -6127,12 +6260,15 @@ test("the focus that a reattached session reads does not hold the input that wai
     window: { TextEncoder: FakeTextEncoder },
   });
   openSession(sidecar);
-  await new Promise((resolve) => setImmediate(resolve));
+  // The session that opens reads the focus.
+  await sidecar.until(() => sent.length >= 1);
+  const opens = () => sidecar.getMessages().filter(({ body }) => body.operation === "open").length;
   sidecar.triggerEvent("test-session", { event: "connection", connected: true });
   region._trigger("input", inputEvent([inputKey("Enter")]));
-  await new Promise((resolve) => setImmediate(resolve));
+  // The connection reruns the bootstrap, which sends open again, and the input waits for the session.
+  await sidecar.until(() => opens() === 2);
   sent.length = 0;
   sidecar.triggerEvent("test-session", { event: "session", sessionId: "s1" });
-  await new Promise((resolve) => setImmediate(resolve));
+  await sidecar.until(() => sent.length >= 2);
   assert.deepEqual(sent, [[{ type: "focus", focused: false }], [inputKey("Enter")]]);
 });
