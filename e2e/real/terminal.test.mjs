@@ -514,7 +514,7 @@ for (const app of Object.values(APPS)) {
     const writeStart = performance.now();
     await s.run("terminal.screen.read", {}, surface);
     await s.until("terminal.screen", (rows) => rows.some((row) => row.map((cell) => cell.ch ?? " ").join("").trim() === "WHEELREADY"),
-      "100,000 lines were not written", { surface, timeout: 180000 });
+      "100,000 lines were not written", { surface });
     const writeMs = Math.round(performance.now() - writeStart);
     t.diagnostic(`${app.name}: 100,000 lines were written and shown in ${writeMs} ms`);
     const history = (await s.get("terminal.session", surface)).scrollback.history;
@@ -890,7 +890,7 @@ for (const app of Object.values(APPS)) {
     await s.until("core.grid", (grid) => cardOf(grid, shown.surface).focused, "the first terminal card did not take focus");
     await s.run("terminal.input", { bytes: "printf '\\033]9;PRESS-NOTICE\\007'\r" }, hidden.surface);
     await s.until("core.grid", (grid) => cardOf(grid, hidden.surface).tabs.find((item) => item.id === hidden.surface).notice === "PRESS-NOTICE",
-      "the terminal out of view did not show a tab notice", { timeout: 10000 });
+      "the terminal out of view did not show a tab notice");
     const grid = await s.get("core.grid");
     const index = grid.cards.flatMap((card) => card.tabs).findIndex((item) => item.id === hidden.surface);
     assert.ok(index >= 0, "the hidden terminal tab is not rendered");
@@ -946,20 +946,10 @@ for (const app of Object.values(APPS)) {
     target = candidates.find((point) => frontWindowAt(point.x, point.y)?.pid === pid);
     assert.ok(target, "no exposed point in the terminal view is available for the Finder drop");
     for (const name of ["drop me.txt", "drop.png"]) {
-      let from;
-      await new Promise((resolve, reject) => {
-        const deadline = Date.now() + 1000;
-        const poll = () => {
-          activateFinder();
-          from = finderItemCenter(name);
-          if (frontWindowAt(from.x, from.y)?.owner === "Finder") return resolve();
-          if (Date.now() >= deadline) return reject(new Error(`${name} Finder item did not become frontmost`));
-          setTimeout(() => {
-            try { poll(); } catch (error) { reject(error); }
-          }, 50);
-        };
-        poll();
-      });
+      // Finder answers its activate event after it activated, and the window server gives no event of the order of the windows,
+      // so the check activates Finder once and reads the window at the item: a window in front of it fails the check.
+      activateFinder();
+      const from = finderItemCenter(name);
       const front = frontWindowAt(from.x, from.y);
       assert.equal(front?.owner, "Finder", `${name} is not in the frontmost window at ${from.x},${from.y}: ${JSON.stringify(front)}`);
       const board = dragPasteboard();

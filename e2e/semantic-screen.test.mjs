@@ -66,7 +66,7 @@ test("a hidden terminal screen notifies through every inactive host session", { 
         if (!lines.includes(marker)) return false;
         assert.equal(inputIssued, true, "marker notification preceded the measured input command");
         return true;
-      }, { surface, timeout: 20000 }).then(value => ({ value }), error => {
+      }, { surface }).then(value => ({ value }), error => {
         rejectAdmission(error);
         return { error };
       });
@@ -95,7 +95,7 @@ test("a hidden terminal screen notifies through every inactive host session", { 
       } catch (error) {
         failure = error;
       }
-      // The client owns unsubscription on completion, timeout and failure.
+      // The client owns unsubscription on completion, close and failure; the watch has no time limit.
       // Always await it, and retain both setup and watch failures if distinct.
       const result = await outcome;
       if (failure && result.error && failure !== result.error) {

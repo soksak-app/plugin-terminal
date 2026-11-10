@@ -224,8 +224,8 @@ test("waits for the seven-vowel Backspace document after a coherent eight-vowel 
     if (reads.length === 1) resolveFirstRead();
     return { coherent, document, stateEvents: statusEvents, ...current };
   };
-  const waitForEvent = (after, timeoutMs) => waitForStateEvent(events, after, subscribe, "Backspace status", timeoutMs);
-  const waiting = waitForTerminalStage(events, read, waitForEvent, sevenVowels, "Backspace", 1500);
+  const waitForEvent = (after) => waitForStateEvent(events, after, subscribe, "Backspace status");
+  const waiting = waitForTerminalStage(events, read, waitForEvent, sevenVowels, "Backspace");
 
   await firstRead;
   assert.equal(reads[0], eightVowels, "the first coherent reread is the pending eight-vowel document");
@@ -857,7 +857,7 @@ test("focus waits on the existing raw status stream after reference handoff", as
   const result = waitForObservedStatusEvent(observer.events, offset, (listener) => {
     notify = listener;
     return () => { notify = undefined; };
-  }, "terminal.cursor", (cursor) => cursor?.focused === true, "focus wait", 20);
+  }, "terminal.cursor", (cursor) => cursor?.focused === true, "focus wait");
   for (const listener of listeners) listener({ window: "main", surface: "surface-1",
     name: "terminal.cursor", value: { focused: false } });
   notify();
@@ -888,7 +888,7 @@ test("a status notification delivered during a sample satisfies the sample's ori
     for (const listener of listeners) listener();
   });
 
-  const event = await waitForStateEvent(events, sampleOffset, subscribe, "sample", 10);
+  const event = await waitForStateEvent(events, sampleOffset, subscribe, "sample");
   assert.equal(event.name, "terminal.compose");
   assert.equal(event.value.text, "ㅏ");
 });
@@ -925,7 +925,7 @@ test("the observer waits for the initial screen status after watch acknowledgeme
   const waiting = waitForObservedStatusEvent(events, 0, (wake) => {
     wakeups.add(wake);
     return () => wakeups.delete(wake);
-  }, "terminal.screen", Array.isArray, "initial screen status", 100);
+  }, "terminal.screen", Array.isArray, "initial screen status");
   const event = { window: "main", surface: "surface-1", name: "terminal.screen", value: values["terminal.screen"] };
   for (const listener of listeners) listener(event);
   const screenEvent = await waiting;
@@ -1049,4 +1049,19 @@ test("terminal observer stop retries only subscriptions whose release did not su
   await assert.rejects(observer.stop(), /cursor unwatch failed/);
   await observer.stop();
   assert.deepEqual(released, ["terminal.screen", "terminal.cursor", "terminal.cursor", "terminal.compose"]);
+});
+
+test("a status wait ends with the end of the connection and refuses a time limit", { timeout: 5000 }, async () => {
+  const subscribe = () => () => {};
+  let end;
+  const ended = new Promise((resolve) => { end = resolve; });
+  const waiting = waitForStateEvent([], 0, subscribe, "closed sample", ended);
+  const observed = waitForObservedStatusEvent([], 0, subscribe, "terminal.cursor", () => true, "closed focus", ended);
+  end();
+  await assert.rejects(waiting, /closed sample: the connection ended before the notification/);
+  await assert.rejects(observed, /closed focus: the connection ended before the notification/);
+  await assert.rejects(waitForStateEvent([], 0, subscribe, "limited", undefined, 1500), TypeError);
+  await assert.rejects(waitForStateEvent([], 0, subscribe, "limited", 1500), TypeError);
+  await assert.rejects(waitForObservedStatusEvent([], 0, subscribe, "terminal.cursor", () => true, "limited", 20), TypeError);
+  await assert.rejects(waitForTerminalStage([], async () => ({ coherent: false }), () => {}, "", "limited", 1500), TypeError);
 });

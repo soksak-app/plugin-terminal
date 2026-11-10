@@ -8,15 +8,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { APPS, open, within } from "@soksak/window-check/app.mjs";
+import { APPS, open } from "@soksak/window-check/app.mjs";
 import { EVERY_LEVEL } from "@soksak/window-check/log-policy.mjs";
 import { allRows, tailOf } from "@soksak/window-check/chains.mjs";
 import { fresh, PROBE } from "./start.mjs";
 import { ensureTerminals, readScreenUntil } from "./terminal-screen.mjs";
 
 const promptCount = (lines) => lines.filter((line) => line.startsWith("sh-")).length;
-/** The upper bound of the wait for the frame of the output; the wait ends at the notice of the log that shows the frame. */
-const FRAME_LIMIT = 10_000;
 /** The records that the check reads, all below `error`, which the default policy does not store. */
 const READS = ["sidecar.vt.pty_read", "sidecar.vt.frame", "sidecar.vt.surface_mode", "workbench.background.session"];
 
@@ -65,6 +63,8 @@ for (const app of Object.values(APPS)) {
         + JSON.stringify(frames.map((row) => [row.event.fields.reason, row.event.fields.sequence]));
       return frames.find((row) => row.event.fields.sequence >= output) ?? null;
     };
+    // The wait ends at the notice of the log that shows the frame, or by the close of the connection; a frame that never comes
+    // holds the check until the limit of the test runner.
     const wait = async () => {
       for (; ;) {
         const before = await s.get("host.log");
@@ -74,7 +74,7 @@ for (const app of Object.values(APPS)) {
       }
     };
     try {
-      const frame = await within(wait(), FRAME_LIMIT, `the frame of the output after Enter in ${terminal.surface}`);
+      const frame = await wait();
       t.diagnostic(`${app.name}: the output after Enter was drawn by the frame ${frame.event.fields.reason} of sequence ${frame.event.fields.sequence}`);
     } catch (error) {
       error.message += `; ${last}`;

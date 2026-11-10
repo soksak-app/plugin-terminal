@@ -88,26 +88,21 @@ export function terminalStageMatchesReference(snapshot, expectedDocument) {
   return snapshot.coherent && snapshot.document === expectedDocument;
 }
 
-/** Waits for a coherent terminal document to match the same-key AppKit reference. */
-export async function waitForTerminalStage(events, read, waitForEvent, expectedDocument, label, timeoutMs = 1500) {
+/**
+ * Waits for a coherent terminal document to match the same-key AppKit reference. Each reread that does not match waits for the
+ * next status event; the wait has no time limit and ends by the matching reread or by an error of the event wait.
+ */
+export async function waitForTerminalStage(events, read, waitForEvent, expectedDocument, label, ...rest) {
+  if (rest.length > 0) throw new TypeError(`${label}: waitForTerminalStage takes no timeout: it ends by a matching reread or an error`);
   assert.ok(Array.isArray(events), "terminal stage events must be an array");
   assert.equal(typeof read, "function", "terminal stage reread must be a function");
   assert.equal(typeof waitForEvent, "function", "terminal stage event wait must be a function");
   assert.equal(typeof expectedDocument, "string", "AppKit reference document must be text");
-  assert.ok(Number.isFinite(timeoutMs) && timeoutMs > 0, "terminal stage timeout must be positive");
-  const deadline = Date.now() + timeoutMs;
   for (;;) {
     const eventOffset = events.length;
     const snapshot = await read();
-    const remaining = deadline - Date.now();
-    if (remaining < 0) {
-      throw new Error(`${label}: terminal document did not reach its AppKit reference within ${timeoutMs} ms`);
-    }
     if (terminalStageMatchesReference(snapshot, expectedDocument)) return snapshot;
-    if (remaining <= 0) {
-      throw new Error(`${label}: terminal document did not reach its AppKit reference within ${timeoutMs} ms`);
-    }
-    await waitForEvent(eventOffset, remaining);
+    await waitForEvent(eventOffset);
   }
 }
 
@@ -376,8 +371,21 @@ async function readObservationBatch(reads, phase) {
 
 const TERMINAL_INPUT_STATUSES = ["terminal.compose", "terminal.cursor", "terminal.screen"];
 
-/** Resolves after a status event newer than the caller's sample offset arrives. */
-export function waitForStateEvent(events, after, subscribe, label, timeoutMs = 1500) {
+/** Rejects `finish` with an error that names `label` when the promise `ended` (the end of the connection) settles. */
+function endWith(ended, finish, reject, label) {
+  if (ended === undefined) return;
+  const end = () => finish(reject, new Error(`${label}: the connection ended before the notification`));
+  ended.then(end, end);
+}
+
+/**
+ * Resolves after a status event newer than the caller's sample offset arrives. The wait has no time limit: it ends by that
+ * event or by the promise `ended`, the end of the connection that delivers the events.
+ */
+export function waitForStateEvent(events, after, subscribe, label, ended, ...rest) {
+  if (rest.length > 0 || (ended !== undefined && typeof ended?.then !== "function")) {
+    return Promise.reject(new TypeError(`${label}: waitForStateEvent takes no timeout: it ends by its event or the end of the connection`));
+  }
   if (events.length > after) return Promise.resolve(events.at(-1));
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -385,21 +393,26 @@ export function waitForStateEvent(events, after, subscribe, label, timeoutMs = 1
     const finish = (callback, value) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
       off();
       callback(value);
     };
-    const timer = setTimeout(() => finish(reject, new Error(`${label}: no later terminal status notification`)), timeoutMs);
     off = subscribe(() => {
       if (events.length > after) finish(resolve, events.at(-1));
     });
+    endWith(ended, finish, reject, label);
     // A notification may arrive while the subscription is being installed.
     if (events.length > after) finish(resolve, events.at(-1));
   });
 }
 
-/** Resolves only for a matching status event on the caller's existing observer stream. */
-export function waitForObservedStatusEvent(events, after, subscribe, name, predicate, label, timeoutMs = 1500) {
+/**
+ * Resolves only for a matching status event on the caller's existing observer stream. The wait has no time limit: it ends by
+ * that event or by the promise `ended`, the end of the connection that delivers the events.
+ */
+export function waitForObservedStatusEvent(events, after, subscribe, name, predicate, label, ended, ...rest) {
+  if (rest.length > 0 || (ended !== undefined && typeof ended?.then !== "function")) {
+    return Promise.reject(new TypeError(`${label}: waitForObservedStatusEvent takes no timeout: it ends by its event or the end of the connection`));
+  }
   assert.ok(Array.isArray(events), "terminal observer events must be an array");
   assert.ok(Number.isInteger(after) && after >= 0, "terminal observer event offset must be nonnegative");
   assert.equal(typeof predicate, "function", "terminal observer predicate must be a function");
@@ -412,16 +425,14 @@ export function waitForObservedStatusEvent(events, after, subscribe, name, predi
     const finish = (callback, value) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
       off();
       callback(value);
     };
-    const timer = setTimeout(() => finish(reject,
-      new Error(`${label}: no matching ${name} notification on the existing observer stream`)), timeoutMs);
     off = subscribe(() => {
       const event = matchingEvent();
       if (event) finish(resolve, event);
     });
+    endWith(ended, finish, reject, label);
     const arrivedDuringSubscribe = matchingEvent();
     if (arrivedDuringSubscribe) finish(resolve, arrivedDuringSubscribe);
   });

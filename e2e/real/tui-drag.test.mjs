@@ -87,7 +87,7 @@ for (const app of Object.values(APPS)) {
           await s.until("terminal.pointer.trace", (value) => {
             const up = value.entries.findLast((entry) => entry.kind === "pointer-sent" && entry.body.operation === "mouse" && entry.body.phase === "up");
             return up !== undefined && value.entries.some((entry) => entry.kind === "pointer-result" && entry.body.inputId === up.body.inputId);
-          }, "the current drag has no matching mouse-up result", { surface, timeout: 5000 });
+          }, "the current drag has no matching mouse-up result", { surface });
         } catch (error) { waitError = String(error); }
         // Measures the PTY transfer state after the gesture. This observation separates a successful write from reception by the child,
         // and the kernel queue has no notification, so it can only be seen by samples: it is measured once right after and once after the selection settles.
@@ -104,9 +104,14 @@ for (const app of Object.values(APPS)) {
         if (waitForSelection) {
           const selectionWaitStarted = performance.now();
           try {
+            // The wait ends by the presented selection; its time is measured and judged against SELECTION_SETTLE_MS.
             await s.until("terminal.screen", (lines) => textCells.every((col) => lines[row]?.[col]?.inverse === true),
-              `the fixture TUI selection was not presented within ${SELECTION_SETTLE_MS}ms of the PTY mouse-up`,
-              { surface, timeout: SELECTION_SETTLE_MS });
+              "the fixture TUI selection was not presented after the PTY mouse-up", { surface });
+            const settledMs = performance.now() - selectionWaitStarted;
+            if (settledMs > SELECTION_SETTLE_MS) {
+              selectionWaitError = `LATE: the fixture TUI selection was presented ${Math.round(settledMs)}ms after the PTY mouse-up `
+                + `(limit ${SELECTION_SETTLE_MS}ms)`;
+            }
           } catch (error) {
             const detail = error.message?.split(" (status ")[0] ?? String(error);
             selectionWaitError = `${error.code ?? "ERROR"}: ${detail}`;
@@ -182,10 +187,10 @@ for (const app of Object.values(APPS)) {
         try {
           cycle.focusSettledState = await s.until("host.window", (window) => window.active && window.key &&
             window.responder.owner === "native" && window.responder.surface === surface,
-          "terminal native responder did not settle after the prompt click", { timeout: 1500 });
+          "terminal native responder did not settle after the prompt click");
         } catch (error) {
           cycle.focusSettleError = String(error);
-          cycle.focusAfterTimeout = await s.get("host.window");
+          cycle.focusAfterError = await s.get("host.window");
         }
         cycle.focusSettleDurationMs = Date.now() - focusWaitStarted;
         try {

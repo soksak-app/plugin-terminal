@@ -44,8 +44,8 @@ for (const app of Object.values(APPS)) {
     await readScreenUntil(s, terminal.surface, (lines) => lines.some((line) => line.trim() === "READY"), "the receiver did not start");
     // The sidecar writes its event file in batches: once the read of READY is in it, the writes of the command are in it too, so the
     // offsets taken now start after them.
-    await untilEventLine(s.app.configDir, before, (text) => text.includes("sidecar.vt.pty_read") && readText(text).includes("READY"), 10000,
-      reading(s.app, ["sidecar.vt.pty_read"]));
+    await untilEventLine(s.app.configDir, before, (text) => text.includes("sidecar.vt.pty_read") && readText(text).includes("READY"),
+      { ...reading(s.app, ["sidecar.vt.pty_read"]), ended: s.client.ended });
     const host = await s.get("host.window");
     const region = host.regions.find((item) => item.surface === terminal.surface && item.name === "view");
     assert.ok(region?.frame, `native terminal region ${terminal.surface} has no frame`);
@@ -57,8 +57,8 @@ for (const app of Object.values(APPS)) {
     for (const [key, options] of KEYS) await s.press(key, options);
     await readScreenUntil(s, terminal.surface, (lines) => lines.some((line) => line.trim() === "DONE"), "the receiver did not read the keys");
     await s.flushLog();
-    await untilEventLine(s.app.configDir, offsets, (text) => text.includes("sidecar.vt.pty_read") && readText(text).includes("DONE"), 10000,
-      reading(s.app, ["sidecar.vt.pty_read"]));
+    await untilEventLine(s.app.configDir, offsets, (text) => text.includes("sidecar.vt.pty_read") && readText(text).includes("DONE"),
+      { ...reading(s.app, ["sidecar.vt.pty_read"]), ended: s.client.ended });
     const received = readFileSync(captured, "utf8").replace(/\s+/g, "");
     assert.equal(received, EXPECTED, `${app.name}: the receiver read other bytes than the keys give`);
     const logged = traceRows(readEvents(s.app.configDir, offsets).events)

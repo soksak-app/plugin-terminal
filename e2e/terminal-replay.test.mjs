@@ -4,7 +4,8 @@
 // `terminal.screen.alter` of the terminal plugin injects, is reported as a divergence of the layer `plugin`. The check runs
 // `sok debug replay` of the application bundle, so each host checks its own tool.
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -23,32 +24,34 @@ const READS = ["sidecar.vt.frame", "sidecar.vt.pty_read", "sidecar.vt.pty_write"
 
 // Waits until the event files hold a page frame record of the session and the sidecar frame record of the same sequence, and
 // returns the greatest such sequence. The terminal plugin, the page batch and the sidecar each write at their own interval, so
-// the replay compares the records up to a sequence that both layers have stored.
-async function storedSequence(app, offsets, session) {
+// the replay compares the records up to a sequence that both layers have stored. The wait ends by those records, an error or the
+// end of the connection of the session.
+async function storedSequence(s, offsets, session) {
   let sequence = 0;
-  await untilEventLines(app.configDir, offsets, () => {
-    const { events } = readEvents(app.configDir, offsets);
+  await untilEventLines(s.app.configDir, offsets, () => {
+    const { events } = readEvents(s.app.configDir, offsets);
     const sidecar = new Set(events.filter((event) => event.event === "sidecar.vt.frame" && event.session === session)
       .map((event) => event.fields.sequence));
     const page = events.filter((event) => event.event === "plugin.terminal.frame" && event.fields.session === session)
       .map((event) => event.fields.sequence).filter((value) => sidecar.has(value));
     sequence = Math.max(0, ...page);
     return sequence >= 2;
-  }, 20000, reading(app, ["sidecar.vt.frame"]));
+  }, { ...reading(s.app, ["sidecar.vt.frame"]), ended: s.client.ended });
   return sequence;
 }
 
 // Runs `sok debug replay` of the bundle on the configuration directory `config` (that of the application unless given) and returns
-// its exit status, standard output and standard error.
-function replay(app, session, until, config = app.configDir) {
+// its exit status, standard output and standard error. The run ends by the exit of the process; it is not synchronous, so the limit
+// of the test runner still ends a run that does not exit.
+async function replay(app, session, until, config = app.configDir) {
   const sok = join(dirname(app.binary), "sok");
   try {
     const args = ["debug", "replay", session, "--until", String(until), "--config-dir", config];
-    const stdout = execFileSync(sok, args, { encoding: "utf8", timeout: 60000 });
+    const { stdout } = await promisify(execFile)(sok, args, { encoding: "utf8" });
     return { code: 0, stdout, stderr: "" };
   } catch (error) {
-    if (typeof error.status !== "number") throw error;
-    return { code: error.status, stdout: error.stdout, stderr: error.stderr };
+    if (typeof error.code !== "number") throw error;
+    return { code: error.code, stdout: error.stdout, stderr: error.stderr };
   }
 }
 
@@ -63,8 +66,8 @@ for (const app of Object.values(APPS)) {
     const offsets = currentEventOffsets(app.configDir);
     await s.run("terminal.input", { bytes: "printf 'REPLAY-%s\\n' one two\r" }, surface);
     await readScreenUntil(s, surface, (lines) => lines.includes("REPLAY-two"), `${surface} did not show the printed lines`);
-    const until = await storedSequence(app, offsets, sessionId);
-    const result = replay(app, sessionId, until);
+    const until = await storedSequence(s, offsets, sessionId);
+    const result = await replay(app, sessionId, until);
     t.diagnostic(`${app.name}: replay ${JSON.stringify(result)}`);
     assert.equal(result.code, 0, `sok debug replay failed: ${result.stderr}`);
     const match = /^replay session \S+: (\d+) sidecar frames and (\d+) page frames equal in (\d+) segments\n$/.exec(result.stdout);
@@ -86,10 +89,10 @@ for (const app of Object.values(APPS)) {
     await s.run("terminal.screen.alter", {}, surface);
     await s.run("terminal.input", { bytes: "printf 'ALTERED-%s\\n' one two\r" }, surface);
     await readScreenUntil(s, surface, (lines) => lines.includes("ALTERED-two"), `${surface} did not show the printed lines`);
-    const until = await storedSequence(app, offsets, sessionId);
+    const until = await storedSequence(s, offsets, sessionId);
     // The replay stores the divergence that this check causes as an error event of the tool in the configuration folder.
     s.expectError(new RegExp(`sok\\.replay\\.divergence: .*"layer":"plugin".*"session":"${sessionId}"`));
-    const result = replay(app, sessionId, until);
+    const result = await replay(app, sessionId, until);
     t.diagnostic(`${app.name}: replay ${JSON.stringify(result)}`);
     assert.equal(result.code, 1, `sok debug replay did not report the changed message: ${JSON.stringify(result)}`);
     const pattern = new RegExp(`^sok: replay divergence: session ${sessionId} segment \\S+ sequence \\d+ layer plugin expected [0-9a-f]{64} found [0-9a-f]{64}\\n$`);
@@ -136,7 +139,7 @@ for (const app of Object.values(APPS)) {
     await s.until("terminal.session", (state) => state.cols !== cols, "the terminal was not resized", { surface });
     await s.run("terminal.input", { bytes: "printf 'VIEW-%s\\n' done\r" }, surface);
     await readScreenUntil(s, surface, (lines) => lines.includes("VIEW-done"), `${surface} did not show the last line`);
-    const until = await storedSequence(app, offsets, sessionId);
+    const until = await storedSequence(s, offsets, sessionId);
     const { events } = readEvents(app.configDir, offsets);
     const inputs = new Set(events.filter((event) => event.session === sessionId && event.fields?.sequence <= until)
       .map((event) => event.event));
@@ -144,7 +147,7 @@ for (const app of Object.values(APPS)) {
       "sidecar.vt.selection"]) {
       assert.ok(inputs.has(name), `the session stored no ${name} up to sequence ${until}: ${[...inputs]}`);
     }
-    const result = replay(app, sessionId, until);
+    const result = await replay(app, sessionId, until);
     t.diagnostic(`${app.name}: replay ${JSON.stringify(result)}`);
     assert.equal(result.code, 0, `sok debug replay failed: ${result.stderr}`);
     assert.match(result.stdout, /^replay session \S+: \d+ sidecar frames and \d+ page frames equal in \d+ segments\n$/);
@@ -161,7 +164,7 @@ for (const app of Object.values(APPS)) {
     const offsets = currentEventOffsets(app.configDir);
     await s.run("terminal.input", { bytes: "printf 'STORED-%s\\n' one two\r" }, surface);
     await readScreenUntil(s, surface, (lines) => lines.includes("STORED-two"), `${surface} did not show the printed lines`);
-    const until = await storedSequence(app, offsets, sessionId);
+    const until = await storedSequence(s, offsets, sessionId);
     // The replay reads a copy of the event files and of the installed sidecars in a disposable configuration directory, in which
     // one byte of the last output that the session read up to the sequence is changed; the files of the application stay as
     // they are.
@@ -190,7 +193,7 @@ for (const app of Object.values(APPS)) {
       changed = event.fields.sequence;
     }
     assert.ok(changed !== null, `no output of the session ${sessionId} up to sequence ${until} was stored`);
-    const result = replay(app, sessionId, until, copy);
+    const result = await replay(app, sessionId, until, copy);
     t.diagnostic(`${app.name}: changed the output at sequence ${changed}; replay ${JSON.stringify(result)}`);
     assert.equal(result.code, 1, `sok debug replay did not report the changed input: ${JSON.stringify(result)}`);
     const pattern = new RegExp(`^sok: replay divergence: session ${sessionId} segment \\S+ sequence \\d+ layer sidecar expected [0-9a-f]{64} found [0-9a-f]{64}\\n$`);

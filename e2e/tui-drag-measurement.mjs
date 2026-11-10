@@ -38,7 +38,7 @@ export function assertTuiGesture({ expected, events, visual, capture, overflow, 
   assert.deepEqual(visual.selectedCells, visual.expectedCells, "visible selection differs from expected cells");
   assert.deepEqual(visual.recordedCells, visual.expectedCells, "recorded selection differs from expected cells");
   if (selectionWaitMs !== undefined) {
-    assert.equal(selectionWaitError, undefined, `selection status did not arrive: ${selectionWaitError}`);
+    assert.equal(selectionWaitError, undefined, `the selection wait failed: ${selectionWaitError}`);
     assert.ok(selectionWaitMs <= 1050, `selection appeared after ${selectionWaitMs}ms`);
     // A selection that stays until the next gesture is correct behavior, so instead of a precondition of integrity, requires that the selection was
     // formed within this recording. The down of a drag breaks the earlier selection and makes a new one, so a less selected frame is always captured before the

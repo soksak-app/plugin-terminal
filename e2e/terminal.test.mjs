@@ -343,7 +343,7 @@ for (const app of Object.values(APPS)) {
     const label = (grid) => grid.cards.flatMap((card) => card.tabs).find((tab) => tab.id === terminal.surface)?.label;
     await s.run("terminal.input", { bytes: "printf '\\033]2;TITLE-CHECK\\007'\r" }, terminal.surface);
     await s.until("core.grid", (grid) => label(grid) === "TITLE-CHECK",
-      "the tab did not show the program title", { timeout: 10000 });
+      "the tab did not show the program title");
     await s.run("core.settings.change", { key: "terminal.title", value: "name", scope: "common" });
     await s.until("core.grid", (grid) => label(grid) === null, "the name setting kept the program title");
     await s.run("core.settings.change", { key: "terminal.title", value: "program", scope: "common" });
@@ -369,7 +369,7 @@ for (const app of Object.values(APPS)) {
     assert.equal(notice(await s.get("core.grid"), shown.surface), null, "the tab in view received a notice");
     await s.run("terminal.input", { bytes: "printf '\\033]9;NOTICE-CHECK\\007'\r" }, hidden.surface);
     await s.until("core.grid", (grid) => notice(grid, hidden.surface) === "NOTICE-CHECK",
-      "the terminal out of view did not show a tab notice", { timeout: 10000 });
+      "the terminal out of view did not show a tab notice");
     await s.run("core.card.focus", { card: cardOf(await s.get("core.grid"), hidden.surface).id });
     await s.until("core.grid", (grid) => notice(grid, hidden.surface) === null,
       "the notice stayed after the tab came into view");
@@ -384,22 +384,19 @@ for (const app of Object.values(APPS)) {
       await s.run("core.card.focus", { card: cardOf(await s.get("core.grid"), shown.surface).id });
       await s.until("core.grid", (grid) => cardOf(grid, shown.surface).focused, "the first terminal card did not take focus");
       await s.run("core.settings.change", { key: "terminal.notifications", value: "system", scope: "common" });
+      // An authorization that the person has not decided makes the post show the system question, and no event of the window
+      // answers it, so the check fails before the post with what the person has to do.
+      if ((await s.get("core.notifications")).authorization === "notDetermined") {
+        throw new Error(`${app.name}: the notification authorization of this application is not decided; answer its system notification prompt once`);
+      }
       await s.run("terminal.input", { bytes: "printf '\\033]9;SYSTEM-POLICY\\007'\r" }, hidden.surface);
       await s.until("terminal.session", (session) => session.vendor?.notification === "SYSTEM-POLICY",
         "the system notification policy did not reach the terminal", { surface: hidden.surface });
       // The result of the system policy is one of: posted, native error, or denied permission. A denial is reported only through the permission state, without a post or an error
       // (V5-111). The notification permission of the application bundle is set only when the user answers the system question.
       const decided = (state) => state.posted.includes(hidden.surface) || state.error !== null || state.authorization === "denied";
-      try {
-        await s.until("core.notifications", decided,
-          "the system notification policy produced neither a post, a native error, nor a denied authorization", { timeout: 10000 });
-      } catch (error) {
-        const state = await s.get("core.notifications");
-        if (state.authorization === "notDetermined") {
-          throw new Error(`${app.name}: the notification authorization of this application is not decided; answer its system notification prompt once`, { cause: error });
-        }
-        throw error;
-      }
+      await s.until("core.notifications", decided,
+        "the system notification policy produced neither a post, a native error, nor a denied authorization");
       assert.equal((await s.get("core.grid")).cards.flatMap((card) => card.tabs).find((tab) => tab.id === hidden.surface).notice,
         null, "the system notification policy fell back to a tab notice");
       await s.run("core.settings.change", { key: "terminal.notifications", value: "tab", scope: "common" });
@@ -407,7 +404,7 @@ for (const app of Object.values(APPS)) {
       await s.run("terminal.input", { bytes: "printf '\\033]9;TAB-NOTICE\\007'\r" }, hidden.surface);
       const notice = (grid, surface) => grid.cards.find((card) => card.tabs.some((tab) => tab.id === surface)).tabs.find((tab) => tab.id === surface).notice;
       await s.until("core.grid", (grid) => notice(grid, hidden.surface) === "TAB-NOTICE",
-        "the terminal out of view did not show a tab notice", { timeout: 10000 });
+        "the terminal out of view did not show a tab notice");
       assert.equal((await s.get("core.notifications")).posted.length, posted, "the tab policy posted a system notification");
       await s.run("core.card.focus", { card: cardOf(await s.get("core.grid"), hidden.surface).id });
       await s.until("core.grid", (grid) => notice(grid, hidden.surface) === null,

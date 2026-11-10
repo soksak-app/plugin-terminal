@@ -133,7 +133,6 @@ async function waitForTerminalImeStage(session, surface, before, name) {
     check();
   });
   const watched = [];
-  let timer;
   let result;
   let failure;
   try {
@@ -147,13 +146,13 @@ async function waitForTerminalImeStage(session, surface, before, name) {
       if (revisions.get(status) === revision) values.set(status, value);
       check();
     }
-    result = await Promise.race([coherent, new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`${name}: terminal cursor and composition statuses did not converge`)), 10000);
+    // The wait has no time limit: the coherent statuses or the end of the connection end it.
+    result = await Promise.race([coherent, session.client.ended.then(() => {
+      throw new Error(`${name}: the connection ended before the terminal cursor and composition statuses converged`);
     })]);
   } catch (error) {
     failure = error;
   } finally {
-    clearTimeout(timer);
     off();
     const cleanupErrors = [];
     for (const status of watched.reverse()) {
@@ -174,7 +173,7 @@ test("terminal IME stage waits for cursor notification after composition changes
   const before = { screen: ["$ "], compose: { text: "ㅏ" }, cursor: { row: 0, col: 1, preedit: { text: "ㅏ" } } };
   const session = {
     window: "main",
-    client: { on(name, listener) { assert.equal(name, "status.changed"); listeners.add(listener); return () => listeners.delete(listener); } },
+    client: { ended: new Promise(() => {}), on(name, listener) { assert.equal(name, "status.changed"); listeners.add(listener); return () => listeners.delete(listener); } },
     async request(method, { name }) {
       assert.ok(["status.watch", "status.unwatch"].includes(method));
       assert.ok(["terminal.screen", "terminal.compose", "terminal.cursor"].includes(name));
@@ -201,7 +200,7 @@ test("terminal IME stage waits for cursor movement when native preedit stays unc
   const before = { screen: ["$ ㅏ"], compose: { text: "ㅏㅏ" }, cursor: { row: 0, col: 2, preedit: { text: "ㅏㅏ" } } };
   const session = {
     window: "main",
-    client: { on(name, listener) { assert.equal(name, "status.changed"); listeners.add(listener); return () => listeners.delete(listener); } },
+    client: { ended: new Promise(() => {}), on(name, listener) { assert.equal(name, "status.changed"); listeners.add(listener); return () => listeners.delete(listener); } },
     async request(method, { name }) {
       assert.ok(["status.watch", "status.unwatch"].includes(method));
       assert.ok(["terminal.screen", "terminal.compose", "terminal.cursor"].includes(name));
@@ -229,7 +228,7 @@ test("terminal IME stage rereads coherent composition on a screen notification",
   const before = { screen: ["$ "], compose: { text: "ㅏ" }, cursor: { row: 0, col: 2, preedit: { text: "ㅏ" } } };
   const session = {
     window: "main",
-    client: { on(name, listener) { assert.equal(name, "status.changed"); listeners.add(listener); return () => listeners.delete(listener); } },
+    client: { ended: new Promise(() => {}), on(name, listener) { assert.equal(name, "status.changed"); listeners.add(listener); return () => listeners.delete(listener); } },
     async request(method, { name }) {
       assert.ok(["status.watch", "status.unwatch"].includes(method));
       assert.ok(["terminal.screen", "terminal.compose", "terminal.cursor"].includes(name));
