@@ -43,14 +43,20 @@ export async function mount(root, context) {
   const view = root.querySelector("#view");
   const scrollbar = { track: root.querySelector("#scrollbar"), thumb: root.querySelector("#thumb") };
   const padding = Object.fromEntries(["top", "right", "bottom", "left"].map((side) => [side, root.querySelector(`#padding-${side}`)]));
-  const composition = await context.composition.create({ regions: { view }, overlays: { scrollbar: scrollbar.track,
-    "padding-top": padding.top, "padding-right": padding.right, "padding-bottom": padding.bottom, "padding-left": padding.left } });
-  const image = composition.region("view");
+  // The terminal creates the composition when its input handler exists, and gives that handler at the creation
+  // (core docs/spec/surface-composition.md#page-api).
+  let composition = null;
+  const attachImage = async (_view, name, { input }) => {
+    composition = await context.composition.create({ regions: { view }, overlays: { scrollbar: scrollbar.track,
+      "padding-top": padding.top, "padding-right": padding.right, "padding-bottom": padding.bottom, "padding-left": padding.left },
+      input: { view: input } });
+    return composition.region(name);
+  };
   const sidecar = context.runtime.sidecar(SIDECAR);
   let controller;
   try {
-    controller = await startTerminal({ id: context.surfaceId, closing: context.closing, view, padding, attachImage: () => image,
-      detachRegions: () => composition.dispose(), sidecar, scrollbar,
+    controller = await startTerminal({ id: context.surfaceId, closing: context.closing, view, padding, attachImage,
+      detachRegions: () => composition?.dispose(), sidecar, scrollbar,
       expose: context.exposure, window, theme: context.runtime.theme, settings: context.runtime.settings,
       textSize: context.runtime.textSize, tab: context.tab, origin: context.origin, project: context.project,
       links: context.runtime.links,
@@ -68,7 +74,7 @@ export async function mount(root, context) {
     });
   } catch (error) {
     const cleanup = await Promise.allSettled([
-      controller ? controller.dispose() : composition.dispose(),
+      controller ? controller.dispose() : composition?.dispose(),
       context.exposure.dispose(),
     ]);
     const failed = cleanup.filter((result) => result.status === "rejected").map((result) => result.reason);
