@@ -5516,15 +5516,38 @@ test("the close of the view ends a waiting screen read and pty pending", async (
   await assert.rejects(pending, { name: "AbortError" }, "the close did not end the pty pending");
 });
 
-test("a pty pending request ends the request that it replaces, and the answer ends the new one", async () => {
+test("a pty pending request ends the request that it replaces, and the answer of the replaced request is dropped", async () => {
   const { sidecar, expose } = await startWaitingTerminal();
   const read = expose.getCommand("terminal.pty.pending");
   const first = read();
   const second = read();
   await sidecar.until(() => sidecar.getMessages().filter(({ body }) => body.operation === "pty.pending").length === 2);
   await assert.rejects(first, { name: "AbortError" }, "the replaced request did not end");
+  // The sidecar answers in the order of the requests: the first answer is the answer of the replaced request.
+  let answered = null;
+  second.then((value) => { answered = value; });
   sidecar.triggerEvent("test-session", { event: "pty.pending", pending: 0, written: 1 });
-  assert.deepEqual(await second, { pending: 0, written: 1 });
+  sidecar.triggerEvent("test-session", { event: "pty.pending", pending: 5, written: 9 });
+  assert.deepEqual(await second, { pending: 5, written: 9 }, "the answer of the replaced request ended the new one");
+  assert.deepEqual(answered, { pending: 5, written: 9 });
+  assert.equal(expose.getStatus("terminal.session").readFn().error, undefined, "an answer of a replaced request is an error");
+});
+
+test("a connection event leaves no answer of a replaced pty pending request to drop", async () => {
+  const { sidecar, expose } = await startWaitingTerminal();
+  const read = expose.getCommand("terminal.pty.pending");
+  const first = read();
+  const second = read();
+  await sidecar.until(() => sidecar.getMessages().filter(({ body }) => body.operation === "pty.pending").length === 2);
+  await assert.rejects(first, { name: "AbortError" });
+  sidecar.triggerEvent("test-session", { event: "connection", connected: false, reason: "closed" });
+  await assert.rejects(second, { message: "the sidecar connection changed before it answered" });
+  sidecar.triggerEvent("test-session", { event: "connection", connected: true });
+  openSession(sidecar);
+  const third = read();
+  await sidecar.until(() => sidecar.getMessages().filter(({ body }) => body.operation === "pty.pending").length === 3);
+  sidecar.triggerEvent("test-session", { event: "pty.pending", pending: 2, written: 3 });
+  assert.deepEqual(await third, { pending: 2, written: 3 }, "the answer of the new connection was dropped");
 });
 
 test("a sidecar reconnection reopens the session and re-sends the bootstrap", async () => {

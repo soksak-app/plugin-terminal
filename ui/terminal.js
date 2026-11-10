@@ -1593,6 +1593,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   };
   // pty.pending 측정 응답을 기다리는 resolver. 진단 명령이 한 번에 하나만 요청하고, 다음 요청은 이전 요청을 끝낸다.
   let pendingPtyRead = null;
+  // The requests that a later request replaced and that the sidecar still answers, in their order: the sidecar answers the
+  // pty.pending requests in the order that they were sent, so the next answer is the answer of the first of them.
+  const replacedPtyReads = [];
 
   // Ends each wait for a reply of the sidecar: the reads of the screen and the pty.pending measurement with error. The
   // acknowledgement of screen.watch ends where its state changes.
@@ -1603,6 +1606,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     const waiter = pendingPtyRead;
     pendingPtyRead = null;
     waiter?.reject(error);
+    // The requests of the ended connection receive no answer.
+    replacedPtyReads.length = 0;
   };
   // A sidecar that ended answers none of the requests of the surface (core docs/spec/plugin-processes.md, rule 3). The watch is
   // registered with that sidecar no more, so a new connection restores it.
@@ -1946,7 +1951,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       // 실패한 mouse 연산도 자기 inputId 의 결과로 답한다. 짝은 위에서 맞췄고, 실패는 입력 오류로 보인다.
       if (typeof body.error === "string") reportInputError(new Error(body.error));
     } else if (body.event === "pty.pending") {
-      // 진단 측정의 답이다. 요청이 없으면 계약 위반이고 오류는 요청을 거절한다.
+      // 진단 측정의 답이다. 대신된 요청의 답은 버리고, 요청이 없으면 계약 위반이고 오류는 요청을 거절한다.
+      if (replacedPtyReads.length > 0) {
+        replacedPtyReads.shift();
+        return;
+      }
       if (!pendingPtyRead) {
         reportInputError(new Error("unexpected pty.pending response from sidecar"));
         return;
@@ -2262,7 +2271,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // The answer, a failed send, the next request, the sidecar-failure of the surface, a connection event or the close of the view
   // ends the wait.
   const readPtyPending = () => new Promise((resolve, reject) => {
-    pendingPtyRead?.reject(new DOMException("pty.pending superseded", "AbortError"));
+    if (pendingPtyRead) {
+      replacedPtyReads.push(pendingPtyRead);
+      pendingPtyRead.reject(new DOMException("pty.pending superseded", "AbortError"));
+    }
     let settled = false;
     const waiter = {
       resolve: (pending) => {
@@ -2279,6 +2291,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     pendingPtyRead = waiter;
     terminal.send(id, { operation: "pty.pending" }).catch((error) => {
       if (pendingPtyRead === waiter) pendingPtyRead = null;
+      // A request whose send failed receives no answer.
+      const replaced = replacedPtyReads.indexOf(waiter);
+      if (replaced >= 0) replacedPtyReads.splice(replaced, 1);
       waiter.reject(error);
     });
   });
