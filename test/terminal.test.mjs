@@ -179,23 +179,31 @@ function createFakeView({ captureError = null, releaseError = null } = {}) {
   return view;
 }
 
+// The refusal of core for on("input") of a region whose creation gave its handler (core docs/spec/native-surfaces.md#image-regions).
+const INPUT_REFUSAL = "image view: the input handler is the input of composition.create";
+
 /**
- * 가짜 attachImage 구현.
+ * 가짜 attachImage 구현. The third argument is the creation of the composition, `{input}`: core gives each `input` event to
+ * that handler in its dispatch and refuses `on("input")` of the region.
  */
 function createFakeAttachImage() {
   const attachCalls = [];
   let regionEventHandlers = {};
+  let inputHandler = null;
+  const handlersOf = (eventType) => eventType === "input" ? (inputHandler ? [inputHandler] : []) : (regionEventHandlers[eventType] ?? []);
   const emptyCompose = () => ({ text: "", markedRange: null, selectedRange: { location: 0, length: 0 }, replacementRange: null, attributed: false });
   const withInsertSnapshot = (eventType, event) => eventType === "insert" && !Object.hasOwn(event, "preedit")
     ? { ...event, preedit: emptyCompose() }
     : event;
 
   return {
-    function: function(view, name, sidecar) {
-      attachCalls.push({ view, name, sidecar });
+    function: function(view, name, creation) {
+      attachCalls.push({ view, name, creation });
+      if (typeof creation?.input === "function") inputHandler = creation.input;
 
       return {
         on: function(eventType, handler) {
+          if (eventType === "input") throw new Error(INPUT_REFUSAL);
           if (!regionEventHandlers[eventType]) {
             regionEventHandlers[eventType] = [];
           }
@@ -214,11 +222,7 @@ function createFakeAttachImage() {
         },
         _trigger: function(eventType, event) {
           event = withInsertSnapshot(eventType, event);
-          if (regionEventHandlers[eventType]) {
-            for (const handler of regionEventHandlers[eventType]) {
-              handler(event);
-            }
-          }
+          for (const handler of handlersOf(eventType)) handler(event);
         },
         _getHandlers: function() {
           return regionEventHandlers;
@@ -227,11 +231,12 @@ function createFakeAttachImage() {
     },
     getCalls: () => attachCalls,
     // 네이티브 영역이 보고한 이벤트를 처리기에 전달하고 처리기의 결과를 모두 기다린다.
-    trigger: (eventType, event) => Promise.all((regionEventHandlers[eventType] ?? []).map((handler) => handler(withInsertSnapshot(eventType, event)))),
-    triggerRaw: (eventType, event) => Promise.all((regionEventHandlers[eventType] ?? []).map((handler) => handler(event))),
+    trigger: (eventType, event) => Promise.all(handlersOf(eventType).map((handler) => handler(withInsertSnapshot(eventType, event)))),
+    triggerRaw: (eventType, event) => Promise.all(handlersOf(eventType).map((handler) => handler(event))),
     reset: () => {
       attachCalls.length = 0;
       regionEventHandlers = {};
+      inputHandler = null;
     },
   };
 }
@@ -525,7 +530,9 @@ test("Boot: attachImage called once and sidecar receives open message", async ()
   assert.equal(fakeAttachImage.getCalls().length, 1, "attachImage called once");
   const attachCall = fakeAttachImage.getCalls()[0];
   assert.equal(attachCall.name, "view", "attachImage called with name 'view'");
-  assert.equal(attachCall.sidecar, undefined, "sidecar is resolved by the host composition");
+  // The creation names no sidecar, which the host composition resolves, and gives the input handler of the region.
+  assert.deepEqual(Object.keys(attachCall.creation ?? {}), ["input"], "the creation gives only the input handler");
+  assert.equal(typeof attachCall.creation.input, "function", "the input handler is given at the creation");
 
   // sidecar에 open이 갔는가?
   const messages = fakeSidecar.getMessages();
@@ -535,6 +542,36 @@ test("Boot: attachImage called once and sidecar receives open message", async ()
   assert.equal("width" in openMessage.body, false, "DOM width is not sent");
   assert.equal("height" in openMessage.body, false, "DOM height is not sent");
   assert.equal("scale" in openMessage.body, false, "DOM scale is not sent");
+});
+
+// The region takes the first responder before the creation of its composition answers, so its handler is given at the creation
+// (core docs/spec/native-surfaces.md#image-regions): an input event dispatched before the creation answers reaches the session.
+test("an input event dispatched before the composition creation answers reaches the session", async () => {
+  FakeResizeObserver.reset();
+  const fakeAttachImage = createFakeAttachImage();
+  const fakeSidecar = createFakeSidecar();
+  const answer = Promise.withResolvers();
+  let input = null;
+  const started = startTerminal({
+    view: createFakeView(), detachRegions: async () => {},
+    attachImage: (view, name, creation) => {
+      input = creation?.input ?? null;
+      return answer.promise.then(() => fakeAttachImage.function(view, name, creation));
+    },
+    sidecar: fakeSidecar, expose: createFakeExpose(),
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(typeof input, "function", "the creation receives the input handler before it answers");
+  input({ type: "input", actions: [{ type: "insert", text: "ls", replacementRange: null, attributed: false }],
+    preedit: { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false }, errors: [], cids: ["scope-1"] });
+  answer.resolve();
+  await started;
+  openSession(fakeSidecar);
+  const inserts = (body) => body.operation === "input" && body.actions.some((action) => action.type === "insert");
+  await fakeSidecar.untilMessage(inserts);
+  const sent = fakeSidecar.getMessages().map(({ body }) => body).filter(inserts);
+  assert.deepEqual(sent.flatMap((body) => body.actions).filter((action) => action.type === "insert").map((action) => action.text), ["ls"]);
 });
 
 // 테스트 2: 영역 insert{text:"ls\r"} → sidecar {operation:"input", bytes: base64("ls\r")}

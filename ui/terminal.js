@@ -518,17 +518,17 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     },
   };
 
-  // 이미지 영역 생성 및 사이드카 메시지 핸들링
+  // The image region. attachImage creates it with the composition of the view after the input handler below exists, and its
+  // other events are subscribed after it answers.
   let region = null;
-  region = attachImage(view, "view");
-  if (!region) throw new Error("Failed to attach image region");
   // detachRegions 는 이 표면의 영역을 뗀다. 반복 호출은 같은 해제를 기다린다.
   if (typeof detachRegions !== "function") throw new TypeError("startTerminal requires detachRegions()");
   // Every event of the image region is recorded with its type and its whole body before its handler runs.
-  const onRegion = (type, handler) => region.on(type, (event) => {
+  const traced = (type, handler) => (event) => {
     runtime.log.trace("region", () => ({ type, ...event }));
     return handler(event);
-  });
+  };
+  const onRegion = (type, handler) => region.on(type, traced(type, handler));
 
   const normalizeCompose = (event, strict = false) => {
     if (strict && (!event || typeof event !== "object" || Array.isArray(event))) {
@@ -1041,7 +1041,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   };
 
   // The region reports all callbacks from one native input scope as one strict transaction.
-  onRegion("input", async (event) => {
+  const receiveInput = async (event) => {
     let transaction;
     try {
       transaction = normalizeNativeInput(event);
@@ -1070,7 +1070,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       for (const resolve of focusWaiters) resolve();
       focusWaiters.clear();
     }
-  });
+  };
+  // The region takes the first responder as soon as it shows, before the creation of its composition answers, so its input
+  // handler is the input of that creation (core docs/spec/native-surfaces.md#image-regions): each event reaches the handler in
+  // its dispatch from the attachment of the region, and nothing holds one. The region refuses on("input").
+  region = await attachImage(view, "view", { input: traced("input", receiveInput) });
+  if (!region) throw new Error("Failed to attach image region");
 
   onRegion("error", (event) => {
     const message = `native image: ${event.reason}`;

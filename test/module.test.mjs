@@ -47,6 +47,9 @@ test("the view page opens the sidecar session of its surface and registers the d
   assert.deepEqual(host.regionCalls[0], ["image.attach", { name: "view", sidecar: manifest.surface.composition.regions[0].sidecar }]);
   assert.equal(host.places.length > 0, true, "the page placed its composition");
   assert.deepEqual(host.places[0].regions.map(({ name }) => name), ["view"]);
+  // The creation gives the input handler of the image region (core docs/spec/surface-composition.md#page-api).
+  assert.deepEqual(host.places[0].input, ["view"], "the creation gives the input handler of the region");
+  assert.equal(typeof host.region.input, "function");
   // Every declared status and element name is registered through the relay, and every command through the registry.
   const kinds = (group) => host.registrations.filter(({ kind }) => kind === group).map(({ name }) => name).sort();
   // A diagnostic build adds the entries of diagnostics.json to the surface declaration, and the page registers them.
