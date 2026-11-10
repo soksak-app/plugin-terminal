@@ -568,8 +568,10 @@ test("an input event dispatched before the composition creation answers reaches 
   answer.resolve();
   await started;
   openSession(fakeSidecar);
-  const sent = await fakeSidecar.untilMessage((body) => body.operation === "input" && body.actions.some((action) => action.type === "insert"));
-  assert.deepEqual(sent.actions.filter((action) => action.type === "insert").map((action) => action.text), ["ls"]);
+  const inserts = (body) => body.operation === "input" && body.actions.some((action) => action.type === "insert");
+  await fakeSidecar.untilMessage(inserts);
+  const sent = fakeSidecar.getMessages().map(({ body }) => body).filter(inserts);
+  assert.deepEqual(sent.flatMap((body) => body.actions).filter((action) => action.type === "insert").map((action) => action.text), ["ls"]);
 });
 
 // 테스트 2: 영역 insert{text:"ls\r"} → sidecar {operation:"input", bytes: base64("ls\r")}
