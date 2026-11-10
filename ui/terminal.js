@@ -1099,7 +1099,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   let dragCell = null;
   const cellOf = (point) => `${Math.floor(point.x / session.cellWidth)}:${Math.floor(point.y / session.cellHeight)}`;
   // 누름은 뷰 안이어야 한다. 누른 뒤 끄는 포인터가 뷰 밖으로 나가면 뷰 안의 가장 가까운 점으로 맞춘다.
-  // 줄의 처음이나 끝을 고르는 끌기는 포인터가 뷰 가장자리를 지나기 쉽다.
+  // 줄의 처음이나 끝을 고르는 끌기는 포인터가 뷰 가장자리를 지나기 쉽다. 위아래로 넘은 거리는 선택 갱신의 overflow 로 따로 보낸다.
   const selectionPoint = (event, nearest = false) => {
     const rect = view.getBoundingClientRect();
     let x = event.clientX - rect.left;
@@ -1133,8 +1133,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 처리될 수 있다. 제스처 전체를 하나의 순서열로 보낸다.
   let pointerInputChain = Promise.resolve();
   const mouseInputs = new Map();
-  // The selection update of the drag that waits for its turn in the chain. A later move of the drag changes its point instead of
-  // queueing another update, so a drag whose replies are slow keeps one update waiting with the latest point.
+  // The selection update of the drag that waits for its turn in the chain. A later move of the drag inside the view changes its
+  // point instead of queueing another update, so a drag whose replies are slow keeps one update waiting with the latest point. A
+  // move outside the view is never merged: the sidecar scrolls the history by the overflow of each update.
   let waitingSelectionUpdate = null;
   const queuePointerInput = (body) => {
     notifyPointer({ kind: "pointer-queued", body });
@@ -1213,6 +1214,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     if (event.pointerId !== selectionPointerId) return;
     try {
       const point = selectionPoint(event, true);
+      // The vertical distance from the nearest point to the pointer: negative above the view, positive below it, 0 inside.
+      const overflow = event.clientY - view.getBoundingClientRect().top - point.y;
       event.preventDefault();
       const cell = cellOf(point);
       if (cell !== dragCell) {
@@ -1220,17 +1223,18 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         sendMouse("move", point, event, true);
       }
       if (!selectionStarted) {
-        if (point.x === selectionStart.x && point.y === selectionStart.y) return;
+        if (point.x === selectionStart.x && point.y === selectionStart.y && overflow === 0) return;
         selectionStarted = true;
         queuePointerInput({ operation: "selection.start", ...selectionStart });
       }
-      // The point within a cell decides the side of the cell that the selection ends at, so each point updates the waiting update.
-      if (waitingSelectionUpdate !== null) {
+      // The point within a cell decides the side of the cell that the selection ends at, so each point inside the view updates the
+      // waiting update inside the view.
+      if (waitingSelectionUpdate !== null && waitingSelectionUpdate.overflow === 0 && overflow === 0) {
         waitingSelectionUpdate.x = point.x;
         waitingSelectionUpdate.y = point.y;
         return;
       }
-      waitingSelectionUpdate = { operation: "selection.update", ...point };
+      waitingSelectionUpdate = { operation: "selection.update", ...point, overflow };
       queuePointerInput(waitingSelectionUpdate);
     } catch (error) {
       reportInputError(error);
