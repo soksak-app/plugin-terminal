@@ -21,9 +21,31 @@ const settingsValues = () => ({
   shell: "/bin/sh",
 });
 
-function fakeSidecar(openError = null) {
+// The waits of a view page: each record of the fixture is an event that can change what a predicate of a test reads, and until resolves
+// when the predicate holds after one of them.
+function recordEvents() {
+  const waiters = [];
+  const notify = () => { for (const waiter of waiters.splice(0)) waiter(); };
+  // An array whose push notifies the waits.
+  const list = () => {
+    const array = [];
+    // The push of the array is not enumerable, so the array compares as the list of its records.
+    Object.defineProperty(array, "push", { value: (...items) => {
+      const length = Array.prototype.push.apply(array, items);
+      notify();
+      return length;
+    } });
+    return array;
+  };
+  const until = async (holds) => {
+    while (!holds()) await new Promise((resolve) => waiters.push(resolve));
+  };
+  return { list, notify, until };
+}
+
+function fakeSidecar(events, openError = null) {
   const listeners = new Map();
-  const sent = [];
+  const sent = events.list();
   return {
     sent,
     trigger(id, body) { for (const fn of listeners.get(id) ?? []) fn(body); },
@@ -62,37 +84,32 @@ function fakeRegion() {
   };
 }
 
-const settle = (rounds = 6) => {
-  let done = Promise.resolve();
-  for (let i = 0; i < rounds; i += 1) done = done.then(() => new Promise((resolve) => setTimeout(resolve, 0)));
-  return done;
-};
-
 export function createViewPage(_t, caseId, { scheme = "dark", start = START, diagnostic = true, openError = null, bindError = null } = {}) {
   const { window } = createWindow("sok://terminal/ui/terminal.html?case=" + caseId);
   useWindow(window);
   window.sokSurface = start;
   window.ResizeObserver = class FakeResizeObserver { constructor(callback) { this.callback = callback; } observe() {} unobserve() {} disconnect() {} };
   window.visualViewport = { width: 640, height: 400, addEventListener() {}, removeEventListener() {} };
-  const sidecar = fakeSidecar(openError);
-  const registrations = [];
+  const events = recordEvents();
+  const sidecar = fakeSidecar(events, openError);
+  const registrations = events.list();
   const commands = new Set();
   const commandHandlers = new Map();
   const statuses = new Map();
   const exposedElements = new Map();
-  const regionCalls = [];
-  const places = [];
-  const reports = [];
-  const logs = [];
-  const received = [];
-  const commandRuns = [];
-  const bindings = [];
+  const regionCalls = events.list();
+  const places = events.list();
+  const reports = events.list();
+  const logs = events.list();
+  const received = events.list();
+  const commandRuns = events.list();
+  const bindings = events.list();
   const releaseBindings = [];
   const frameObserver = { starts: 0, stops: 0 };
 
   const exposure = {
     async status(name, read, watch) { registrations.push({ kind: "status", name }); statuses.set(name, { read, watch }); },
-    async command(name, handler) { commands.add(name); commandHandlers.set(name, handler); },
+    async command(name, handler) { commands.add(name); commandHandlers.set(name, handler); events.notify(); },
     async element(name, element) { registrations.push({ kind: "element", name }); exposedElements.set(name, element); },
     async run(name, params = {}) {
       commandRuns.push({ name, params });
@@ -210,5 +227,5 @@ export function createViewPage(_t, caseId, { scheme = "dark", start = START, dia
     return (await handler(params.params)) ?? null;
   };
   return { window, context, report, sidecar, region, registrations, commands, regionCalls, places, reports, logs, received,
-    statuses, commandRuns, bindings, frameObserver, exposureRequest, settle };
+    statuses, commandRuns, bindings, frameObserver, exposureRequest, until: events.until };
 }

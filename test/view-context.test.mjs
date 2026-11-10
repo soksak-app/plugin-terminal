@@ -58,10 +58,12 @@ test("view error reports use runtime.error and report a rejected error route", {
   const report = createViewErrorReporter(bridge.runtime);
   const lines = [];
   const originalError = console.error;
-  console.error = (line) => lines.push(line);
+  // The refused error route writes the line of the console, which is the last event of the report.
+  const logged = Promise.withResolvers();
+  console.error = (line) => { lines.push(line); logged.resolve(); };
   try {
     assert.equal(report("view terminal: page failed"), undefined, "reporting does not depend on a logger promise");
-    await new Promise((resolve) => setImmediate(resolve));
+    await logged.promise;
   } finally {
     console.error = originalError;
   }
