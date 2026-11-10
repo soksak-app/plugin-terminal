@@ -1616,14 +1616,80 @@ test("a drag that leaves the view selects to the nearest edge point", async () =
 
   const selection = sessionMessages(fakeSidecar).filter(({ body }) => body.operation.startsWith("selection."))
     .map(({ body }) => body);
-  // 뷰는 800x600 이다. 뷰 밖의 점은 뷰 안의 가장 가까운 점이 된다.
+  // 뷰는 800x600 이다. 뷰 밖의 점은 뷰 안의 가장 가까운 점이 되고, overflow 는 그 점에서 포인터까지의 세로 거리다.
   assert.deepEqual(selection, [
     { operation: "selection.start", x: 44, y: 20 },
-    { operation: "selection.update", x: 0, y: 20 },
-    { operation: "selection.update", x: 799, y: 599 },
+    { operation: "selection.update", x: 0, y: 20, overflow: 0 },
+    { operation: "selection.update", x: 799, y: 599, overflow: 101 },
     { operation: "selection.end" },
   ]);
   assert.equal(fakeExpose.getStatus("terminal.session").readFn().error, undefined);
+});
+
+test("a drag past the top or the bottom edge sends its overflow, and each move outside the view is its own update", async () => {
+  // The sidecar scrolls the history by the rows of the overflow of each update (docs/spec/alacritty-core.md of the sidecar), so a
+  // move outside the view is never merged into the waiting update; moves inside the view still merge.
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  const view = createFakeView();
+  await startTerminal({
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose,
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(fakeSidecar);
+  fakeSidecar.getMessages().length = 0;
+
+  // The moves arrive in one turn, so every update but the first waits for its turn in the chain.
+  view._trigger("pointerdown", { button: 0, pointerId: 9, clientX: 44, clientY: 20 });
+  view._trigger("pointermove", { pointerId: 9, clientX: 44, clientY: -10 });
+  view._trigger("pointermove", { pointerId: 9, clientX: 44, clientY: -30 });
+  view._trigger("pointermove", { pointerId: 9, clientX: 44, clientY: 40 });
+  view._trigger("pointermove", { pointerId: 9, clientX: 44, clientY: 50 });
+  view._trigger("pointermove", { pointerId: 9, clientX: 44, clientY: 620 });
+  view._trigger("pointerup", { pointerId: 9, clientX: 44, clientY: 620 });
+  await fakeSidecar.untilMessage((body) => body.operation === "mouse" && body.phase === "up");
+
+  const bodies = sessionMessages(fakeSidecar).map(({ body }) => body);
+  assert.deepEqual(bodies.filter((body) => body.operation.startsWith("selection.")), [
+    { operation: "selection.start", x: 44, y: 20 },
+    { operation: "selection.update", x: 44, y: 0, overflow: -10 },
+    { operation: "selection.update", x: 44, y: 0, overflow: -30 },
+    { operation: "selection.update", x: 44, y: 50, overflow: 0 },
+    { operation: "selection.update", x: 44, y: 599, overflow: 21 },
+    { operation: "selection.end" },
+  ]);
+  // The program receives the nearest point, as before: a mouse operation carries no overflow.
+  const mouse = bodies.filter((body) => body.operation === "mouse");
+  assert.ok(mouse.every((body) => !Object.hasOwn(body, "overflow")), JSON.stringify(mouse));
+  assert.deepEqual(mouse.map((body) => [body.phase, body.y]), [["down", 20], ["move", 0], ["move", 40], ["move", 50], ["move", 599], ["up", 599]]);
+  assert.equal(fakeExpose.getStatus("terminal.session").readFn().error, undefined);
+});
+
+test("a drag that leaves the view at its pressed point starts the selection with its overflow", async () => {
+  // The nearest point of a move above a press on the top row is the pressed point; the overflow still makes it a movement.
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const view = createFakeView();
+  await startTerminal({
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: createFakeExpose(),
+    window: { TextEncoder: FakeTextEncoder },
+  });
+  openSession(fakeSidecar);
+  fakeSidecar.getMessages().length = 0;
+
+  view._trigger("pointerdown", { button: 0, pointerId: 9, clientX: 44, clientY: 0 });
+  view._trigger("pointermove", { pointerId: 9, clientX: 44, clientY: -8 });
+  view._trigger("pointerup", { pointerId: 9, clientX: 44, clientY: -8 });
+  await fakeSidecar.untilMessage((body) => body.operation === "mouse" && body.phase === "up");
+
+  assert.deepEqual(sessionMessages(fakeSidecar).map(({ body }) => body).filter((body) => body.operation.startsWith("selection.")), [
+    { operation: "selection.start", x: 44, y: 0 },
+    { operation: "selection.update", x: 44, y: 0, overflow: -8 },
+    { operation: "selection.end" },
+  ]);
 });
 
 test("a terminal click clears the selection with an empty selection at the pressed cell", async () => {
