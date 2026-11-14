@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- P117: The version is 0.0.44, which releases P116 with `engines.soksak` `^0.0.40`.
 - P140: The page sets no timer for a reply of the sidecar: the acknowledgement of `screen.watch`, the answer of `screen.read` and the answer of `pty.pending` end by that reply, by a failed send, by the `sidecar-failure` of the surface, by a connection event or by the close of the view, and a new `pty.pending` request ends the one that it replaces and drops its answer (core F718-6). Each test orders and settles by events, not by time or by a count of turns. Red: 6 of 334 tests failed. Green: they pass.
 - P139: The terminal gives its input handler as `input` of `composition.create`, so every input event of the region reaches it in its dispatch and none is held; the page registers no `on("input")`. The release pins a core that carries F718-7. Red: the tests with fakes that follow core failed. Green: they pass.
 - P138: Each selection update carries `overflow`, the vertical distance from its nearest point in the view to the pointer, and a move outside the view is never merged into the waiting update, so the sidecar scrolls a drag past the edge (sidecar-alacritty S115). Red: the drag tests failed on updates without `overflow`. Green: they pass.
