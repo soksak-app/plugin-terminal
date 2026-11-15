@@ -3,8 +3,13 @@ import test from "node:test";
 
 import { attach } from "../ui/terminal-diagnostics.js";
 import { loadDiagnostics, startViewDocumentFrames } from "../ui/view-diagnostics.js";
-import { createViewPage } from "./view-host.mjs";
-import { mountPage } from "../ui/terminal-view.js";
+import { exposure, openTerminal } from "./fixtures/terminal-view.mjs";
+
+// The record that the page writes for each content-frame of the document (the view frame observation).
+const FRAME_EVENT = "plugin.terminal.view.content_frame";
+
+// Resolves at the next animation frame of the view window, which runs after the frames that were requested before it.
+const nextFrame = (view) => new Promise((resolve) => view.window.requestAnimationFrame(resolve));
 
 function fixture() {
   const commands = new Map();
@@ -207,35 +212,43 @@ test("closing the terminal view stops an explicitly started content-frame observ
 
 test("the mounted terminal view reads its live history and emits source content-frame events only when requested",
   { timeout: 5000 }, async (t) => {
-  const host = createViewPage(t, "view-frame-diagnostics");
-  await mountPage(host.context, host.report, host.window.document);
-  const history = (params = {}) => host.exposureRequest(9001, "command.run", {
-    name: "terminal.view.history", params,
-  });
-  const frames = (action) => host.exposureRequest(9001, "command.run", {
-    name: "terminal.view.frames", params: { action },
-  });
+  const view = await openTerminal(t);
+  const history = (params = {}) => exposure(view, "command.run", { name: "terminal.view.history", params });
+  const frames = (action) => exposure(view, "command.run", { name: "terminal.view.frames", params: { action } });
+  const status = () => exposure(view, "status.get", { name: "terminal.view.frames" });
 
-  const initialLength = host.window.history.length;
+  const initialLength = view.window.history.length;
   assert.deepEqual(await history(), { length: initialLength });
-  host.window.history.pushState({}, "", "#second");
-  assert.deepEqual(await history(), { length: host.window.history.length });
-  assert.deepEqual(await host.statuses.get("terminal.view.frames").read(), { enabled: false });
-  const sourceNowBefore = host.window.performance.now();
+  view.window.history.pushState({}, "", "#second");
+  assert.deepEqual(await history(), { length: view.window.history.length });
+  assert.deepEqual(await status(), { enabled: false });
+  const sourceNowBefore = view.window.performance.now();
   const startedFrames = await frames("start");
-  const sourceNowAfter = host.window.performance.now();
+  const sourceNowAfter = view.window.performance.now();
   assert.equal(startedFrames.enabled, true);
-  assert.equal(startedFrames.sourceClock.documentTimeOriginMs, host.window.performance.timeOrigin);
+  assert.equal(startedFrames.sourceClock.documentTimeOriginMs, view.window.performance.timeOrigin);
   assert.equal(startedFrames.sourceClock.sourceResolutionMs, 1);
   assert.ok(startedFrames.sourceClock.sourceNowMs >= sourceNowBefore
     && startedFrames.sourceClock.sourceNowMs <= sourceNowAfter,
   `sourceNowMs ${startedFrames.sourceClock.sourceNowMs} is outside the view-clock observation interval`);
-  assert.equal(host.frameObserver.starts, 1);
-  assert.equal(host.logs.filter(({ event }) => event === "plugin.terminal.view.content_frame").length, 1);
-  assert.deepEqual(await host.statuses.get("terminal.view.frames").read(), { enabled: true });
+  assert.deepEqual(await status(), { enabled: true });
+  // The observer observes the document root after the next animation frame, and it reports each size change after the frame that follows it.
+  const root = view.window.document.documentElement;
+  await nextFrame(view);
+  const observer = view.observers.find((observed) => observed.targets.includes(root));
+  assert.ok(observer, "the frame observer observes the document root");
+  // The calls of the frame observer alone: the other observers of the page record their own calls in the same list.
+  const frameCalls = () => view.observations.filter(({ observer: owner }) => owner === observer).map(({ call, target }) => ({ call, target }));
+  assert.deepEqual(frameCalls(), [{ call: "observe", target: root }], "the frame observer started once, on the document root");
+  observer.notify([{ target: root, contentRect: root.getBoundingClientRect() }]);
+  await nextFrame(view);
   assert.deepEqual(await frames("stop"), { enabled: false });
-  assert.equal(host.frameObserver.stops, 1);
-  assert.deepEqual(await host.statuses.get("terminal.view.frames").read(), { enabled: false });
-  assert.equal(host.logs.filter(({ event }) => event === "plugin.terminal.view.content_frame").length, 1,
-    "stopping observation produces no later frame record");
+  assert.deepEqual(await status(), { enabled: false });
+  assert.deepEqual(frameCalls().map(({ call }) => call), ["observe", "disconnect"], "the stop disconnects the frame observer once");
+  // A size change after the stop produces no record; the close of the view writes the records that were batched.
+  observer.notify([{ target: root, contentRect: root.getBoundingClientRect() }]);
+  await nextFrame(view);
+  await view.close();
+  assert.equal(view.events.filter(({ event }) => event === FRAME_EVENT).length, 1,
+    "one content-frame record for the size change that the observation reported");
 });

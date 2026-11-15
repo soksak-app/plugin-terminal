@@ -2195,139 +2195,146 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     changed("session");
   }
 
-  // 공개 항목 등록
-  await Promise.all([
-    expose.status("terminal.session", read.session, watch("session")),
-    expose.status("terminal.screen", currentScreen, watchScreen),
-    expose.status("terminal.compose", read.compose, watch("compose")),
-    expose.status("terminal.cursor", read.cursor, watch("cursor")),
-    expose.command("terminal.input", async ({ bytes }) => {
-      if (typeof bytes !== "string") throw new Error("terminal.input requires bytes");
+  try {
+    // 공개 항목 등록
+    await Promise.all([
+      expose.status("terminal.session", read.session, watch("session")),
+      expose.status("terminal.screen", currentScreen, watchScreen),
+      expose.status("terminal.compose", read.compose, watch("compose")),
+      expose.status("terminal.cursor", read.cursor, watch("cursor")),
+      expose.command("terminal.input", async ({ bytes }) => {
+        if (typeof bytes !== "string") throw new Error("terminal.input requires bytes");
+        try {
+          await callerInput({ type: "input", actions: [{ type: "insert", text: bytes, replacementRange: null, attributed: false }], preedit: compose });
+        } catch (error) {
+          if (!(error instanceof SessionFailure)) reportInputError(error);
+          throw error;
+        }
+        return null;
+      }),
+      expose.command("terminal.screen.read", async () => {
+        if (region === null) throw new Error("Terminal not initialized");
+        return awaitScreen();
+      }),
+      expose.command("terminal.close", async () => {
+        await endSession();
+        return null;
+      }),
+      expose.command("terminal.image.inline.delete", async ({ name }) => {
+        if (typeof name !== "string" || name.length === 0) {
+          throw new Error("terminal.image.inline.delete requires a non-empty name");
+        }
+        await terminal.send(id, { operation: "image.inline.delete", name });
+        return null;
+      }),
+      expose.element("terminal.view", view),
+    ]);
+    await expose.command("terminal.focus", async () => {
       try {
-        await callerInput({ type: "input", actions: [{ type: "insert", text: bytes, replacementRange: null, attributed: false }], preedit: compose });
+        await region.focus();
+        return null;
       } catch (error) {
-        if (!(error instanceof SessionFailure)) reportInputError(error);
+        reportInputError(error);
         throw error;
       }
+    });
+    // 빠진 필드는 지금 정책 값을 유지한다.
+    await expose.command("terminal.cursor.set", async (policy) => setCursorPolicy({
+      shape: cursor.shape, blink: cursor.blink, interval: cursor.interval, idleTimeout: cursor.idleTimeout,
+      unfocused: cursor.unfocused, ...policy,
+    }));
+    await expose.command("terminal.paste", pasteText);
+    await expose.command("terminal.scrollback.set", async ({ offset } = {}) => {
+      if (!Number.isInteger(offset) || offset < 0) throw new Error(`terminal.scrollback.set requires a nonnegative integer offset: ${String(offset)}`);
+      await terminal.send(id, { operation: "viewport", offset });
       return null;
-    }),
-    expose.command("terminal.screen.read", async () => {
-      if (region === null) throw new Error("Terminal not initialized");
-      return awaitScreen();
-    }),
-    expose.command("terminal.close", async () => {
-      await endSession();
+    });
+    if (scrollbar) {
+      await Promise.all([
+        expose.element("terminal.scrollbar", scrollbar.track),
+        expose.element("terminal.scrollbar.thumb", scrollbar.thumb),
+        expose.mark(scrollbar.thumb, "terminal.scrollback.set"),
+      ]);
+    }
+    // 현재 선택의 텍스트는 사이드카가 copy 이벤트로 보낸다.
+    await expose.command("terminal.link.open", async ({ uri } = {}) => {
+      if (typeof uri !== "string" || uri.length === 0) throw new Error("terminal.link.open requires a uri");
+      if (!links) throw new Error("the terminal has no link capability");
+      await links.open(uri);
+    });
+    await expose.command("terminal.copy", async () => {
+      await terminal.send(id, { operation: "copy" });
       return null;
-    }),
-    expose.command("terminal.image.inline.delete", async ({ name }) => {
-      if (typeof name !== "string" || name.length === 0) {
-        throw new Error("terminal.image.inline.delete requires a non-empty name");
+    });
+    await expose.command("terminal.drop", dropFiles);
+    // 진단 측정: 현재 세션에서 마스터가 쓰고 자식이 아직 읽지 않은 입력 바이트 수와 reader 가 읽은
+    // 자식 출력 누적 바이트 수를 한 번의 왕복으로 사이드카에 묻는다.
+    // The answer, a failed send, the next request, the sidecar-failure of the surface, a connection event or the close of the view
+    // ends the wait.
+    const readPtyPending = () => new Promise((resolve, reject) => {
+      if (pendingPtyRead) {
+        replacedPtyReads.push(pendingPtyRead);
+        pendingPtyRead.reject(new DOMException("pty.pending superseded", "AbortError"));
       }
-      await terminal.send(id, { operation: "image.inline.delete", name });
-      return null;
-    }),
-    expose.element("terminal.view", view),
-  ]);
-  await expose.command("terminal.focus", async () => {
-    try {
-      await region.focus();
-      return null;
-    } catch (error) {
-      reportInputError(error);
-      throw error;
-    }
-  });
-  // 빠진 필드는 지금 정책 값을 유지한다.
-  await expose.command("terminal.cursor.set", async (policy) => setCursorPolicy({
-    shape: cursor.shape, blink: cursor.blink, interval: cursor.interval, idleTimeout: cursor.idleTimeout,
-    unfocused: cursor.unfocused, ...policy,
-  }));
-  await expose.command("terminal.paste", pasteText);
-  await expose.command("terminal.scrollback.set", async ({ offset } = {}) => {
-    if (!Number.isInteger(offset) || offset < 0) throw new Error(`terminal.scrollback.set requires a nonnegative integer offset: ${String(offset)}`);
-    await terminal.send(id, { operation: "viewport", offset });
-    return null;
-  });
-  if (scrollbar) {
-    await Promise.all([
-      expose.element("terminal.scrollbar", scrollbar.track),
-      expose.element("terminal.scrollbar.thumb", scrollbar.thumb),
-      expose.mark(scrollbar.thumb, "terminal.scrollback.set"),
-    ]);
-  }
-  // 현재 선택의 텍스트는 사이드카가 copy 이벤트로 보낸다.
-  await expose.command("terminal.link.open", async ({ uri } = {}) => {
-    if (typeof uri !== "string" || uri.length === 0) throw new Error("terminal.link.open requires a uri");
-    if (!links) throw new Error("the terminal has no link capability");
-    await links.open(uri);
-  });
-  await expose.command("terminal.copy", async () => {
-    await terminal.send(id, { operation: "copy" });
-    return null;
-  });
-  await expose.command("terminal.drop", dropFiles);
-  // 진단 측정: 현재 세션에서 마스터가 쓰고 자식이 아직 읽지 않은 입력 바이트 수와 reader 가 읽은
-  // 자식 출력 누적 바이트 수를 한 번의 왕복으로 사이드카에 묻는다.
-  // The answer, a failed send, the next request, the sidecar-failure of the surface, a connection event or the close of the view
-  // ends the wait.
-  const readPtyPending = () => new Promise((resolve, reject) => {
-    if (pendingPtyRead) {
-      replacedPtyReads.push(pendingPtyRead);
-      pendingPtyRead.reject(new DOMException("pty.pending superseded", "AbortError"));
-    }
-    let settled = false;
-    const waiter = {
-      resolve: (pending) => {
-        if (settled) return;
-        settled = true;
-        resolve(pending);
-      },
-      reject: (error) => {
-        if (settled) return;
-        settled = true;
-        reject(error);
-      },
-    };
-    pendingPtyRead = waiter;
-    terminal.send(id, { operation: "pty.pending" }).catch((error) => {
-      if (pendingPtyRead === waiter) pendingPtyRead = null;
-      // A request whose send failed receives no answer.
-      const replaced = replacedPtyReads.indexOf(waiter);
-      if (replaced >= 0) replacedPtyReads.splice(replaced, 1);
-      waiter.reject(error);
-    });
-  });
-  // 진단 빌드에서는 진단 모듈이 preedit 주입, 입력 기록, PTY 전송 상태 측정 항목을 이 연산으로 등록한다.
-  if (diagnostics) {
-    await diagnostics.attach({
-      expose,
-      updateCompose,
-      onInput: (fn) => {
-        inputObservers.add(fn);
-        return () => inputObservers.delete(fn);
-      },
-      onPointer: (fn) => {
-        pointerObservers.add(fn);
-        return () => pointerObservers.delete(fn);
-      },
-      readPtyPending,
-      readViewHistory: () => window.history.length,
-      startViewFrames: diagnostics.startViewFrames,
-      viewLog: {
-        trace: (event, fields) => {
-          if (event !== "view.content_frame") throw new Error(`unexpected view frame event: ${String(event)}`);
-          return runtime.log.trace("view.content_frame", fields);
+      let settled = false;
+      const waiter = {
+        resolve: (pending) => {
+          if (settled) return;
+          settled = true;
+          resolve(pending);
         },
-      },
-      closing,
-      alterNextScreen: () => {
-        alterNextScreen = true;
-      },
-      reportError: (message) => setError("trace", message),
-      resolveError: () => {
-        if (resolveError("trace")) changed("session");
-      },
+        reject: (error) => {
+          if (settled) return;
+          settled = true;
+          reject(error);
+        },
+      };
+      pendingPtyRead = waiter;
+      terminal.send(id, { operation: "pty.pending" }).catch((error) => {
+        if (pendingPtyRead === waiter) pendingPtyRead = null;
+        // A request whose send failed receives no answer.
+        const replaced = replacedPtyReads.indexOf(waiter);
+        if (replaced >= 0) replacedPtyReads.splice(replaced, 1);
+        waiter.reject(error);
+      });
     });
+    // 진단 빌드에서는 진단 모듈이 preedit 주입, 입력 기록, PTY 전송 상태 측정 항목을 이 연산으로 등록한다.
+    if (diagnostics) {
+      await diagnostics.attach({
+        expose,
+        updateCompose,
+        onInput: (fn) => {
+          inputObservers.add(fn);
+          return () => inputObservers.delete(fn);
+        },
+        onPointer: (fn) => {
+          pointerObservers.add(fn);
+          return () => pointerObservers.delete(fn);
+        },
+        readPtyPending,
+        readViewHistory: () => window.history.length,
+        startViewFrames: diagnostics.startViewFrames,
+        viewLog: {
+          trace: (event, fields) => {
+            if (event !== "view.content_frame") throw new Error(`unexpected view frame event: ${String(event)}`);
+            return runtime.log.trace("view.content_frame", fields);
+          },
+        },
+        closing,
+        alterNextScreen: () => {
+          alterNextScreen = true;
+        },
+        reportError: (message) => setError("trace", message),
+        resolveError: () => {
+          if (resolveError("trace")) changed("session");
+        },
+      });
+    }
+  } catch (error) {
+    // The session is open at this point, so a failed registration ends it before the error reaches the mount: the regions are
+    // released and no session stays open on the sidecar. A failure of that close is reported through the surface error path.
+    await endSession().catch((closeError) => reportSurfaceError(closeError));
+    throw error;
   }
   return {
     setTheme,
