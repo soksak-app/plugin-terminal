@@ -2,7 +2,7 @@
 // entries, because the workbench adds them to the surface declarations (core docs/spec/plugins.md, diagnostics).
 import assert from "node:assert/strict";
 import test from "node:test";
-import { viewExposes } from "../build/test/ui/view-exposes.js";
+import { viewExposes } from "../ui/view-exposes.js";
 
 const entry = (name) => ({ name, description: name, schema: { type: "object" } });
 

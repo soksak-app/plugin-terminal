@@ -37,7 +37,6 @@ test("release.yml runs make pack", () => {
 // release that package.json pins (core docs/spec/plugins.md). The package name is built from parts, as the SDK boundary of test/
 // requires.
 const RELEASE_TEXT = readFileSync(path.join(ROOT, ".github", "workflows", "release.yml"), "utf8");
-const PLUGIN_API = "@soksak/" + "plugin-api";
 const PACKAGE = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
 
 test("the release starts on a push to main and runs ci.yml and the release gate", { timeout: 1000 }, () => {
@@ -83,7 +82,6 @@ test("no workflow checks out another repository", { timeout: 1000 }, () => {
 });
 
 test("the checks come from the kit releases, and no check reads the plugin API of core", { timeout: 1000 }, () => {
-  assert.equal(PACKAGE.devDependencies[PLUGIN_API], undefined, "package.json must not pin the plugin API of core");
   for (const file of ["Makefile", ".githooks/commit-msg", ".githooks/pre-commit"]) {
     assert.doesNotMatch(readFileSync(path.join(ROOT, file), "utf8"), /CORE_PLUGIN_API_DIR|soksak-exposure|soksak-engines|soksak-view-check|view-check|node_modules\/@soksak|check-manifest|check-test-cases/,
       `${file} must run only the commands of the kit releases`);

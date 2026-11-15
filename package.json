@@ -11,17 +11,15 @@
     "url": "git+https://github.com/soksak-app/plugin-terminal.git"
   },
   "engines": {
-    "soksak": "^0.0.40"
+    "soksak": "^0.0.41"
   },
   "files": [
     "plugin.json",
-    "contract-copies.json",
     "diagnostics.json",
     "ui/terminal-diagnostics.js",
     "events.json",
     "ui/terminal.html",
     "ui/view.js",
-    "ui/view-clipboard.js",
     "ui/view-context.js",
     "ui/view-exposes.js",
     "ui/view-diagnostics.js",
@@ -31,10 +29,11 @@
     "ui/terminal.js"
   ],
   "scripts": {
-    "test": "node scripts/build-test.mjs && node --test test/"
+    "test": "node --test test/"
   },
   "devDependencies": {
     "@soksak/kit": "https://github.com/soksak-app/kit/releases/download/v0.0.14/soksak-kit-0.0.14.tgz",
+    "@soksak/plugin-api": "https://github.com/soksak-app/core/releases/download/v0.0.41/soksak-plugin-api-0.0.41.tgz",
     "acorn": "^8.19.0",
     "ajv": "8.20.0",
     "jsdom": "^30.1.1"

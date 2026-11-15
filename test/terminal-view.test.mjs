@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { startValues } from "../build/test/ui/terminal-view.js";
+import { startValues } from "../ui/terminal-view.js";
 
 const windowWith = (start) => ({ sokSurface: start, location: { host: "terminal" } });
 const START = { surface: "terminal-1", params: null, project: null, declarations: {} };

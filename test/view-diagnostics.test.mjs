@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { attach } from "../build/test/ui/terminal-diagnostics.js";
-import { loadDiagnostics, startViewDocumentFrames } from "../build/test/ui/view-diagnostics.js";
+import { attach } from "../ui/terminal-diagnostics.js";
+import { loadDiagnostics, startViewDocumentFrames } from "../ui/view-diagnostics.js";
 import { createViewPage } from "./view-host.mjs";
-import { mountPage } from "../build/test/ui/terminal-view.js";
+import { mountPage } from "../ui/terminal-view.js";
 
 function fixture() {
   const commands = new Map();

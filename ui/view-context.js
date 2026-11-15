@@ -2,7 +2,6 @@
 // is imported, so the assembly of the context is in this module, which a test can import.
 import { createExpose } from "@soksak/plugin-api";
 import { createExposurePort, withBridgeCommands } from "./view-exposure-port.js";
-import { viewClipboard } from "./view-clipboard.js";
 import { SIDECAR, viewSidecar } from "./view-sidecar.js";
 import { viewExposes } from "./view-exposes.js";
 
@@ -84,7 +83,7 @@ export function createViewContext({ bridge, start, report, diagnostics = null, s
           },
         },
         links: { open: (url) => calls.request("runtime.links.open", url) },
-        clipboard: viewClipboard(calls),
+        clipboard: runtime.clipboard,
         log: runtime.log,
       },
     },

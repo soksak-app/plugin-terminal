@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import * as port from "../build/test/ui/view-exposure-port.js";
+import * as port from "../ui/view-exposure-port.js";
 
 const { createExposurePort } = port;
 

@@ -14,10 +14,19 @@ test("the core compatibility documents state the engines.soksak that the package
 });
 
 // Core 0.0.39 and earlier accept only the exposes kinds status, commands and dom, so they refuse the exposes.element of
-// plugin.json; 0.0.40 is the core release of F502-13 (F502-13-1), the next version that no core tag holds (P116). The same release is the first that carries core F518 and core F617, which the view clipboard and
-// the held input read.
-test("the package requires core 0.0.40, the first core release that accepts exposes.element (P116)", { timeout: 1000 }, () => {
-  assert.equal(pkg.engines.soksak, "^0.0.40");
+// plugin.json; 0.0.40 is the core release of F502-13 (F502-13-1), the first core release that accepts it (P116). The package
+// declares 0.0.41, which admits it.
+test("the package declares the range of core 0.0.41 and its plugin API release pins that version (P116, P142.1)", { timeout: 1000 }, () => {
+  assert.equal(pkg.engines.soksak, "^0.0.41");
+});
+
+// The tests run on the plugin API of the core release that the range names, and the pin is that release tarball of the same
+// version, so the release that the tests load is the release that the range declares (P142.1).
+test("the plugin API devDependency is the tarball of the core release that engines.soksak names (P142.1)", { timeout: 1000 }, () => {
+  const version = /^\^(0\.0\.\d+)$/.exec(pkg.engines.soksak)?.[1];
+  assert.ok(version, `engines.soksak ${pkg.engines.soksak} is not a range ^0.0.z`);
+  assert.equal(pkg.devDependencies["@soksak/plugin-api"],
+    `https://github.com/soksak-app/core/releases/download/v${version}/soksak-plugin-api-${version}.tgz`);
 });
 
 // A range ^0.0.z admits core 0.0.z and every later 0.0 release (core docs/spec/installation.md#versions-and-ranges), so the

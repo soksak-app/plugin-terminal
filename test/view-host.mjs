@@ -1,7 +1,7 @@
 // Plugin-side view fixture: a literal start context and local host capabilities; core bridge behavior stays in core tests.
 import { readFileSync } from "node:fs";
 import { createWindow, useWindow } from "./dom.mjs";
-import * as terminalDiagnostics from "../build/test/ui/terminal-diagnostics.js";
+import * as terminalDiagnostics from "../ui/terminal-diagnostics.js";
 
 const manifest = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
 const diagnosticManifest = JSON.parse(readFileSync(new URL("../diagnostics.json", import.meta.url), "utf8"));
