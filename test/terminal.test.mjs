@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import test from "node:test";
+import test, { beforeEach } from "node:test";
+import { shellQuotePath } from "./fixtures/plugin-api/index.mjs";
+import { applyScreenMessage, screenHash } from "./fixtures/plugin-api/screen-hash.mjs";
 import * as terminalDiagnostics from "../ui/terminal-diagnostics.js";
 import { screenMessage } from "./screen-message.mjs";
 
 const terminalManifest = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
 const SCREEN_MESSAGES = JSON.parse(readFileSync(new URL("./fixtures/screen-message.json", import.meta.url), "utf8"));
 const SCREEN_MESSAGE = SCREEN_MESSAGES.vectors[0];
-// The screen messages and screen hashes that the page hashes, as literal vectors (test/fixtures/screen-hash-vectors.json).
+// The screen messages that the page applies and hashes, as literal vectors (test/fixtures/screen-hash-vectors.json).
 const SCREEN_VECTORS = JSON.parse(readFileSync(new URL("./fixtures/screen-hash-vectors.json", import.meta.url), "utf8"));
 const SCREEN_FRAME_PREEDIT = structuredClone(SCREEN_VECTORS.messages["screen.message.frame-preedit"]);
 SCREEN_FRAME_PREEDIT.cursor = { ...SCREEN_FRAME_PREEDIT.cursor,
@@ -43,6 +45,18 @@ const P74_SCREEN_MESSAGE_IDS = [
   "screen.message.hollow-block-cursor",
   "screen.message.linked-word",
 ];
+
+// The answers of the plugin API that a page needs while it runs (@soksak/plugin-api and its screen-hash module). Each test starts from
+// these answers and arranges its own where it judges what the page does with an answer: applyScreenMessage answers the screen that
+// the page hashes, screenHash answers a hash that names the message, and shellQuotePath is not arranged, so a test that quotes a path
+// arranges it. The hash of a screen, the application of a change and the quoting of a path are not judged here.
+beforeEach(() => {
+  applyScreenMessage.reset();
+  screenHash.reset();
+  shellQuotePath.reset();
+  applyScreenMessage.arrange((_held, message) => ({ screen: { sequence: message.sequence, segment: message.segment, number: message.number, rows: message.rows, cols: message.cols } }));
+  screenHash.arrange(async (screen) => `hash-of-sequence-${screen.sequence}`);
+});
 
 const { startTerminal: realStartTerminal } = await import("../ui/terminal.js?terminal-test");
 
@@ -1113,8 +1127,10 @@ test("terminal.paste rejects an absent clipboard without sending input", async (
   assert.deepEqual(fakeSidecar.getMessages(), []);
 });
 
-test("terminal.paste quotes file URLs without adding an executable newline", async () => {
+test("terminal.paste sends the quoted local paths of file URLs without adding an executable newline", async () => {
   FakeResizeObserver.reset();
+  // The quoting of a path is the answer of shellQuotePath; the page passes it the decoded path of each URL and joins the answers.
+  shellQuotePath.arrange((path) => `<${path}>`);
   const fakeSidecar = createFakeSidecar();
   const fakeExpose = createFakeExpose();
   const clipboardCalls = [];
@@ -1137,8 +1153,9 @@ test("terminal.paste quotes file URLs without adding an executable newline", asy
   await fakeExpose.getCommand("terminal.paste")();
 
   assert.deepEqual(clipboardCalls, ["text", "fileURLs"]);
+  assert.deepEqual(shellQuotePath.calls.map(({ args }) => args), [["/tmp/a b.txt"], ["/tmp/quote'name.txt"]]);
   assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body), [
-    { operation: "paste", text: "'/tmp/a b.txt' '/tmp/quote'\\''name.txt'" },
+    { operation: "paste", text: "</tmp/a b.txt> </tmp/quote'name.txt>" },
   ]);
 });
 
@@ -1195,8 +1212,9 @@ test("terminal.paste rejects malformed file URLs and unavailable PNG persistence
   }
 });
 
-test("terminal file drop quotes local URLs and sends one non-executing paste", async () => {
+test("terminal file drop sends the quoted local paths of its URLs as one non-executing paste", async () => {
   FakeResizeObserver.reset();
+  shellQuotePath.arrange((path) => `<${path}>`);
   const fakeSidecar = createFakeSidecar();
   const fakeExpose = createFakeExpose();
   const fakeView = createFakeView();
@@ -1210,8 +1228,9 @@ test("terminal file drop quotes local URLs and sends one non-executing paste", a
 
   await fakeExpose.getCommand("terminal.drop")({ urls: ["file:///tmp/dropped%20file.txt", "file:///tmp/quote%27name.txt"] });
 
+  assert.deepEqual(shellQuotePath.calls.map(({ args }) => args), [["/tmp/dropped file.txt"], ["/tmp/quote'name.txt"]]);
   assert.deepEqual(fakeSidecar.getMessages().map(({ body }) => body), [
-    { operation: "paste", text: "'/tmp/dropped file.txt' '/tmp/quote'\\''name.txt'" },
+    { operation: "paste", text: "</tmp/dropped file.txt> </tmp/quote'name.txt>" },
   ]);
 });
 
@@ -5927,21 +5946,28 @@ async function startScreenTerminal(lines) {
   return sidecar;
 }
 
-test("a screen message is stored as the frame event with the hash of the golden vector", async () => {
+test("a screen message is stored as the frame event with the hash that screenHash answers for the screen that applyScreenMessage answers", async () => {
   const lines = [];
   const sidecar = await startScreenTerminal(lines);
   const vector = SCREEN_MESSAGE;
+  // The answers differ from the message in every member that the record takes from them, so the record names the answers.
+  const applied = { screen: { sequence: 91, segment: "answer", number: 92, rows: 7, cols: 9 } };
+  applyScreenMessage.arrange(() => applied);
+  screenHash.arrange(async () => "arranged-hash");
   sidecar.triggerEvent("test-session", vector.message);
   await framesStored(lines, 1);
   const [event] = lines.filter(([name]) => name === "frame").slice(-1);
   assert.deepEqual(event && event.slice(1, 3), [
     {
       // The session of the frame record is the session of the sidecar ("s1" of openSession), which its frame records name.
-      session: "s1", segment: vector.message.segment, sequence: vector.message.sequence, rows: vector.message.rows,
-      cols: vector.message.cols, frame: null, hash: vector.hash,
+      session: "s1", segment: vector.message.segment, sequence: vector.message.sequence, rows: 7, cols: 9, frame: null, hash: "arranged-hash",
     },
     "debug",
   ], vector.name);
+  // A full form is applied without a held screen, with the message that the sidecar sent less its render, and the screen of the answer is hashed.
+  const { render: _render, ...sent } = screenMessage(vector.message);
+  assert.deepEqual(applyScreenMessage.calls.filter(({ method }) => method === "applyScreenMessage").map(({ args }) => args), [[null, sent]]);
+  assert.deepEqual(screenHash.calls.filter(({ method }) => method === "screenHash").map(({ args }) => args), [[applied.screen]]);
 });
 
 test("a screen message is not hashed and writes no frame record while the class frame does not store debug", async () => {
@@ -6000,7 +6026,6 @@ const applyCaseMessage = (id) => {
   const message = SCREEN_VECTORS.messages[id];
   return { ...message, cursor: { ...message.cursor, caret: null }, render: null };
 };
-const caseHash = (id) => SCREEN_VECTORS.hashes[id];
 const screenText = (expose) => expose.heldScreen().map((row) => row.map((cell) => cell.ch ?? " ").join(""));
 const screenReads = (sidecar) => sidecar.getMessages().filter(({ body }) => body.operation === "screen.read").length;
 
@@ -6015,17 +6040,23 @@ async function startChangeTerminal(lines) {
   return { sidecar, expose };
 }
 
-test("a change form replaces the rows that it carries in the screen that the view holds and hashes", async () => {
+test("a change form replaces the rows that it carries in the screen that the view holds and passes the held screen back", async () => {
   const lines = [];
   const { sidecar, expose } = await startChangeTerminal(lines);
+  const answers = [{ screen: { sequence: 1, rows: 2, cols: 2 } }, { screen: { sequence: 2, rows: 2, cols: 2 } }];
+  let answered = 0;
+  applyScreenMessage.arrange(() => answers[answered++]);
+  screenHash.arrange(async (screen) => `hash-${screen.sequence}`);
   sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.full-two-rows"));
   await framesStored(lines, 1);
   assert.deepEqual(screenText(expose), ["ab", "cd"]);
   sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.change-one-row"));
   await framesStored(lines, 2);
   assert.deepEqual(screenText(expose), ["ab", "xy"]);
-  assert.deepEqual(lines.filter(([name]) => name === "frame").map(([, fields]) => fields.hash),
-    [caseHash("screen.hash.two-rows.sha256"), caseHash("screen.hash.two-rows-changed.sha256")]);
+  // The page hashes the screen of each answer, and it passes the screen that the answer gave to the next change.
+  assert.deepEqual(lines.filter(([name]) => name === "frame").map(([, fields]) => fields.hash), ["hash-1", "hash-2"]);
+  const applies = applyScreenMessage.calls.filter(({ method }) => method === "applyScreenMessage").map(({ args }) => args);
+  assert.deepEqual(applies.map(([held]) => held), [null, answers[0]]);
   assert.deepEqual(lines.filter(([name]) => name === "error"), []);
 });
 
@@ -6048,6 +6079,11 @@ test("the view reads the screen when it opens a session and refuses a change bef
 test("a refused change reports its error, reads the screen and refuses the changes until the full form", async () => {
   const lines = [];
   const { sidecar, expose } = await startChangeTerminal(lines);
+  // The refusal of applyScreenMessage is arranged for the change that names the previous number 3.
+  applyScreenMessage.arrange((_held, message) => {
+    if (message.previous === 3) throw new Error("a change of previous 3 does not follow number 1");
+    return { screen: { sequence: message.sequence, rows: message.rows, cols: message.cols } };
+  });
   sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.full-two-rows"));
   await framesStored(lines, 1);
   sidecar.triggerRaw("test-session", applyCaseMessage("screen.apply.refuses-unfollowed-change"));
@@ -6066,7 +6102,7 @@ test("a refused change reports its error, reads the screen and refuses the chang
   assert.deepEqual(screenText(expose), ["ab", "xy"]);
 });
 
-test("terminal.screen.alter changes the next screen message before the page hashes it, as a change on the way would", async () => {
+test("terminal.screen.alter changes the next screen message before the page applies it, as a change on the way would", async () => {
   const lines = [];
   const sidecar = createFakeSidecar();
   const expose = createFakeExpose();
@@ -6083,12 +6119,17 @@ test("terminal.screen.alter changes the next screen message before the page hash
   await framesStored(lines, 1);
   sidecar.triggerEvent("test-session", vector.message);
   await framesStored(lines, 2);
-  const hashes = lines.filter(([name]) => name === "frame").map(([, fields]) => fields.hash);
-  assert.notEqual(hashes[0], vector.hash, "the altered message must hash to another screen");
-  assert.equal(hashes[1], vector.hash, "only the next message is altered");
+  // The message that the page passes to applyScreenMessage is the altered one for the first event only: the first cell has another
+  // attribute value, and nothing else differs.
+  const [first, second] = applyScreenMessage.calls.filter(({ method }) => method === "applyScreenMessage").map(({ args }) => args[1]);
+  const { render: _render, ...sent } = screenMessage(vector.message);
+  assert.deepEqual(second, sent, "only the next message is altered");
+  assert.notDeepEqual(first.cells[0], sent.cells[0], "the altered message must differ in its first cell");
+  assert.deepEqual({ ...first, cells: sent.cells }, sent, "the alteration is limited to the cells");
+  assert.deepEqual(first.cells.slice(1), sent.cells.slice(1));
 });
 
-test("malformed screen rows, columns, cells, and segment are refused with debug logging disabled", async () => {
+test("an error of applyScreenMessage is the error of the source screen and leaves the rendered screen", async () => {
   const lines = [];
   const sidecar = createFakeSidecar();
   const expose = createFakeExpose();
@@ -6099,31 +6140,24 @@ test("malformed screen rows, columns, cells, and segment are refused with debug 
   openSession(sidecar);
   const error = () => expose.getStatus("terminal.session").readFn().error;
   const base = SCREEN_MESSAGE.message;
-  const malformed = [
-    ["rows", { ...base, rows: 0 }],
-    ["columns", { ...base, cols: 0 }],
-    ["empty cells", { ...base, cells: [] }],
-    ["invalid cell attributes", { ...base, cells: [{ ...base.cells[0], attributes: "bad" }] }],
-    ["empty segment", { ...base, segment: "" }],
-  ];
-  for (const [name, message] of malformed) {
-    const screenBefore = expose.heldScreen();
-    sidecar.triggerEvent("test-session", message);
-    assert.match(error() ?? "", /^terminal input failed: /, name + " was not refused");
-    assert.deepEqual(expose.heldScreen(), screenBefore, name + " changed the rendered screen");
-  }
+  sidecar.triggerEvent("test-session", base);
+  const screenBefore = expose.heldScreen();
+  applyScreenMessage.arrange(() => { throw new Error("arranged refusal of the screen"); });
+  sidecar.triggerEvent("test-session", { ...base, sequence: base.sequence + 1 });
+  assert.equal(error(), "terminal input failed: arranged refusal of the screen");
+  assert.deepEqual(expose.heldScreen(), screenBefore, "a refused message changed the rendered screen");
 });
 
-test("a screen event without a sequence is the error of the source screen", async () => {
+test("an error of applyScreenMessage is written to the log as an error of the screen source and stores no frame record", async () => {
   const lines = [];
   const sidecar = await startScreenTerminal(lines);
-  const invalid = { ...SCREEN_MESSAGE.message };
-  delete invalid.sequence;
-  sidecar.triggerEvent("test-session", invalid);
+  applyScreenMessage.arrange(() => { throw new Error("arranged refusal of the screen"); });
+  sidecar.triggerEvent("test-session", SCREEN_MESSAGE.message);
   assert.deepEqual(lines.filter(([name]) => name === "error").map(([, fields]) => fields), [
-    { source: "screen", message: "terminal input failed: screen message: sequence must be an integer from 1, found undefined" },
+    { source: "screen", message: "terminal input failed: arranged refusal of the screen" },
   ]);
   assert.equal(lines.filter(([name]) => name === "frame").length, 0);
+  assert.deepEqual(screenHash.calls.filter(({ method }) => method === "screenHash"), [], "a refused message is not hashed");
 });
 
 /** The event log that keeps each record as [event, fields, level], with the fields copied as JSON. */

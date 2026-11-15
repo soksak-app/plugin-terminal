@@ -1089,9 +1089,5 @@
         }
       ]
     }
-  },
-  "hashes": {
-    "screen.hash.two-rows.sha256": "f7a3d4c9b83a851223d1ec63dad4640d28cc144f4f0db9bee2535502143b271c",
-    "screen.hash.two-rows-changed.sha256": "eff5bc86c51afcb702454d0c5cd4795bde946f584a21105745cb35bc20e53138"
   }
 }

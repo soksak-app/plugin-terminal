@@ -33,9 +33,8 @@ test("release.yml runs make pack", () => {
 });
 
 // The release starts on a push to main, runs ci.yml and the release gate, and writes the release with pnpm pack; it downloads
-// no core release, no workflow checks out another repository, and the dependency on core is the packed release file of a core
-// release that package.json pins (core docs/spec/plugins.md). The package name is built from parts, as the SDK boundary of test/
-// requires.
+// no core release, and no workflow checks out another repository; the plugin declares no dependency on the plugin API of core
+// (core docs/spec/plugins.md).
 const RELEASE_TEXT = readFileSync(path.join(ROOT, ".github", "workflows", "release.yml"), "utf8");
 const PACKAGE = JSON.parse(readFileSync(path.join(ROOT, "package.json"), "utf8"));
 
@@ -79,6 +78,15 @@ test("no workflow checks out another repository", { timeout: 1000 }, () => {
   for (const file of readdirSync(folder).filter((name) => name.endsWith(".yml"))) {
     assert.doesNotMatch(readFileSync(path.join(folder, file), "utf8"), /^\s*repository:/m, `${file} checks out another repository`);
   }
+});
+
+test("no workflow and no dependency of the package names the plugin API of core (P144)", { timeout: 1000 }, () => {
+  const folder = path.join(ROOT, ".github", "workflows");
+  for (const file of readdirSync(folder).filter((name) => name.endsWith(".yml"))) {
+    assert.doesNotMatch(readFileSync(path.join(folder, file), "utf8"), /plugin-api/, `${file} names the plugin API`);
+  }
+  const declared = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"].flatMap((field) => Object.keys(PACKAGE[field] ?? {}));
+  assert.deepEqual(declared.filter((name) => name.startsWith("@soksak/plugin-api")), []);
 });
 
 test("the checks come from the kit releases, and no check reads the plugin API of core", { timeout: 1000 }, () => {

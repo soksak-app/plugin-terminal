@@ -46,6 +46,10 @@ export async function mount(root, context) {
   // The terminal creates the composition when its input handler exists, and gives that handler at the creation
   // (core docs/spec/surface-composition.md#page-api).
   let composition = null;
+  // The composition is disposed once: the terminal detaches it when its start fails after the session opened, and the cleanup of
+  // this mount detaches it again, so both calls take the one release.
+  let disposing = null;
+  const detachRegions = () => composition === null ? undefined : (disposing ??= composition.dispose());
   const attachImage = async (_view, name, { input }) => {
     composition = await context.composition.create({ regions: { view }, overlays: { scrollbar: scrollbar.track,
       "padding-top": padding.top, "padding-right": padding.right, "padding-bottom": padding.bottom, "padding-left": padding.left },
@@ -56,7 +60,7 @@ export async function mount(root, context) {
   let controller;
   try {
     controller = await startTerminal({ id: context.surfaceId, closing: context.closing, view, padding, attachImage,
-      detachRegions: () => composition?.dispose(), sidecar, scrollbar,
+      detachRegions, sidecar, scrollbar,
       expose: context.exposure, window, theme: context.runtime.theme, settings: context.runtime.settings,
       textSize: context.runtime.textSize, tab: context.tab, origin: context.origin, project: context.project,
       links: context.runtime.links,
@@ -74,7 +78,7 @@ export async function mount(root, context) {
     });
   } catch (error) {
     const cleanup = await Promise.allSettled([
-      controller ? controller.dispose() : composition?.dispose(),
+      controller ? controller.dispose() : detachRegions(),
       context.exposure.dispose(),
     ]);
     const failed = cleanup.filter((result) => result.status === "rejected").map((result) => result.reason);

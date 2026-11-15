@@ -1,10 +1,11 @@
 // Exercises terminal view start validation, mount, registration, and command handlers at the plugin boundary.
-// The page is the real ui/view.js, loaded into the view window of test/fixtures/host.mjs, which answers each call of the page by the view wire.
+// The page is the real ui/view.js, loaded into a jsdom window of test/fixtures/view-page.mjs. Each call that the page makes on the plugin
+// API is recorded by the fixtures of test/fixtures/plugin-api/ and answered as the test arranges.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { startValues } from "../ui/terminal-view.js";
-import { DECLARATIONS, SURFACE, commandsRegistered, exposure, imageCalls, openTerminal, regionInput, sidecarSends, sidecarState, terminalElement } from "./fixtures/terminal-view.mjs";
+import { SURFACE, callsOf, compositionCalls, openTerminal, regionInput, registered, requests, sidecarSends, sidecarState, terminalElement } from "./fixtures/view-page.mjs";
 
 const manifest = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
 const diagnostics = JSON.parse(readFileSync(new URL("../diagnostics.json", import.meta.url), "utf8"));
@@ -37,18 +38,20 @@ test("the view page opens the sidecar session of its surface and registers the d
   assert.equal(open.id, SURFACE);
   assert.equal(open.body.image, "view");
   assert.equal(open.body.shell, "/bin/sh");
-  // The region of the composition is attached with the declared sidecar, and the page placed the region and the overlays.
-  assert.deepEqual(imageCalls(view)[0], ["image.attach", { name: "view", sidecar: manifest.surface.composition.regions[0].sidecar }]);
-  const placed = view.calls.find((call) => call.command === "composition.place");
-  assert.deepEqual(placed.params.regions.map(({ name }) => name), ["view"]);
-  // The creation attaches the region before it places it. The input handler is passed with the creation and has no wire form, so
-  // the test of a region input during the creation checks that the handler exists.
-  assert.ok(view.calls.findIndex(({ command }) => command === "image.attach") < view.calls.indexOf(placed), "the region is attached before it is placed");
-  // Every declared status and element name is registered through the relay, and every command through the registry.
+  // The page creates one composition of the region and the overlays, and gives it the input handler of the region.
+  const created = callsOf(view, "composition.create");
+  assert.equal(created.length, 1, "the page creates its composition once");
+  const [elements] = created[0];
+  assert.deepEqual(Object.keys(elements.regions), ["view"]);
+  assert.deepEqual(Object.keys(elements.overlays).sort(), ["padding-bottom", "padding-left", "padding-right", "padding-top", "scrollbar"]);
+  assert.deepEqual(Object.keys(elements.input), ["view"]);
+  assert.equal(typeof elements.input.view, "function", "the region input is handled by the page");
+  assert.equal(elements.regions.view, terminalElement(view), "the region is the terminal element");
+  // Every status and element name is registered through the exposure, and every command through commands.register of the view.
   // A diagnostic build adds the entries of diagnostics.json to the surface declaration, and the page registers them.
-  assert.deepEqual(view.registered("status").sort(), [...declared("status"), ...diagnosticNames("status")].sort());
-  assert.deepEqual(view.registered("element").sort(), declared("element"));
-  assert.deepEqual(commandsRegistered(view).sort(), [...declared("commands"), ...diagnosticNames("commands")].sort());
+  assert.deepEqual(registered(view, "status").sort(), [...declared("status"), ...diagnosticNames("status")].sort());
+  assert.deepEqual(registered(view, "element").sort(), declared("element"));
+  assert.deepEqual(registered(view, "command").sort(), [...declared("commands"), ...diagnosticNames("commands")].sort());
 });
 
 test("a region input delivered while the composition is created reaches the session", async (t) => {
@@ -58,14 +61,9 @@ test("a region input delivered while the composition is created reaches the sess
     preedit: { text: "", markedRange: null, selectedRange: { location: 0, length: 0 }, replacementRange: null, attributed: false },
     errors: [], cids: ["native-input-50-1"],
   };
-  // The host delivers the input in the answer of the attach, before the creation of the page resolves. The page holds the input until
-  // the session reports its state, and then sends it: a region without the input handler would send nothing.
-  const view = await openTerminal(t, {
-    image: { attach: (_params, host) => {
-      host.push("image-event", { name: "view", event: input });
-      return null;
-    } },
-  });
+  // The host delivers the input in the answer of the creation, before the creation of the page resolves. The page holds the input
+  // until the session reports its state, and then sends it: a region without the input handler would send nothing.
+  const view = await openTerminal(t, { create: (elements) => { elements.input.view(input); } });
   await sidecarState(view, { event: "state", sessionId: "s1", cols: 80, rows: 24, cellWidth: 8, cellHeight: 16 });
   const delivered = sidecarSends(view).find(({ body }) => carriesInput(body));
   assert.ok(delivered, "the input delivered during the creation reached the session");
@@ -86,23 +84,34 @@ test("a registered terminal command reaches its handler", async (t) => {
   const view = await openTerminal(t);
   await sidecarState(view, { event: "state", sessionId: "s1", cols: 80, rows: 24, cellWidth: 8, cellHeight: 16 });
   // The command answers after its input is sent.
-  const answer = await exposure(view, "command.run", { name: "terminal.input", params: { bytes: "bHM=" } });
-  assert.equal(answer, null);
+  const answer = await view.exposure.run("terminal.input", { bytes: "bHM=" });
+  assert.equal(answer ?? null, null);
   const input = sidecarSends(view).find(({ body }) => carriesInput(body));
   assert.equal(input.id, SURFACE, "the input travels to the session of the surface");
   assert.deepEqual(input.body.actions, [{ type: "insert", text: "bHM=", replacementRange: null, attributed: false }]);
 });
 
+test("a command that the page registered with the exposure is also registered with the commands of the view", async (t) => {
+  const view = await openTerminal(t);
+  // Core sends the forwarded command.run of a registered view command as a command request, which the bridge answers from the handler
+  // that the page registered with commands.register; both registrations hold the same handler.
+  await sidecarState(view, { event: "state", sessionId: "s1", cols: 80, rows: 24, cellWidth: 8, cellHeight: 16 });
+  assert.equal(await view.bridge.runCommand("terminal.input", { bytes: "bHM=" }) ?? null, null);
+  assert.deepEqual(sidecarSends(view).find(({ body }) => carriesInput(body)).body.actions,
+    [{ type: "insert", text: "bHM=", replacementRange: null, attributed: false }]);
+});
+
 test("terminal.close detaches the image region before it ends the sidecar session", async (t) => {
   const view = await openTerminal(t);
   // The command answers after the region is detached and the session is closed.
-  const answer = await exposure(view, "command.run", { name: "terminal.close", params: {} });
-  assert.equal(answer, null);
-  const order = view.calls.map(({ command, params }) => command === "runtime.sidecar.send" ? `send:${params.body.operation}` : command);
+  const answer = await view.exposure.run("terminal.close", {});
+  assert.equal(answer ?? null, null);
+  const order = view.bridge.rec.calls.map(({ method, args }) => method === "calls.request" && args[0] === "runtime.sidecar.send"
+    ? `send:${args[1].body.operation}` : method);
   const closeSend = order.filter((entry) => entry === "send:close");
   assert.equal(closeSend.length, 1, "the session of the surface closes once");
-  assert.notEqual(order.indexOf("image.detach"), -1, "the image region is detached");
-  assert.ok(order.indexOf("image.detach") < order.indexOf("send:close"), "the region is detached before the session closes");
+  assert.notEqual(order.indexOf("composition.dispose"), -1, "the composition of the region is disposed");
+  assert.ok(order.indexOf("composition.dispose") < order.indexOf("send:close"), "the region is detached before the session closes");
 });
 
 test("the view page reports a failed sidecar startup and releases its composition", async (t) => {
@@ -113,9 +122,9 @@ test("the view page reports a failed sidecar startup and releases its compositio
     },
   });
   // The report of the failed mount is the last record of the failed startup.
-  const report = view.observed.errors.find((line) => /mount failed/.test(line));
-  assert.deepEqual(imageCalls(view).map(([command]) => command), ["image.attach", "image.detach"],
-    "a failed sidecar startup releases the native image composition");
+  const report = callsOf(view, "runtime.error").map(([, text]) => text).find((line) => /mount failed/.test(line));
+  assert.deepEqual(compositionCalls(view).map(([method]) => method).filter((method) => !method.startsWith("region.")), ["composition.create", "composition.dispose"],
+    "a failed sidecar startup releases the composition of the region");
   assert.match(report, /mount failed: connect authenticated service: socket missing/);
   assert.equal(sidecarSends(view).some(({ body }) => body.operation === "close"), false,
     "a session that never opened is not closed");
@@ -123,9 +132,9 @@ test("the view page reports a failed sidecar startup and releases its compositio
 
 test("a build without a diagnostic declaration registers the declared entries only", async (t) => {
   const view = await openTerminal(t, { diagnostic: false });
-  assert.deepEqual(commandsRegistered(view).sort(), declared("commands"));
+  assert.deepEqual(registered(view, "command").sort(), declared("commands"));
   const diagnosticStatuses = diagnostics.exposes.status.map((entry) => entry.name);
-  assert.equal(view.registered("status").some((name) => diagnosticStatuses.includes(name)), false,
+  assert.equal(registered(view, "status").some((name) => diagnosticStatuses.includes(name)), false,
     "a build without the diagnostic declaration registers no diagnostic entry");
 });
 
@@ -141,8 +150,8 @@ test("terminal input and send records carry the sidecar correlation identifiers"
   const input = sidecarSends(view).find(({ body }) => carriesInput(body));
   assert.ok(input.cids.length > 0, "input has a real correlation chain");
   for (const event of ["input", "send"]) {
-    const record = view.events.find((record) => record.event === "plugin.terminal." + event && (event === "send" ? carriesInput(record.fields.body) : !record.fields.actions?.every(({ type }) => type === "focus")));
-    assert.ok(record, event + " record reaches the view route");
+    const record = view.events.find((record) => record.event === event && (event === "send" ? carriesInput(record.fields.body) : !record.fields.actions?.every(({ type }) => type === "focus")));
+    assert.ok(record, event + " record reaches the view log");
     assert.deepEqual(record.cids, input.cids, event + " retains correlation identifiers");
   }
 });
@@ -160,16 +169,17 @@ function terminalPointer(view, button = 0) {
   return event;
 }
 
-const focusCalls = (view) => imageCalls(view).filter(([command]) => command === "image.focus");
+const focusCalls = (view) => view.bridge.rec.calls.filter(({ method }) => method === "region.focus");
 
 test("a primary press in the separate view runs terminal.focus and requests native keyboard focus", { timeout: 10000 }, async (t) => {
   const view = await openTerminal(t);
-  const event = terminalPointer(view);
+  // The page binds the press of the terminal element to the command terminal.focus on pointerdown of the primary button.
+  const binding = view.bound.find(({ name }) => name === "terminal.focus");
+  assert.equal(binding.element, terminalElement(view));
+  assert.equal(binding.options.event, "pointerdown");
+  terminalPointer(view);
   await view.settled();
-  assert.deepEqual(focusCalls(view), [["image.focus", { name: "view" }]],
-    "the focus command did not transfer keyboard ownership to the native region");
-  assert.equal(terminalElement(view).dataset.command, "terminal.focus");
-  assert.equal(event.defaultPrevented, true, "the DOM must not retake focus after the native focus command");
+  assert.equal(focusCalls(view).length, 1, "the focus command did not transfer keyboard ownership to the native region");
 });
 
 test("the view focus binding ignores another button and is removed when the page is disposed", { timeout: 10000 }, async (t) => {
@@ -189,20 +199,20 @@ test("the view focus binding ignores another button and is removed when the page
 });
 
 test("a rejected focus from a view press reaches the session and the surface error path", { timeout: 10000 }, async (t) => {
-  const view = await openTerminal(t, { faults: { "composition.image.focus": "native focus refused" } });
+  const view = await openTerminal(t, { region: { focus: () => { throw new Error("native focus refused"); } } });
   terminalPointer(view);
   await view.settled();
-  assert.match((await exposure(view, "status.get", { name: "terminal.session" })).error ?? "", /native focus refused/);
+  assert.match((await view.exposure.read("terminal.session")).error ?? "", /native focus refused/);
   // The surface error reaches the tab once, with the message of the failure as the call params.
-  assert.deepEqual(view.calls.filter(({ command }) => command === "tab.error").map(({ command, params }) => ({ command, params })),
-    [{ command: "tab.error", params: "native focus refused" }]);
+  assert.deepEqual(requests(view, "tab.error"), ["native focus refused"]);
 });
 
 test("a refused focus command releases the terminal session and composition", { timeout: 10000 }, async (t) => {
-  // The focus command is not declared, so the registration of the command is refused by the host while the session is open.
-  const declarations = { ...DECLARATIONS, commands: DECLARATIONS.commands.filter(({ name }) => name !== "terminal.focus") };
-  const view = await openTerminal(t, { declarations });
-  assert.equal(imageCalls(view).filter(([command]) => command === "image.detach").length, 1);
+  // The registration of the command terminal.focus with the commands of the view is refused while the session is open.
+  const view = await openTerminal(t, { arrange: (bridge) => bridge.rec.arrange("commands.register", (name) => {
+    if (name === "terminal.focus") throw new Error("command terminal.focus is not declared");
+  }) });
+  assert.equal(compositionCalls(view).filter(([method]) => method === "composition.dispose").length, 1);
   assert.equal(sidecarSends(view).filter(({ body }) => body.operation === "close").length, 1);
-  assert.match(view.observed.errors.find((line) => /mount failed/.test(line)), /mount failed: command terminal\.focus is not declared/);
+  assert.match(callsOf(view, "runtime.error").map(([, text]) => text).find((line) => /mount failed/.test(line)), /mount failed: command terminal\.focus is not declared/);
 });

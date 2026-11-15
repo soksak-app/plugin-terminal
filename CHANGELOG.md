@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- P144: The plugin declares no dependency on the plugin API (`engines.soksak` is its only relation to core), and its tests resolve `@soksak/plugin-api` and its subpaths to fixture modules of this repository that record the calls of the page and answer as each test arranges; the sok-view wire fixtures are deleted. The page disposes its composition once when the terminal fails to start after the session opened. Red: `a refused focus command releases the terminal session and composition` failed with `2 !== 1` on the number of disposals. Green: `pnpm test` passes 314 of 314.
 - P143: The version is 0.0.45, which releases P142 with `engines.soksak` `^0.0.41`.
 - P117: The version is 0.0.44, which releases P116 with `engines.soksak` `^0.0.40`.
 - P142: The page tests load the real `ui/view.js` through `test/fixtures/host.mjs`, a jsdom window that answers each view call by the view wire; `test/view-host.mjs` and `test/dom.mjs` are deleted. A registration refused after the session opens closes the session, and `pagehide` disposes the terminal mount. Red: the converted tests failed 2 of 23 on the unchanged page: the session stayed open after the refused focus command, and the terminal element stayed after `pagehide`. Green: 24 of 24 pass, and `pnpm test` passes 306 of 306.
