@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- P145: `pagehide` aborts the `closing` signal of the page context before it disposes the mount, so a frame observation that `terminal.view.frames` started stops once when the page is hidden. Red: `leaving the page stops a running frame observation once, as it disposes the mount` failed with `0 !== 1` on the stop count. Green: `pnpm test` passes 315 of 315.
 - P144: The plugin declares no dependency on the plugin API (`engines.soksak` is its only relation to core), and its tests resolve `@soksak/plugin-api` and its subpaths to fixture modules of this repository that record the calls of the page and answer as each test arranges; the sok-view wire fixtures are deleted. The page disposes its composition once when the terminal fails to start after the session opened. Red: `a refused focus command releases the terminal session and composition` failed with `2 !== 1` on the number of disposals. Green: `pnpm test` passes 314 of 314.
 - P143: The version is 0.0.45, which releases P142 with `engines.soksak` `^0.0.41`.
 - P117: The version is 0.0.44, which releases P116 with `engines.soksak` `^0.0.40`.

@@ -2,6 +2,7 @@
 
 [English](CHANGELOG.md)
 
+- P145: `pagehide`는 mount를 해제하기 전에 page context의 `closing` signal을 abort하므로, `terminal.view.frames`가 시작한 frame observation은 page가 숨겨질 때 한 번 멈춘다. Red: `leaving the page stops a running frame observation once, as it disposes the mount`가 stop 횟수 `0 !== 1`로 실패했다. Green: `pnpm test`가 315개 중 315개 통과한다.
 - P144: plugin은 plugin API에 대한 dependency를 선언하지 않고(core와의 관계는 `engines.soksak`뿐이다), 시험은 `@soksak/plugin-api`와 하위 경로를 page의 호출을 기록하고 각 시험이 정한 대로 답하는 이 저장소의 fixture module로 해석한다. sok-view wire fixture는 삭제했다. 세션을 연 뒤 terminal이 시작에 실패하면 page는 composition을 한 번만 해제한다. Red: `a refused focus command releases the terminal session and composition`이 해제 횟수 `2 !== 1`로 실패했다. Green: `pnpm test`가 314개 중 314개 통과한다.
 - P143: version은 0.0.45이고, P142를 `engines.soksak` `^0.0.41`로 release한다.
 - P117: version은 0.0.44이며, `engines.soksak` `^0.0.40`과 함께 P116를 release한다.

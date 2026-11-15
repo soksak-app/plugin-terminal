@@ -250,3 +250,14 @@ test("the mounted terminal view reads its live history and starts the frame obse
   assert.deepEqual(await status(), { enabled: false });
   assert.equal(stops, 1, "the stop ends the observation once");
 });
+
+test("leaving the page stops a running frame observation once, as it disposes the mount", { timeout: 5000 }, async (t) => {
+  const view = await openTerminal(t);
+  let stops = 0;
+  observeViewDocumentFrames.arrange(() => () => { stops += 1; });
+  assert.deepEqual((await view.exposure.run("terminal.view.frames", { action: "start" })).enabled, true);
+  assert.equal(stops, 0, "the observation runs until the page ends");
+  view.window.dispatchEvent(new view.window.Event("pagehide"));
+  await view.settled();
+  assert.equal(stops, 1, "pagehide stops the running observation once");
+});

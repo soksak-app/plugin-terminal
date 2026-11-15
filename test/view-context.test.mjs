@@ -25,6 +25,7 @@ function bridgeWith({ log, error }) {
 function contextFor(bridge) {
   return createViewContext({
     bridge,
+    closing: new AbortController().signal,
     start: { surface: "terminal-1", params: null, origin: { directory: null }, project: null, declarations: {} },
   });
 }

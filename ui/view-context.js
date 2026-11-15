@@ -21,12 +21,13 @@ function releaseOf(pending) {
  *
  *     bridge       createViewBridge() of @soksak/plugin-api/view over the sok-view handler of the view
  *     start        the frozen start values {surface, params, origin, project, declarations}
+ *     closing      the AbortSignal that aborts when the page is hidden (pagehide)
  *     report       report(text): writes one record to the application log
  *     diagnostics  the diagnostics module of the plugin in a diagnostic build, and null otherwise
  *     scale        the text scale of the surface, read from the route before the page starts
  *     settings     the values of the settings of the plugin, read from the route before the page starts
  */
-export function createViewContext({ bridge, start, report, diagnostics = null, scale = 1, settings = {} }) {
+export function createViewContext({ bridge, start, report, closing, diagnostics = null, scale = 1, settings = {} }) {
   const { calls, runtime } = bridge;
   // The fire-and-forget calls of the context: a refusal of the route is a record, not a lost report.
   const send = (command, params) => calls.request(command, params)
@@ -36,8 +37,8 @@ export function createViewContext({ bridge, start, report, diagnostics = null, s
   return {
     context: {
       surfaceId: start.surface,
-      // The view of a surface ends with it, so the page has no signal of the removal; the default of the terminal never aborts.
-      closing: new AbortController().signal,
+      // The view of a surface ends with its page: the signal aborts at pagehide, before the mount is disposed.
+      closing,
       composition: { create: (elements) => bridge.composition.create(elements) },
       exposure: withBridgeCommands(createExpose(createExposurePort({ bridge, runtime, releaseOf, report }), () => viewExposes(start)),
         bridge.commands),
