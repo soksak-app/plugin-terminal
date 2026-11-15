@@ -2,6 +2,7 @@
 
 [English](CHANGELOG.md)
 
+- P143: version은 0.0.45이고, P142를 `engines.soksak` `^0.0.41`로 release한다.
 - P117: version은 0.0.44이며, `engines.soksak` `^0.0.40`과 함께 P116를 release한다.
 - P142: page 시험은 view call마다 view wire로 답하는 jsdom window인 `test/fixtures/host.mjs`를 거쳐 실제 `ui/view.js`를 불러온다. `test/view-host.mjs`와 `test/dom.mjs`는 삭제했다. 세션을 연 뒤 거부된 등록은 세션을 닫고, `pagehide`는 terminal mount를 해제한다. Red: 바뀌지 않은 page에서 옮긴 시험 23개 중 2개가 실패했다. 거부된 focus 명령 뒤 세션이 열린 채 남았고, `pagehide` 뒤 terminal element가 남았다. Green: 24개가 모두 통과하고 `pnpm test`가 306개 중 306개를 통과한다.
 - P140: page는 sidecar 답을 위한 timer를 두지 않는다. `screen.watch` 확인 응답, `screen.read`의 답, `pty.pending`의 답은 그 답, 전송 실패, surface의 `sidecar-failure`, connection event, view의 닫힘으로 끝나고, 새 `pty.pending` 요청은 대신하는 요청을 끝내고 그 답을 버린다(core F718-6). 각 test는 시간이나 턴 수가 아니라 event로 순서를 정하고 기다린다. Red: 334개 중 6개가 실패했다. Green: 통과한다.

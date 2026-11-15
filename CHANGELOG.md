@@ -2,6 +2,7 @@
 
 [한국어](CHANGELOG.ko.md)
 
+- P143: The version is 0.0.45, which releases P142 with `engines.soksak` `^0.0.41`.
 - P117: The version is 0.0.44, which releases P116 with `engines.soksak` `^0.0.40`.
 - P142: The page tests load the real `ui/view.js` through `test/fixtures/host.mjs`, a jsdom window that answers each view call by the view wire; `test/view-host.mjs` and `test/dom.mjs` are deleted. A registration refused after the session opens closes the session, and `pagehide` disposes the terminal mount. Red: the converted tests failed 2 of 23 on the unchanged page: the session stayed open after the refused focus command, and the terminal element stayed after `pagehide`. Green: 24 of 24 pass, and `pnpm test` passes 306 of 306.
 - P140: The page sets no timer for a reply of the sidecar: the acknowledgement of `screen.watch`, the answer of `screen.read` and the answer of `pty.pending` end by that reply, by a failed send, by the `sidecar-failure` of the surface, by a connection event or by the close of the view, and a new `pty.pending` request ends the one that it replaces and drops its answer (core F718-6). Each test orders and settles by events, not by time or by a count of turns. Red: 6 of 334 tests failed. Green: they pass.
