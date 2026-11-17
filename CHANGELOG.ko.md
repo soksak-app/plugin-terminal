@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P147: version은 0.0.47이고, `@soksak/sidecar-vt-alacritty` `^0.0.27`을 요구한다.
 [English](CHANGELOG.md)
 
 - P146: version은 0.0.46이고, P144 and P145를 `engines.soksak` `^0.0.41`로 release한다.

@@ -1,5 +1,6 @@
 # Changelog
 
+- P147: The version is 0.0.47, which requires `@soksak/sidecar-vt-alacritty` `^0.0.27`.
 [한국어](CHANGELOG.ko.md)
 
 - P146: The version is 0.0.46, which releases P144 and P145 with `engines.soksak` `^0.0.41`.
