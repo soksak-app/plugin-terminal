@@ -731,6 +731,54 @@ test("terminal.input command sends an insert action with current preedit", async
   assert.deepEqual(inputMessage.body.preedit, { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false });
 });
 
+// terminal.submit sends the text as one insert input and Enter as a separate key input, in that order.
+async function startSubmitTerminal() {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(),
+    detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar,
+    expose: fakeExpose,
+    scale: 1,
+    window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  openSession(fakeSidecar);
+  const submit = fakeExpose.getCommand("terminal.submit");
+  assert(submit, "terminal.submit command registered");
+  fakeSidecar.reset();
+  return { fakeSidecar, submit };
+}
+
+test("terminal.submit sends the text as one insert input and Enter as a separate key input", async () => {
+  const { fakeSidecar, submit } = await startSubmitTerminal();
+  await submit({ text: "hello" });
+  const inputs = fakeSidecar.getMessages().filter((m) => m.body.operation === "input");
+  assert.deepEqual(inputs.map(({ body }) => body.actions), [[inputInsert("hello")], [inputKey("Enter")]]);
+});
+
+test("terminal.submit refuses text with CR or LF before sending any input", async () => {
+  const { fakeSidecar, submit } = await startSubmitTerminal();
+  for (const text of ["hello\r", "hello\nworld"]) {
+    await assert.rejects(() => submit({ text }), /^Error: terminal\.submit text must not contain CR \(U\+000D\) or LF \(U\+000A\)$/);
+  }
+  assert.deepEqual(fakeSidecar.getMessages().filter((m) => m.body.operation === "input"), []);
+});
+
+test("terminal.submit refuses an empty or non-string text before sending any input", async () => {
+  const { fakeSidecar, submit } = await startSubmitTerminal();
+  for (const text of ["", 42, null, undefined]) {
+    await assert.rejects(() => submit({ text }), /^Error: terminal\.submit requires text, a non-empty string$/);
+  }
+  assert.deepEqual(fakeSidecar.getMessages().filter((m) => m.body.operation === "input"), []);
+});
+
+test("terminal.submit resolves to null once both inputs are sent", async () => {
+  const { submit } = await startSubmitTerminal();
+  assert.equal(await submit({ text: "hello" }), null);
+});
+
 test("terminal.paste reads explicit user text once and sends it as one paste request, which the sidecar brackets by the terminal mode", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
