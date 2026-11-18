@@ -404,7 +404,7 @@
     "commands": [
       {
         "name": "terminal.input",
-        "description": "Sends text input to the terminal session as UTF-8 bytes.",
+        "description": "Sends the bytes to the terminal session as one input as UTF-8 text and does not add Enter; a program that submits a line must use terminal.submit.",
         "params": {
           "type": "object",
           "properties": {
@@ -419,7 +419,7 @@
       },
       {
         "name": "terminal.submit",
-        "description": "Sends the text to the terminal session as typed input, then sends Enter as a separate key input. The result means both inputs were sent; confirm the submit from the terminal status.",
+        "description": "terminal.submit sends its text as one input and Enter as a separate key input, refuses text that contains CR or LF, and returns only that the input was sent; confirm acceptance from the status of the input line and of the agent busy state, never by waiting with a timer.",
         "params": {
           "type": "object",
           "properties": {
