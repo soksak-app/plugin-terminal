@@ -6310,3 +6310,68 @@ test("the focus that a reattached session reads does not hold the input that wai
   await sidecar.until(() => sent.length >= 2);
   assert.deepEqual(sent, [[{ type: "focus", focused: false }], [inputKey("Enter")]]);
 });
+
+// terminal.screen.rows sends screen.read with a row range; the screen.rows event that answers it carries the rows, and the command
+// returns the rows with the plain text of each row.
+test("terminal.screen.rows sends a row range and returns the rows and their plain text", async () => {
+  FakeResizeObserver.reset();
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
+    scale: 1, window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  FakeResizeObserver.triggerAll();
+
+  const rowsCommand = expose.getCommand("terminal.screen.rows");
+  assert(rowsCommand, "terminal.screen.rows command registered");
+
+  const reading = rowsCommand({ from: 4, count: 2 });
+  await sidecar.untilMessage((body) => body.operation === "screen.read" && body.from === 4 && body.count === 2);
+  sidecar.triggerEvent("test-session", {
+    event: "screen.rows", from: 4, count: 2,
+    rows: [[{ ch: "a", width: 1 }, { ch: "b", width: 1 }], [{ ch: "c", width: 1 }, { ch: "", width: 0 }]],
+  });
+  const result = await reading;
+  assert.deepEqual(result.text, ["ab", "c"], "each row is returned as its plain text");
+  assert.equal(result.rows.length, 2, "the rows are returned with their cells");
+  assert.equal(result.from, 4);
+  assert.equal(result.count, 2);
+
+  await assert.rejects(rowsCommand({ from: 4 }), /count/, "a range with only from is refused before a request is sent");
+});
+
+// The refused and the waiting range reads: a count outside 1 to 200 and a from below 0 are refused before any request, a
+// screen.rows event of another range does not answer a waiting read, and a sidecar failure ends a waiting read.
+test("terminal.screen.rows refuses a range out of bounds and ends a waiting read at a sidecar failure", async () => {
+  FakeResizeObserver.reset();
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
+    scale: 1, window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+  });
+  FakeResizeObserver.triggerAll();
+
+  const rowsCommand = expose.getCommand("terminal.screen.rows");
+  assert(rowsCommand, "terminal.screen.rows command registered");
+  const readRequests = () => sidecar.getMessages().filter(({ body }) => body.operation === "screen.read").length;
+  const before = readRequests();
+  await assert.rejects(rowsCommand({ from: 0, count: 201 }), /count/, "a count above 200 is refused");
+  await assert.rejects(rowsCommand({ from: 0, count: 0 }), /count/, "a count below 1 is refused");
+  await assert.rejects(rowsCommand({ from: -1, count: 1 }), /from/, "a negative from is refused");
+  assert.equal(readRequests(), before, "a refused range sends no screen.read request");
+
+  const waiting = rowsCommand({ from: 4, count: 2 });
+  await sidecar.untilMessage((body) => body.operation === "screen.read" && body.from === 4 && body.count === 2);
+  sidecar.triggerEvent("test-session", { event: "screen.rows", from: 5, count: 2, rows: [] });
+  let settled = false;
+  waiting.then(() => { settled = true; }, () => { settled = true; });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(settled, false, "a screen.rows event of another range does not answer the waiting read");
+
+  sidecar.triggerFailure("test-session", "the service exited");
+  await assert.rejects(waiting, { message: "the sidecar ended before it answered: the service exited" },
+    "a sidecar failure ends the waiting range read");
+});
+
