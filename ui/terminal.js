@@ -1512,6 +1512,16 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       throw error;
     });
   };
+  // The range reads of terminal.screen.rows, each waiting for the screen.rows event of its own range.
+  const rangeReads = new Set();
+  const rangeRead = (from, count) => new Promise((resolve, reject) => {
+    const entry = { from, count, resolve, reject };
+    rangeReads.add(entry);
+    terminal.send(id, { operation: "screen.read", from, count }).catch((error) => {
+      rangeReads.delete(entry);
+      reject(error);
+    });
+  });
   let screenWatchEnabled = false;
   let screenWatchRegistered = false;
   let screenWatchConnected = true;
@@ -1603,6 +1613,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     const reads = [...screenReads];
     screenReads.clear();
     for (const entry of reads) entry.reject(error);
+    const ranges = [...rangeReads];
+    rangeReads.clear();
+    for (const entry of ranges) entry.reject(error);
     const waiter = pendingPtyRead;
     pendingPtyRead = null;
     waiter?.reject(error);
@@ -1748,6 +1761,14 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         session = { ...session, inputHeld: null };
         setError("sidecar", `sidecar connection failed${reason}`);
         failSession(`sidecar connection failed${reason}`);
+      }
+    } else if (body.event === "screen.rows") {
+      const entry = [...rangeReads].find((read) => read.from === body.from && read.count === body.count);
+      if (entry) {
+        rangeReads.delete(entry);
+        entry.resolve(body.rows);
+      } else {
+        runtime.log.debug("screen.rows.unmatched", { from: body.from, count: body.count });
       }
     } else if (body.event === "screen.changed") {
       followScreen();
@@ -2215,6 +2236,16 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       expose.command("terminal.screen.read", async () => {
         if (region === null) throw new Error("Terminal not initialized");
         return awaitScreen();
+      }),
+      expose.command("terminal.screen.rows", async (params) => {
+        if (region === null) throw new Error("Terminal not initialized");
+        const { from, count } = params ?? {};
+        if (!Number.isInteger(from) || from < 0 || !Number.isInteger(count) || count < 1 || count > 200) {
+          throw new Error("terminal.screen.rows requires from (an integer of at least 0) and count (an integer from 1 to 200)");
+        }
+        const rows = await rangeRead(from, count);
+        const text = rows.map((row) => row.filter((cell) => cell.width !== 0).map((cell) => cell.ch ?? "").join(""));
+        return { from, count, rows, text };
       }),
       expose.command("terminal.close", async () => {
         await endSession();
