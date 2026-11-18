@@ -2233,6 +2233,20 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         }
         return null;
       }),
+      // The text and Enter are two inputs in order, so the program receives the text as typed and then the submit key.
+      // The result means both inputs were sent; the caller confirms the submit from status.
+      expose.command("terminal.submit", async ({ text }) => {
+        if (typeof text !== "string" || text.length === 0) throw new Error("terminal.submit requires text, a non-empty string");
+        if (/[\r\n]/.test(text)) throw new Error("terminal.submit text must not contain CR (U+000D) or LF (U+000A)");
+        try {
+          await callerInput({ type: "input", actions: [{ type: "insert", text, replacementRange: null, attributed: false }], preedit: compose });
+          await callerInput({ type: "input", actions: [{ type: "key", key: "Enter", shift: false, alt: false, ctrl: false }], preedit: compose });
+        } catch (error) {
+          if (!(error instanceof SessionFailure)) reportInputError(error);
+          throw error;
+        }
+        return null;
+      }),
       expose.command("terminal.screen.read", async () => {
         if (region === null) throw new Error("Terminal not initialized");
         return awaitScreen();

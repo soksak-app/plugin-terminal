@@ -418,6 +418,21 @@
         }
       },
       {
+        "name": "terminal.submit",
+        "description": "Sends the text to the terminal session as typed input, then sends Enter as a separate key input. The result means both inputs were sent; confirm the submit from the terminal status.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            }
+          }
+        },
+        "result": {
+          "type": "null"
+        }
+      },
+      {
         "name": "terminal.focus",
         "description": "Transfers keyboard ownership to the terminal native image region.",
         "params": {
