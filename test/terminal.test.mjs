@@ -981,7 +981,8 @@ test("the scrollbar shows the scrollback position and dragging its thumb moves t
   const fakeSidecar = createFakeSidecar();
   const fakeExpose = createFakeExpose();
   const track = Object.assign(createFakeView(), { style: {}, hidden: false });
-  const thumb = Object.assign(createFakeView(), { style: {} });
+  // The thumb reports the rectangle of its place on the 600 pixel track: height 300 at top 150.
+  const thumb = Object.assign(createFakeView(), { style: {}, getBoundingClientRect: () => ({ left: 792, top: 150, width: 6, height: 300 }) });
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar, expose: fakeExpose, scrollbar: { track, thumb },
@@ -991,7 +992,7 @@ test("the scrollbar shows the scrollback position and dragging its thumb moves t
   fakeSidecar.getMessages().length = 0;
   assert.equal(track.hidden, true, "the scrollbar is hidden without history");
 
-  // 50행, 기록 50줄, 오프셋 25. 600 픽셀 트랙에서 손잡이는 높이 300, 위치 150 이다.
+  // 50 rows, 50 lines of history and offset 25: the thumb is half of the track high and starts at a quarter of it.
   const screen = (offset) => fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""],
     cursor: { col: 0, row: 0, visible: false, focused: false, shape: "Block", blinking: false }, scrollback: { offset, history: 50 } });
   screen(25);
@@ -999,7 +1000,7 @@ test("the scrollbar shows the scrollback position and dragging its thumb moves t
   // 트랙은 네이티브 그림이 잘린 자리를 칠하므로 터미널의 현재 기본 배경색, 즉 view 이벤트의 background 여야 한다.
   fakeSidecar.triggerRaw("test-session", viewEvent({ background: "#102030", scrollback: { offset: 25, history: 50 } }));
   assert.equal(track.style.background, "#102030");
-  assert.deepEqual([thumb.style.height, thumb.style.top], ["300px", "150px"]);
+  assert.deepEqual([thumb.style.height, thumb.style.top], ["max(16px, 50%)", "min(calc(100% - max(16px, 50%)), 25%)"]);
 
   thumb._trigger("pointerdown", { button: 0, pointerId: 4, clientX: 795, clientY: 160 });
   thumb._trigger("pointermove", { pointerId: 4, clientX: 795, clientY: 10 });
@@ -1013,10 +1014,48 @@ test("the scrollbar shows the scrollback position and dragging its thumb moves t
   // 가장 새 출력에서도 기록이 있으면 보이며 손잡이는 트랙 맨 아래에 있다.
   screen(0);
   assert.equal(track.hidden, false);
-  assert.deepEqual([thumb.style.height, thumb.style.top], ["300px", "300px"]);
+  assert.deepEqual([thumb.style.height, thumb.style.top], ["max(16px, 50%)", "min(calc(100% - max(16px, 50%)), 50%)"]);
   fakeSidecar.triggerEvent("test-session", { event: "screen", lines: [""], cursor: { col: 0, row: 0, visible: true, focused: false, shape: "Block", blinking: false },
     scrollback: { offset: 0, history: 0 } });
   assert.equal(track.hidden, true, "the scrollbar is hidden without history");
+});
+
+test("the scrollbar thumb ends at the bottom of the track at the newest output after the size and the rows change", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  let trackHeight = 600;
+  const track = Object.assign(createFakeView(), { style: {}, hidden: false, getBoundingClientRect: () => ({ left: 790, top: 0, width: 10, height: trackHeight }) });
+  const thumb = Object.assign(createFakeView(), { style: {} });
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: createFakeExpose(), scrollbar: { track, thumb },
+    window: { TextEncoder },
+  });
+  openSession(fakeSidecar);
+  // The history is at its limit and the terminal shows the newest output, so later events keep offset 0 and history 50.
+  fakeSidecar.triggerRaw("test-session", viewEvent({ scrollback: { offset: 0, history: 50 } }));
+  // The card becomes smaller: the track is 400 pixels high and the terminal has 30 rows.
+  trackHeight = 400;
+  fakeSidecar.triggerEvent("test-session", { event: "state", sessionId: "s1", cols: 100, rows: 30, cellWidth: 8, cellHeight: 16 });
+  fakeSidecar.triggerRaw("test-session", viewEvent({ rows: 30, scrollback: { offset: 0, history: 50 } }));
+  // 30 of 80 rows are visible: the thumb is 37.5% of the track high and starts at 62.5%, so it ends at the bottom.
+  assert.deepEqual([thumb.style.height, thumb.style.top], ["max(16px, 37.5%)", "min(calc(100% - max(16px, 37.5%)), 62.5%)"]);
+});
+
+test("the scrollbar thumb is placed relative to the track without a measured rectangle", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const track = Object.assign(createFakeView(), { style: {}, hidden: false, getBoundingClientRect: () => { throw new Error("the placement read the track rectangle"); } });
+  const thumb = Object.assign(createFakeView(), { style: {}, getBoundingClientRect: () => { throw new Error("the placement read the thumb rectangle"); } });
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: createFakeExpose(), scrollbar: { track, thumb },
+    window: { TextEncoder },
+  });
+  openSession(fakeSidecar);
+  fakeSidecar.triggerRaw("test-session", viewEvent({ scrollback: { offset: 10, history: 150 } }));
+  // 50 of 200 rows are visible and 140 lines lie above the viewport: height 25% and top 70%.
+  assert.deepEqual([track.hidden, thumb.style.height, thumb.style.top], [false, "max(16px, 25%)", "min(calc(100% - max(16px, 25%)), 70%)"]);
 });
 
 test("scrollbar settings set the track background, thumb color, width, and shape", async () => {
