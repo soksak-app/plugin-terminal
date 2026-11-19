@@ -545,6 +545,28 @@
       },
       "description": "A change form arrived while the view awaited the full form that answers its screen read, and the view refused it; number and previous are the members of the change."
     },
+    "plugin.terminal.screen.rows.unmatched": {
+      "layer": "plugin",
+      "class": "io",
+      "level": "debug",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "number"
+          },
+          "count": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "from",
+          "count"
+        ]
+      },
+      "description": "A screen.rows reply of the sidecar arrived for a range that no terminal.screen.rows read waits for, such as a read that a connection change already ended; from and count are the range of the reply."
+    },
     "plugin.terminal.frame": {
       "layer": "plugin",
       "class": "frame",

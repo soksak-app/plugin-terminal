@@ -66,3 +66,12 @@ test("content-frame catalog accepts resize timing and host surface fields and re
   assert.equal(validate({ ...published, resizeCount: 1.5 }), false);
   assert.equal(validate({ ...published, unlisted: true }), false);
 });
+
+test("the catalog declares the screen.rows reply that matches no waiting range read, with its range", () => {
+  const event = catalog.events["plugin.terminal.screen.rows.unmatched"];
+  assert.ok(event, "plugin.terminal.screen.rows.unmatched is declared");
+  assert.equal(event.level, "debug");
+  const validate = new Ajv2020({ allErrors: true }).compile(event.fields);
+  assert.equal(validate({ from: 5, count: 2 }), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ from: 5 }), false, "a record without count is refused");
+});

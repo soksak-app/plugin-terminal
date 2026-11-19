@@ -1,5 +1,6 @@
 # Changelog
 
+- P154: `events.json` declares `plugin.terminal.screen.rows.unmatched` (class `io`, level `debug`, with `from` and `count`), so `make check` passes again. Red: the catalog test failed with `plugin.terminal.screen.rows.unmatched is declared`. Green: `pnpm test` passes 326 of 326.
 - P150: Each error that `terminal.session` shows reaches the surface error display (`tab.error`) when it appears, and that display writes it to the application log; the same text again is not reported again, and a failed focus press is reported once with the text of `terminal.session`. Red: three page tests failed on the `tab.error` calls (`[]`, none, and `native focus refused`). Green: `pnpm test` passes 325 of 325.
 - P147: The version is 0.0.47, which requires `@soksak/sidecar-vt-alacritty` `^0.0.27`.
 [한국어](CHANGELOG.ko.md)

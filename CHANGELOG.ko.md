@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P154: `events.json`은 `plugin.terminal.screen.rows.unmatched`(class `io`, level `debug`, `from`과 `count`)를 선언하므로 `make check`가 다시 통과한다. Red: catalog 시험이 `plugin.terminal.screen.rows.unmatched is declared`로 실패했다. Green: `pnpm test`가 326개 중 326개 통과한다.
 - P150: `terminal.session`이 보이는 각 오류는 나타날 때 surface 오류 display(`tab.error`)에 닿고, 그 display가 application log에 쓴다. 같은 text는 다시 보고하지 않으며, 실패한 focus 누름은 `terminal.session`의 text로 한 번 보고한다. Red: page 시험 세 개가 `tab.error` 호출(`[]`, 없음, `native focus refused`)에서 실패했다. Green: `pnpm test`가 325개 중 325개 통과한다.
 - P147: version은 0.0.47이고, `@soksak/sidecar-vt-alacritty` `^0.0.27`을 요구한다.
 [English](CHANGELOG.md)
