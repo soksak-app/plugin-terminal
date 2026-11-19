@@ -371,6 +371,16 @@ const ATTRIBUTE_FLAGS = [[0x01, "bold"], [0x02, "dim"], [0x04, "italic"], [0x08,
 // The states that the sidecar reports and their sources (core docs/spec/terminal-state.md#states).
 const TERMINAL_STATES = new Set(["idle", "running", "exited"]);
 const TERMINAL_STATE_SOURCES = new Set(["osc133"]);
+/**
+ * Returns the core activity level of a terminal state, or null for no activity (core docs/spec/terminal-state.md#activity):
+ * an exited command reports a failure only with a nonzero exit code.
+ */
+function terminalActivity({ state, exit }) {
+  if (state === "idle") return "idle";
+  if (state === "running") return "running";
+  if (state === "exited" && exit !== null && exit !== 0) return "failed";
+  return null;
+}
 /** Returns why a terminal state value of a change event or a read reply breaks the contract, or null when it holds. */
 function terminalStateProblem({ state, source, sequence, exit }, change) {
   if (!Number.isSafeInteger(sequence) || sequence < (change ? 1 : 0)) return "sequence";
@@ -425,7 +435,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     throw new TypeError(`startTerminal requires origin {directory} with a path or null, found ${JSON.stringify(origin)}`);
   }
   // 공개 status 마다 값이 바뀔 때 호출할 함수
-  const watchers = { session: new Set(), screen: new Set(), compose: new Set(), cursor: new Set(), state: new Set() };
+  const watchers = { session: new Set(), screen: new Set(), compose: new Set(), cursor: new Set(), state: new Set(), activity: new Set() };
   const changed = (name) => {
     for (const fn of watchers[name]) fn(read[name]());
   };
@@ -468,6 +478,13 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // and each change event.
   const STATE_BEFORE_READ = Object.freeze({ state: null, source: null, sequence: 0, exit: null });
   let terminalState = STATE_BEFORE_READ;
+  // Sets the terminal state and notifies the watchers of the state, and of the activity when its level changes.
+  const setTerminalState = (next) => {
+    const before = terminalActivity(terminalState);
+    terminalState = next;
+    changed("state");
+    if (terminalActivity(next) !== before) changed("activity");
+  };
   // The session whose state terminalState holds.
   let terminalStateSession = null;
   let screen = [];
@@ -515,6 +532,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     compose: () => compose,
     cursor: () => cursor,
     state: () => terminalState,
+    activity: () => terminalActivity(terminalState),
   };
 
   // 터미널 사이드카가 이 표면의 VT 세션을 실행한다. 보내는 모든 메시지는 본문 전체와 결과를, 받는 모든 이벤트는 본문 전체를
@@ -1086,8 +1104,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       // opens or is attached again; a new session starts again from the value before the first read.
       if (terminalStateSession !== session.sessionId) {
         terminalStateSession = session.sessionId;
-        terminalState = STATE_BEFORE_READ;
-        changed("state");
+        setTerminalState(STATE_BEFORE_READ);
       }
       terminal.send(id, { operation: "shell.state.read" }).catch((error) => reportInputError(error));
     }
@@ -2140,8 +2157,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         reportInputError(new Error(`invalid terminal state from sidecar: ${problem}: ${JSON.stringify(body)}`));
         return;
       }
-      terminalState = next;
-      changed("state");
+      setTerminalState(next);
     } else if (body.event === "vendor.shell.state") {
       const markers = new Set(["prompt.start", "prompt.end", "command.start", "command.finished"]);
       if (!markers.has(body.marker) || !Array.isArray(body.params) || body.params.some((value) => typeof value !== "string")) {
@@ -2291,6 +2307,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       expose.status("terminal.compose", read.compose, watch("compose")),
       expose.status("terminal.cursor", read.cursor, watch("cursor")),
       expose.status("terminal.state", read.state, watch("state")),
+      expose.status("terminal.activity", read.activity, watch("activity")),
       expose.command("terminal.input", async ({ bytes }) => {
         if (typeof bytes !== "string") throw new Error("terminal.input requires bytes");
         try {

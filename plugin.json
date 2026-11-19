@@ -386,6 +386,11 @@
         }
       },
       {
+        "name": "terminal.activity",
+        "description": "The core activity level of the terminal, derived from terminal.state (core docs/spec/terminal-state.md#activity): `idle` for idle, `running` for running, `failed` for an exited command with a nonzero exit code, and null for no activity, before the first mark and for an exited command with exit 0 or no exit code. It notifies only when the level changes.",
+        "schema": { "type": ["string", "null"], "enum": ["attention", "failed", "running", "idle", null] }
+      },
+      {
         "name": "terminal.state",
         "description": "The terminal state of the session from the OSC 133 marks of its shell: `state` is `idle`, `running`, `exited` or null before the first mark, `source` is `osc133` or null, `sequence` is the number of the last change from 1 (0 before the first), and `exit` is the exit code of `exited`, from 0 to 255, or null. The page reads it after the session opens or attaches and follows each change event of the sidecar.",
         "schema": {
