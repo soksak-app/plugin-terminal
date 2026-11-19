@@ -203,8 +203,35 @@ test("a rejected focus from a view press reaches the session and the surface err
   terminalPointer(view);
   await view.settled();
   assert.match((await view.exposure.read("terminal.session")).error ?? "", /native focus refused/);
-  // The surface error reaches the tab once, with the message of the failure as the call params.
-  assert.deepEqual(requests(view, "tab.error"), ["native focus refused"]);
+  // The error reaches the tab once, with the text that terminal.session shows, although both the command and its binding fail.
+  assert.deepEqual(requests(view, "tab.error"), ["terminal input failed: native focus refused"]);
+});
+
+// A view event of a drawn frame without its background (docs/spec/vt-core.md of the sidecar).
+const viewWithoutBackground = (sequence) => ({
+  event: "view", frame: { generation: 1, raster: 1, sequence }, rows: 24, cols: 80, scrollback: { offset: 0, history: 0 },
+  cursor: { col: 0, row: 0, visible: true, focused: true, shape: "Block", blinking: false, blinkVisible: true, caret: { row: 0, col: 0 }, preedit: null },
+});
+
+test("the refusal of a view event without background reaches the tab error display once, as terminal.session shows it", async (t) => {
+  const view = await openTerminal(t);
+  await sidecarState(view, { event: "state", sessionId: "s1", cols: 80, rows: 24, cellWidth: 8, cellHeight: 16 });
+  await sidecarState(view, viewWithoutBackground(4));
+  await sidecarState(view, viewWithoutBackground(5));
+  const shown = "terminal input failed: invalid view background from sidecar: undefined";
+  assert.equal((await view.exposure.read("terminal.session")).error, shown);
+  // The display writes the error to the application log when it appears; the same error of the next frame does not appear again.
+  assert.deepEqual(requests(view, "tab.error"), [shown]);
+});
+
+test("each error that terminal.session shows reaches the tab error display when it appears", async (t) => {
+  const view = await openTerminal(t);
+  await sidecarState(view, { event: "state", sessionId: "s1", cols: 0, rows: 24, cellWidth: 8, cellHeight: 16 });
+  const state = (await view.exposure.read("terminal.session")).error;
+  assert.match(state, /^invalid state from sidecar: cols: invalid value 0/);
+  await sidecarState(view, { event: "connection", connected: false, reason: "service ended" });
+  assert.equal((await view.exposure.read("terminal.session")).error, "sidecar connection failed: service ended");
+  assert.deepEqual(requests(view, "tab.error"), [state, "sidecar connection failed: service ended"]);
 });
 
 test("a refused focus command releases the terminal session and composition", { timeout: 10000 }, async (t) => {
