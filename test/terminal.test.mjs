@@ -298,7 +298,8 @@ function createFakeSidecar({ delay = () => null, answers = true, watchAnswers = 
       if (answers && cids.length > 0) for (const handler of listeners.get(id) ?? []) {
         if (body.operation === "screen.watch") {
           if (watchAnswers) handler({ event: "screen.watching", enabled: body.enabled }, cids);
-        } else handler({ ack: true }, cids);
+        } else if (!(body.operation === "screen.read" && body.from !== undefined)) handler({ ack: true }, cids);
+        // A range read is answered by its screen.rows event or its refusal, which each test delivers with these cids.
       }
       return Promise.resolve();
     },
@@ -6376,10 +6377,11 @@ test("terminal.screen.rows sends a row range and returns the rows and their plai
 
   const reading = rowsCommand({ from: 4, count: 2 });
   await sidecar.untilMessage((body) => body.operation === "screen.read" && body.from === 4 && body.count === 2);
-  sidecar.triggerEvent("test-session", {
+  const read = sidecar.getMessages().find(({ body }) => body.operation === "screen.read" && body.from === 4).body;
+  sidecar.triggerRaw("test-session", {
     event: "screen.rows", from: 4, count: 2,
     rows: [[{ ch: "a", width: 1 }, { ch: "b", width: 1 }], [{ ch: "c", width: 1 }, { ch: "", width: 0 }]],
-  });
+  }, sidecar.getCids(read));
   const result = await reading;
   assert.deepEqual(result.text, ["ab", "c"], "each row is returned as its plain text");
   assert.equal(result.rows.length, 2, "the rows are returned with their cells");
@@ -6390,7 +6392,7 @@ test("terminal.screen.rows sends a row range and returns the rows and their plai
 });
 
 // The refused and the waiting range reads: a count outside 1 to 200 and a from below 0 are refused before any request, a
-// screen.rows event of another range does not answer a waiting read, and a sidecar failure ends a waiting read.
+// screen.rows event that names no cids of the read does not answer it, and a sidecar failure ends a waiting read.
 test("terminal.screen.rows refuses a range out of bounds and ends a waiting read at a sidecar failure", async () => {
   FakeResizeObserver.reset();
   const sidecar = createFakeSidecar();
@@ -6412,14 +6414,45 @@ test("terminal.screen.rows refuses a range out of bounds and ends a waiting read
 
   const waiting = rowsCommand({ from: 4, count: 2 });
   await sidecar.untilMessage((body) => body.operation === "screen.read" && body.from === 4 && body.count === 2);
-  sidecar.triggerEvent("test-session", { event: "screen.rows", from: 5, count: 2, rows: [] });
-  let settled = false;
-  waiting.then(() => { settled = true; }, () => { settled = true; });
-  await new Promise((resolve) => setTimeout(resolve, 20));
-  assert.equal(settled, false, "a screen.rows event of another range does not answer the waiting read");
-
+  // A screen.rows event that names no cids of the read answers no read; the failure after it ends the read with its own reason.
+  sidecar.triggerRaw("test-session", { event: "screen.rows", from: 4, count: 2, rows: [[], []] }, []);
   sidecar.triggerFailure("test-session", "the service exited");
   await assert.rejects(waiting, { message: "the sidecar ended before it answered: the service exited" },
-    "a sidecar failure ends the waiting range read");
+    "a screen.rows event of no read leaves the read waiting, and a sidecar failure ends it");
 });
 
+
+// A range outside the retained rows is refused by the sidecar with {error, reason} under the cids of the read
+// (docs/spec/vt-core.md of the sidecar); the command rejects with that reason, the session shows no error, and the read waits
+// no longer, so a later reply under the same cids answers no read.
+test("terminal.screen.rows rejects with the reason of the sidecar refusal of its range", async () => {
+  FakeResizeObserver.reset();
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  const records = [];
+  const log = { ...NO_LOG, debug: (event, fields) => records.push({ event, fields }) };
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
+    scale: 1, window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 }, runtime: { log },
+  });
+  FakeResizeObserver.triggerAll();
+
+  const rowsCommand = expose.getCommand("terminal.screen.rows");
+  assert(rowsCommand, "terminal.screen.rows command registered");
+  const reading = rowsCommand({ from: 0, count: 3 });
+  reading.catch(() => {});
+  await sidecar.untilMessage((body) => body.operation === "screen.read" && body.from === 0 && body.count === 3);
+  const read = sidecar.getMessages().find(({ body }) => body.operation === "screen.read" && body.from === 0).body;
+  const cids = sidecar.getCids(read);
+  const reason = "screen.read from 0 count 3 is outside the retained rows 5 to 40";
+  sidecar.triggerRaw("test-session", { error: "invalidParams", reason }, cids);
+  // A failure of the sidecar would end a read that still waits with its own reason.
+  sidecar.triggerFailure("test-session", "the service exited");
+  await assert.rejects(reading, { message: `terminal.screen.rows: invalidParams: ${reason}` });
+  assert.equal(expose.getStatus("terminal.session").readFn().error ?? null, null, "a refused range read is no session error");
+  assert.equal(cids.length, 1, "the range read carries one correlation identifier, which its answer names");
+
+  sidecar.triggerRaw("test-session", { event: "screen.rows", from: 0, count: 3, rows: [[], [], []] }, cids);
+  assert.deepEqual(records.filter(({ event }) => event === "screen.rows.unmatched").map(({ fields }) => fields), [{ from: 0, count: 3 }],
+    "the refused read waits no longer, so a later reply answers no read");
+});

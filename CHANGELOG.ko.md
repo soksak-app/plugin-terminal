@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P153: 각 `terminal.screen.rows` 읽기는 correlation identifier 하나를 보내고, 그것을 담은 답이 읽기를 끝낸다. 보유한 행 밖의 범위에 대한 거절은 connection이 끝날 때까지 기다리지 않고 명령을 `terminal.screen.rows: invalidParams: <reason>`로 거절하며 session 오류를 두지 않는다. Red: 거절 시험이 `the sidecar ended before it answered: the service exited`로 실패했다. Green: `pnpm test`가 327개 중 327개 통과한다.
 - P154: `events.json`은 `plugin.terminal.screen.rows.unmatched`(class `io`, level `debug`, `from`과 `count`)를 선언하므로 `make check`가 다시 통과한다. Red: catalog 시험이 `plugin.terminal.screen.rows.unmatched is declared`로 실패했다. Green: `pnpm test`가 326개 중 326개 통과한다.
 - P150: `terminal.session`이 보이는 각 오류는 나타날 때 surface 오류 display(`tab.error`)에 닿고, 그 display가 application log에 쓴다. 같은 text는 다시 보고하지 않으며, 실패한 focus 누름은 `terminal.session`의 text로 한 번 보고한다. Red: page 시험 세 개가 `tab.error` 호출(`[]`, 없음, `native focus refused`)에서 실패했다. Green: `pnpm test`가 325개 중 325개 통과한다.
 - P147: version은 0.0.47이고, `@soksak/sidecar-vt-alacritty` `^0.0.27`을 요구한다.
