@@ -75,3 +75,14 @@ test("the catalog declares the screen.rows reply that matches no waiting range r
   assert.equal(validate({ from: 5, count: 2 }), true, JSON.stringify(validate.errors));
   assert.equal(validate({ from: 5 }), false, "a record without count is refused");
 });
+
+test("the catalog declares the program clipboard request that the clipboard.program setting refuses, with its operation and policy (P159)", () => {
+  const event = catalog.events["plugin.terminal.clipboard.refused"];
+  assert.ok(event, "plugin.terminal.clipboard.refused is declared");
+  assert.equal(event.level, "info");
+  const validate = new Ajv2020({ allErrors: true }).compile(event.fields);
+  assert.equal(validate({ operation: "store", policy: "deny" }), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ operation: "query", policy: "write" }), true, JSON.stringify(validate.errors));
+  assert.equal(validate({ operation: "paste", policy: "deny" }), false, "an operation other than store or query is refused");
+  assert.equal(validate({ operation: "store" }), false, "a record without policy is refused");
+});

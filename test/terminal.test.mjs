@@ -1347,6 +1347,70 @@ test("allowed program clipboard handles only text through the host capability", 
   ]);
 });
 
+// A program clipboard terminal whose outcomes (a clipboard write, a refusal record, a shown error) arrive in one watched list in
+// the order they happen, so a test waits for the first outcome of an OSC 52 request whichever it is.
+async function programClipboardTerminal(policy) {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  const outcomes = watchedList();
+  const lines = [];
+  const log = recorder(lines);
+  const runtime = { log: Object.fromEntries(Object.entries(log).map(([level, write]) => [level, level === "levels" ? write : (name, fields, options) => {
+    write(name, fields, options);
+    if (name === "clipboard.refused") outcomes.push(["refused", lines.at(-1)[1], level]);
+  }])) };
+  const tab = { ...sinks().tab, error: (text) => { if (text !== null) outcomes.push(["error", text]); } };
+  const settings = policy === undefined ? SHELL_SETTINGS : { read: () => ({ ...SHELL_SETTINGS.read(), "clipboard.program": policy }), on: () => () => {} };
+  const clipboard = {
+    read: async (type) => { assert.equal(type, "text"); return "from host"; },
+    writeText: async (text) => { outcomes.push(["write", text]); },
+  };
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose, settings, clipboard, tab, runtime,
+    window: { TextEncoder },
+  });
+  openSession(fakeSidecar);
+  return { fakeSidecar, fakeExpose, outcomes };
+}
+
+test("a program clipboard store under the default setting writes the clipboard and shows no error (P159)", { timeout: 10000 }, async () => {
+  const { fakeSidecar, fakeExpose, outcomes } = await programClipboardTerminal();
+  fakeSidecar.triggerEvent("test-session", { event: "clipboard.store", selection: "clipboard", text: "program copy" });
+  await outcomes.until(() => outcomes.length === 1);
+  assert.deepEqual(outcomes, [["write", "program copy"]]);
+  assert.equal(fakeExpose.getStatus("terminal.session").readFn().error, undefined);
+  assert.equal(terminalManifest.settings["clipboard.program"].default, "write");
+});
+
+test("a program clipboard store refused by the deny setting is recorded and shows no error (P159)", { timeout: 10000 }, async () => {
+  const { fakeSidecar, fakeExpose, outcomes } = await programClipboardTerminal("deny");
+  fakeSidecar.triggerEvent("test-session", { event: "clipboard.store", selection: "clipboard", text: "program copy" });
+  await outcomes.until(() => outcomes.length === 1);
+  assert.deepEqual(outcomes, [["refused", { operation: "store", policy: "deny" }, "info"]]);
+  assert.equal(fakeExpose.getStatus("terminal.session").readFn().error, undefined);
+});
+
+test("a program clipboard query under the write setting is rejected, recorded and shows no error (P159)", { timeout: 10000 }, async () => {
+  const { fakeSidecar, fakeExpose, outcomes } = await programClipboardTerminal("write");
+  fakeSidecar.triggerEvent("test-session", { event: "clipboard.query", requestId: 9, selection: "clipboard" });
+  await outcomes.until(() => outcomes.length === 1);
+  assert.deepEqual(outcomes, [["refused", { operation: "query", policy: "write" }, "info"]]);
+  await fakeSidecar.untilMessage((body) => body.operation === "clipboard.reject");
+  assert.deepEqual(fakeSidecar.getMessages().filter(({ body }) => body.operation.startsWith("clipboard.")).map(({ body }) => body), [
+    { operation: "clipboard.reject", requestId: 9, reason: "program clipboard query denied by policy" },
+  ]);
+  assert.equal(fakeExpose.getStatus("terminal.session").readFn().error, undefined);
+});
+
+test("a program clipboard store to an unsupported target under the default setting still shows its error (P159)", { timeout: 10000 }, async () => {
+  const { fakeSidecar, outcomes } = await programClipboardTerminal();
+  fakeSidecar.triggerEvent("test-session", { event: "clipboard.store", selection: "primary", text: "program copy" });
+  await outcomes.until(() => outcomes.length === 1);
+  assert.deepEqual(outcomes, [["error", "terminal input failed: unsupported program clipboard target: primary"]]);
+});
+
 test("user selection copy writes non-empty text independently of program clipboard policy", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
