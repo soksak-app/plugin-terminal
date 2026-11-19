@@ -1,5 +1,6 @@
 # Changelog
 
+- P158: The version is 0.0.49, which releases P157 in place of 0.0.48 and requires `@soksak/sidecar-vt-alacritty` `^0.0.29`.
 - P157: `make check` runs `make check-manifest`, which reads `plugin.json`, `diagnostics.json` and the files of `package.json` with the readers of the published plugin API release of core 0.0.41, the lowest core that `engines.soksak` admits; that devDependency serves only this check, and the page tests keep the fixtures. The params of `terminal.screen.rows` declare no `required`, `minimum` or `maximum`, which the core installer refused in 0.0.48. Red: `make check-manifest` failed with `unknown field required`. Green: it passes.
 - P152: The version is 0.0.48, which releases P148 to P156 and requires `@soksak/sidecar-vt-alacritty` `^0.0.29`; the release run published v0.0.48, and the registry lists it with vt-alacritty 0.0.29.
 - P151: `plugin.json` requires `@soksak/sidecar-vt-alacritty` `^0.0.29`, the first release whose `view` event carries `background`. Red: the manifest test failed with `^0.0.27`. Green: `pnpm test` passes 329 of 329.
