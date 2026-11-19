@@ -368,6 +368,23 @@ function screenRow(cells) {
 const ATTRIBUTE_FLAGS = [[0x01, "bold"], [0x02, "dim"], [0x04, "italic"], [0x08, "underline"], [0x10, "blink"], [0x20, "inverse"],
   [0x40, "hidden"], [0x80, "strikethrough"]];
 
+// The states that the sidecar reports and their sources (core docs/spec/terminal-state.md#states).
+const TERMINAL_STATES = new Set(["idle", "running", "exited"]);
+const TERMINAL_STATE_SOURCES = new Set(["osc133"]);
+/** Returns why a terminal state value of a change event or a read reply breaks the contract, or null when it holds. */
+function terminalStateProblem({ state, source, sequence, exit }, change) {
+  if (!Number.isSafeInteger(sequence) || sequence < (change ? 1 : 0)) return "sequence";
+  if (state === null) {
+    if (change) return "state";
+    return source === null && sequence === 0 && exit === null ? null : "a read without a state";
+  }
+  if (!TERMINAL_STATES.has(state)) return "state";
+  if (!TERMINAL_STATE_SOURCES.has(source)) return "source";
+  if (sequence === 0) return "sequence";
+  if (state === "exited") return exit === null || (Number.isInteger(exit) && exit >= 0 && exit <= 255) ? null : "exit";
+  return exit === null ? null : "exit";
+}
+
 export async function startTerminal({ id, view, attachImage, detachRegions, sidecar, expose, theme,
   // Aborts when the removal of the surface starts, before its regions are detached (context.closing). Required.
   closing,
@@ -408,7 +425,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     throw new TypeError(`startTerminal requires origin {directory} with a path or null, found ${JSON.stringify(origin)}`);
   }
   // 공개 status 마다 값이 바뀔 때 호출할 함수
-  const watchers = { session: new Set(), screen: new Set(), compose: new Set(), cursor: new Set() };
+  const watchers = { session: new Set(), screen: new Set(), compose: new Set(), cursor: new Set(), state: new Set() };
   const changed = (name) => {
     for (const fn of watchers[name]) fn(read[name]());
   };
@@ -447,6 +464,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     compose: { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false },
     theme: "dark",
   };
+  // The terminal state of the session (core docs/spec/terminal-state.md): the value before the first read, then the read reply
+  // and each change event.
+  const STATE_BEFORE_READ = Object.freeze({ state: null, source: null, sequence: 0, exit: null });
+  let terminalState = STATE_BEFORE_READ;
+  // The session whose state terminalState holds.
+  let terminalStateSession = null;
   let screen = [];
   // The frame of the latest screen event, which terminal.screen.read returns with the rows.
   let screenFrame = null;
@@ -491,6 +514,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     screen: () => screen,
     compose: () => compose,
     cursor: () => cursor,
+    state: () => terminalState,
   };
 
   // 터미널 사이드카가 이 표면의 VT 세션을 실행한다. 보내는 모든 메시지는 본문 전체와 결과를, 받는 모든 이벤트는 본문 전체를
@@ -1058,6 +1082,14 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       settleUnanswered();
       enqueueInput({ type: "input", actions: [{ type: "focus", focused: nativeFocused }], preedit: compose })
         .catch((error) => reportInputError(error));
+      // A persistent session keeps its state while no page shows it, so the page reads the state each time the session
+      // opens or is attached again; a new session starts again from the value before the first read.
+      if (terminalStateSession !== session.sessionId) {
+        terminalStateSession = session.sessionId;
+        terminalState = STATE_BEFORE_READ;
+        changed("state");
+      }
+      terminal.send(id, { operation: "shell.state.read" }).catch((error) => reportInputError(error));
     }
     flushInputQueue();
   };
@@ -2099,6 +2131,17 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       } catch (error) {
         setError("notification", `terminal notification failed: ${error.message}`);
       }
+    } else if (body.event === "shell.state" || body.event === "shell.state.current") {
+      const next = body.event === "shell.state"
+        ? { state: body.to, source: body.source, sequence: body.sequence, exit: body.exit }
+        : { state: body.state, source: body.source, sequence: body.sequence, exit: body.exit };
+      const problem = terminalStateProblem(next, body.event === "shell.state");
+      if (problem !== null) {
+        reportInputError(new Error(`invalid terminal state from sidecar: ${problem}: ${JSON.stringify(body)}`));
+        return;
+      }
+      terminalState = next;
+      changed("state");
     } else if (body.event === "vendor.shell.state") {
       const markers = new Set(["prompt.start", "prompt.end", "command.start", "command.finished"]);
       if (!markers.has(body.marker) || !Array.isArray(body.params) || body.params.some((value) => typeof value !== "string")) {
@@ -2247,6 +2290,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       expose.status("terminal.screen", currentScreen, watchScreen),
       expose.status("terminal.compose", read.compose, watch("compose")),
       expose.status("terminal.cursor", read.cursor, watch("cursor")),
+      expose.status("terminal.state", read.state, watch("state")),
       expose.command("terminal.input", async ({ bytes }) => {
         if (typeof bytes !== "string") throw new Error("terminal.input requires bytes");
         try {

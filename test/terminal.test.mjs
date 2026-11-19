@@ -5078,9 +5078,13 @@ test("region input is buffered in order until sidecar state opens the session", 
 
   // 사이드카가 state 이벤트로 세션을 연다
   fakeSidecar.triggerEvent("test-session", { event: "state", sessionId: "s1", cols: 100, rows: 50, cellWidth: 8, cellHeight: 16 });
-  await fakeSidecar.until(() => sessionMessages(fakeSidecar).length >= 3);
+  // The open session also reads its terminal state (core docs/spec/terminal-state.md#state-read), once.
+  const inputs = () => sessionMessages(fakeSidecar).filter(({ body }) => body.operation !== "shell.state.read");
+  await fakeSidecar.until(() => inputs().length >= 3);
 
-  messages = sessionMessages(fakeSidecar);
+  assert.equal(sessionMessages(fakeSidecar).filter(({ body }) => body.operation === "shell.state.read").length, 1,
+    "the open session reads its state once");
+  messages = inputs();
   assert.equal(messages.length, 3, "open and two inputs are sent after state");
   assert.deepEqual(messages[1].body.actions, [inputInsert("a")]);
   assert.deepEqual(messages[2].body.actions, [inputKey("Enter")]);
@@ -5166,8 +5170,10 @@ test("a sidecar rejection is reported without DOM-driven retry", async () => {
   fakeView.clientWidth = 600;
   fakeView.clientHeight = 300;
   FakeResizeObserver.triggerAll();
+  // The session that the state event opened reads its terminal state once (core docs/spec/terminal-state.md#state-read).
   messages = sessionMessages(fakeSidecar);
-  assert.equal(messages.length, 1, "DOM resize sends no sidecar message");
+  assert.deepEqual(messages.slice(1).map(({ body }) => body), [{ operation: "shell.state.read" }], "the open session reads its state");
+  assert.equal(messages.length, 2, "DOM resize sends no sidecar message");
 });
 
 test("persistent reconnect restores the session identity before a new raster is configured", async () => {
