@@ -209,7 +209,8 @@ test("a rejected focus from a view press reaches the session and the surface err
 
 // A view event of a drawn frame without its background (docs/spec/vt-core.md of the sidecar).
 const viewWithoutBackground = (sequence) => ({
-  event: "view", frame: { generation: 1, raster: 1, sequence }, rows: 24, cols: 80, scrollback: { offset: 0, history: 0 },
+  event: "view", frame: { generation: 1, raster: 1, sequence }, rows: 24, cols: 80, scrollback: { offset: 0, history: 0, dropped: 0 },
+  alternate: { active: false, history: 0, dropped: 0 },
   cursor: { col: 0, row: 0, visible: true, focused: true, shape: "Block", blinking: false, blinkVisible: true, caret: { row: 0, col: 0 }, preedit: null },
 });
 
