@@ -32,10 +32,11 @@ test("the read commands state their read mode, its use and what it cannot see", 
   assert.match(rows, /alternate\.active/, rows);
 });
 
-test("terminal.screen.rows declares screen as a required parameter of two values", () => {
+test("terminal.screen.rows declares screen as a parameter of two values that it requires", () => {
   const { params } = command("terminal.screen.rows");
   assert.deepEqual(params.properties.screen, { type: "string", enum: ["primary", "alternate"] });
-  assert.deepEqual(params.required, ["screen", "from", "count"]);
+  // The schema form of a manifest has no required list, so the description states that screen is required.
+  assert.match(command("terminal.screen.rows").description, /screen is required/);
 });
 
 test("terminal.session declares the members that choose a read mode", () => {

@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P171-1: `terminal.screen.rows` 가 `screen`(`primary` 나 `alternate`)을 요구해 그것 없는 읽기를 요청 전에 거절하고 그것을 sidecar 에 보낸다. `terminal.session` 이 sidecar 의 `scrollback.dropped`, `alternate {active, history, dropped}`, `foreground {pid, command, cwd}` 를 보관한다. `terminal.screen.read` 와 `terminal.screen.rows` 의 설명이 core `docs/spec/terminal-read.md` 의 읽기 mode, 그 쓰임, 그것이 보지 못하는 것을 말한다.
 - P169: `terminal.screen.read`, `terminal.screen.rows`, `terminal.scrollback.set` 의 설명이 screen read 가 viewport 와 alternate screen 을 따른다는 것, `from` 이 세는 행과 범위 read 가 viewport 를 움직이지 않는다는 것, viewport offset 이 alternate screen 의 program 을 scroll 하지 않는다는 것을 말한다.
 - P168: core의 공유 터미널 상태 case의 복사본이 다시 core `docs/spec/cases/terminal-state/osc133.json`과 같으며, mark `P`와 그 case 두 개를 담는다. page는 바뀌지 않고 그 case를 통과한다.
 - P167: status `terminal.activity`가 core `docs/spec/terminal-state.md#activity`가 정한 대로 `terminal.state`와 그 exit code에서 얻은 터미널의 core activity level을 publish하며, level이 바뀔 때만 알린다. 그 선언 `activity: true`는 F982를 담은 core release를 기다린다(P167-1).

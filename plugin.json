@@ -188,7 +188,7 @@
       },
       {
         "name": "terminal.session",
-        "description": "The session state: identifier, dimensions, cell size, the scrollback viewport offset and history, the number of selection releases the sidecar answered, the pointer shape the program set with OSC 22, the theme mode and the default background (`#rrggbb`) the sidecar applied, the reasons of the last eight output sequences the engine rejected, and the input held by the sidecar as `inputHeld`, which is `{queued, held}` while held and `null` otherwise, and whether the child of the session ended as `exited`.",
+        "description": "The session state: identifier, dimensions, cell size, the scrollback viewport offset, the history rows of the active screen and the rows dropped from the primary history as `scrollback {offset, history, dropped}`, whether the alternate screen is active with the rows kept above it and the kept rows dropped as `alternate {active, history, dropped}`, the leader of the foreground process group of the terminal with the path of its executable and its working directory as `foreground {pid, command, cwd}` (`null` without a foreground process group, and `command` and `cwd` null with `error` when the system refused the read), the number of selection releases the sidecar answered, the pointer shape the program set with OSC 22, the theme mode and the default background (`#rrggbb`) the sidecar applied, the reasons of the last eight output sequences the engine rejected, and the input held by the sidecar as `inputHeld`, which is `{queued, held}` while held and `null` otherwise, and whether the child of the session ended as `exited`.",
         "schema": {
           "type": "object",
           "properties": {
@@ -258,7 +258,25 @@
               "type": "object",
               "properties": {
                 "offset": { "type": "integer" },
-                "history": { "type": "integer" }
+                "history": { "type": "integer" },
+                "dropped": { "type": "integer" }
+              }
+            },
+            "alternate": {
+              "type": "object",
+              "properties": {
+                "active": { "type": "boolean" },
+                "history": { "type": "integer" },
+                "dropped": { "type": "integer" }
+              }
+            },
+            "foreground": {
+              "type": ["object", "null"],
+              "properties": {
+                "pid": { "type": "integer" },
+                "command": { "type": ["string", "null"] },
+                "cwd": { "type": ["string", "null"] },
+                "error": { "type": "string" }
               }
             },
             "selecting": {
@@ -463,7 +481,7 @@
       },
       {
         "name": "terminal.screen.read",
-        "description": "Requests the screen that the terminal shows now and returns its cell rows and the frame that shows them; each cell has ch and width, and a cell of width 0 continues a wide character. The rows follow the viewport: after terminal.scrollback.set they are the rows at that offset, and while a full-screen program shows the alternate screen they are the rows that the program drew.",
+        "description": "Requests the screen that the terminal shows now and returns its cell rows and the frame that shows them; each cell has ch and width, and a cell of width 0 continues a wide character. The rows follow the viewport: after terminal.scrollback.set they are the rows at that offset, and while a full-screen program shows the alternate screen they are the rows that the program drew. Read mode Visible: use it for the rows on the screen now; it cannot see the rows above the viewport, which terminal.screen.rows reads without input to the program; check terminal.session first: alternate.active tells whether a full-screen program holds the screen and foreground names the program.",
         "params": {
           "type": "object",
           "properties": {}
@@ -490,10 +508,11 @@
       },
       {
         "name": "terminal.screen.rows",
-        "description": "Returns count rows (1 to 200) from row from of the rows that the terminal keeps, with their cell rows and the plain text of each row, without moving the viewport. Row 0 is the first row that entered the history: the oldest kept row is the number of rows dropped past the history limit, and the viewport at offset 0 starts the history rows of terminal.session after it. A range outside the kept rows is refused with the kept range. While a full-screen program shows the alternate screen, the kept rows are only the rows of that screen.",
+        "description": "Returns count rows (1 to 200) from row from of the rows that the terminal keeps for screen, with their cell rows and the plain text of each row, without moving the viewport. Read mode Kept rows: screen is primary or alternate, screen is required, and no input reaches the program. screen primary reads the primary screen and its history: the history of a shell and of a program that draws inline, where row 0 is the first row that entered the history, the oldest kept row is scrollback.dropped of terminal.session, and the viewport at offset 0 starts scrollback.history rows after it. screen alternate reads the rows that a full-screen program scrolled off the alternate screen followed by the rows of that screen, where row 0 is the first row kept since the program entered the alternate screen and the oldest kept row is alternate.dropped; use it while alternate.active is true and after the program left, until it enters the alternate screen again. A range outside the kept rows is refused with the kept range. It cannot see the rows that the program never drew.",
         "params": {
           "type": "object",
           "properties": {
+            "screen": { "type": "string", "enum": ["primary", "alternate"] },
             "from": { "type": "integer" },
             "count": { "type": "integer" }
           }
@@ -501,6 +520,7 @@
         "result": {
           "type": "object",
           "properties": {
+            "screen": { "type": "string", "enum": ["primary", "alternate"] },
             "from": { "type": "integer" },
             "count": { "type": "integer" },
             "rows": { "type": "array", "items": { "type": "array", "items": { "type": "object" } } },

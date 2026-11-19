@@ -370,6 +370,22 @@ const ATTRIBUTE_FLAGS = [[0x01, "bold"], [0x02, "dim"], [0x04, "italic"], [0x08,
 
 // The states that the sidecar reports and their sources (core docs/spec/terminal-state.md#states).
 const TERMINAL_STATES = new Set(["idle", "running", "exited"]);
+// The screens of a kept-rows read (core docs/spec/terminal-read.md#alternate-rows).
+const READ_SCREENS = new Set(["primary", "alternate"]);
+const isCount = (value) => Number.isInteger(value) && value >= 0;
+// The reason that a foreground of the sidecar (core docs/spec/terminal-read.md#session-state) is invalid, or null:
+// null, {pid, command, cwd} with text or null paths, or a refused read {pid, command: null, cwd: null, error}.
+function foregroundError(foreground) {
+  if (foreground === null) return null;
+  if (typeof foreground !== "object" || Array.isArray(foreground) || !Number.isInteger(foreground?.pid) || foreground.pid <= 0) {
+    return JSON.stringify(foreground);
+  }
+  const { command, cwd, error, ...other } = foreground;
+  const path = (value) => value === null || (typeof value === "string" && value.length > 0);
+  if (Object.keys(other).some((key) => key !== "pid") || !path(command) || !path(cwd)) return JSON.stringify(foreground);
+  if (error !== undefined && (typeof error !== "string" || error.length === 0 || command !== null || cwd !== null)) return JSON.stringify(foreground);
+  return null;
+}
 const TERMINAL_STATE_SOURCES = new Set(["osc133"]);
 /**
  * Returns the core activity level of a terminal state, or null for no activity (core docs/spec/terminal-state.md#activity):
@@ -456,8 +472,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       reported: false, written: false, modes: { click: false, drag: false, motion: false }, bytes: null, error: null },
     // 왼쪽 버튼을 누른 선택 제스처가 진행 중인지.
     selecting: false,
-    // 뷰포트가 가장 새 출력보다 위에 있는 줄 수와 보관된 기록 줄 수.
-    scrollback: { offset: 0, history: 0 },
+    // 뷰포트가 가장 새 출력보다 위에 있는 줄 수와 보관된 기록 줄 수, 기록 한도가 primary 기록에서 버린 줄 수.
+    scrollback: { offset: 0, history: 0, dropped: 0 },
+    // The alternate screen and its kept rows, and the leader of the foreground process group of the terminal
+    // (core docs/spec/terminal-read.md#session-state); the sidecar sends both, and the session keeps them as they arrive.
+    alternate: { active: false, history: 0, dropped: 0 },
+    foreground: null,
     // 포인터 아래 칸의 OSC 8 링크 URI. 없으면 null.
     link: null,
     // OSC 22 로 프로그램이 정한 포인터 모양(CSS cursor 값). 링크 칸 위에서는 손 모양이 우선한다.
@@ -1580,10 +1600,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // the screen.rows event of the range, or the refusal {error, reason} of a range outside the retained rows.
   const rangeReads = new Set();
   let rangeReadSequence = 0;
-  const rangeRead = (from, count) => new Promise((resolve, reject) => {
-    const entry = { from, count, cid: `${unansweredPrefix}-screen-rows-${++rangeReadSequence}`, resolve, reject };
+  const rangeRead = (screen, from, count) => new Promise((resolve, reject) => {
+    const entry = { screen, from, count, cid: `${unansweredPrefix}-screen-rows-${++rangeReadSequence}`, resolve, reject };
     rangeReads.add(entry);
-    terminal.send(id, { operation: "screen.read", from, count }, [entry.cid]).catch((error) => {
+    terminal.send(id, { operation: "screen.read", screen, from, count }, [entry.cid]).catch((error) => {
       rangeReads.delete(entry);
       reject(error);
     });
@@ -1595,8 +1615,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     rangeReads.delete(entry);
     if (body.error) {
       entry.reject(new Error(`terminal.screen.rows: ${body.error}: ${body.reason ?? "screen.read failed"}`));
-    } else if (body.event !== "screen.rows" || body.from !== entry.from || body.count !== entry.count || !Array.isArray(body.rows)) {
-      entry.reject(new Error(`terminal.screen.rows received a mismatched answer: ${JSON.stringify({ event: body.event, from: body.from, count: body.count })}`));
+    } else if (body.event !== "screen.rows" || body.screen !== entry.screen || body.from !== entry.from || body.count !== entry.count ||
+      !Array.isArray(body.rows)) {
+      entry.reject(new Error(`terminal.screen.rows received a mismatched answer: ${JSON.stringify({ event: body.event, screen: body.screen, from: body.from, count: body.count })}`));
     } else {
       entry.resolve(body.rows);
     }
@@ -1928,7 +1949,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         if (!Number.isInteger(offset) || !Number.isInteger(history) || offset < 0 || history < 0) {
           reportInputError(`invalid screen scrollback from sidecar: ${JSON.stringify(body.scrollback)}`, "screen");
         } else if (offset !== session.scrollback.offset || history !== session.scrollback.history) {
-          session = { ...session, scrollback: { offset, history } };
+          session = { ...session, scrollback: { ...session.scrollback, offset, history } };
           changed("session");
           drawScrollbar();
         }
@@ -1973,9 +1994,13 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         if (body.frame === null || !isScreenFrame(body.frame)) throw new Error(`invalid view frame from sidecar: ${JSON.stringify(body.frame)}`);
         const caretFailure = screenCaretError(body.cursor, body.rows, body.cols, body.frame);
         if (caretFailure !== null) throw new Error(`invalid view cursor caret from sidecar: ${caretFailure}`);
-        const { offset, history } = body.scrollback ?? {};
-        if (!Number.isInteger(offset) || !Number.isInteger(history) || offset < 0 || history < 0) {
+        const { offset, history, dropped } = body.scrollback ?? {};
+        if (![offset, history, dropped].every(isCount)) {
           throw new Error(`invalid view scrollback from sidecar: ${JSON.stringify(body.scrollback)}`);
+        }
+        const alternate = body.alternate ?? {};
+        if (typeof alternate.active !== "boolean" || !isCount(alternate.history) || !isCount(alternate.dropped)) {
+          throw new Error(`invalid view alternate from sidecar: ${JSON.stringify(body.alternate)}`);
         }
         if (typeof body.background !== "string" || !BACKGROUND.test(body.background)) {
           throw new Error(`invalid view background from sidecar: ${JSON.stringify(body.background)}`);
@@ -1984,11 +2009,16 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         reportInputError(error, "view");
         return;
       }
-      const { offset, history } = body.scrollback;
-      if (offset !== session.scrollback.offset || history !== session.scrollback.history) {
-        session = { ...session, scrollback: { offset, history } };
+      const { offset, history, dropped } = body.scrollback;
+      if (offset !== session.scrollback.offset || history !== session.scrollback.history || dropped !== session.scrollback.dropped) {
+        session = { ...session, scrollback: { offset, history, dropped } };
         changed("session");
         drawScrollbar();
+      }
+      const { active, history: kept, dropped: shed } = body.alternate;
+      if (active !== session.alternate.active || kept !== session.alternate.history || shed !== session.alternate.dropped) {
+        session = { ...session, alternate: { active, history: kept, dropped: shed } };
+        changed("session");
       }
       // The track and the padding show the default background of the presented frame, which only the view event reports.
       if (body.background !== terminalBackground) {
@@ -2006,6 +2036,16 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       });
       if (resolveError("view")) changed("session");
       followScreen();
+    } else if (body.event === "foreground") {
+      // The leader of the foreground process group, which the sidecar reads after each output and sends when it changes.
+      const failure = foregroundError(body.foreground);
+      if (failure !== null) {
+        reportInputError(`invalid foreground from sidecar: ${failure}`, "foreground");
+        return;
+      }
+      session = { ...session, foreground: body.foreground };
+      resolveError("foreground");
+      changed("session");
     } else if (body.event === "cursor") {
       try {
         const policy = normalizeCursorPolicy(body);
@@ -2338,13 +2378,13 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }),
       expose.command("terminal.screen.rows", async (params) => {
         if (region === null) throw new Error("Terminal not initialized");
-        const { from, count } = params ?? {};
-        if (!Number.isInteger(from) || from < 0 || !Number.isInteger(count) || count < 1 || count > 200) {
-          throw new Error("terminal.screen.rows requires from (an integer of at least 0) and count (an integer from 1 to 200)");
+        const { screen, from, count } = params ?? {};
+        if (!READ_SCREENS.has(screen) || !Number.isInteger(from) || from < 0 || !Number.isInteger(count) || count < 1 || count > 200) {
+          throw new Error("terminal.screen.rows requires screen (primary or alternate), from (an integer of at least 0) and count (an integer from 1 to 200)");
         }
-        const rows = await rangeRead(from, count);
+        const rows = await rangeRead(screen, from, count);
         const text = rows.map((row) => row.filter((cell) => cell.width !== 0).map((cell) => cell.ch ?? "").join(""));
-        return { from, count, rows, text };
+        return { screen, from, count, rows, text };
       }),
       expose.command("terminal.close", async () => {
         await endSession();

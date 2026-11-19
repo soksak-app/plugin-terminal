@@ -1,5 +1,6 @@
 # Changelog
 
+- P171-1: `terminal.screen.rows` requires `screen` (`primary` or `alternate`), refuses a read without it before any request and sends it to the sidecar; `terminal.session` keeps `scrollback.dropped`, `alternate {active, history, dropped}` and `foreground {pid, command, cwd}` from the sidecar; the descriptions of `terminal.screen.read` and `terminal.screen.rows` state their read mode of core `docs/spec/terminal-read.md`, its use and what it cannot see.
 - P169: The descriptions of `terminal.screen.read`, `terminal.screen.rows` and `terminal.scrollback.set` state that the screen read follows the viewport and the alternate screen, what row `from` counts and that the range read does not move the viewport, and that the viewport offset does not scroll a program on the alternate screen.
 - P168: The copy of the shared terminal state cases of core equals core `docs/spec/cases/terminal-state/osc133.json` again, with the mark `P` and its two cases; the page passes them unchanged.
 - P167: The status `terminal.activity` publishes the core activity level of the terminal, derived from `terminal.state` and its exit code as core `docs/spec/terminal-state.md#activity` defines, and notifies only when the level changes. Its declaration `activity: true` waits for a core release with F982 (P167-1).
