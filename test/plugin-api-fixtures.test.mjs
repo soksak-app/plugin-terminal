@@ -17,8 +17,11 @@ test("the specifiers that the page imports resolve to the fixture modules of thi
   }
 });
 
-test("a subpath that the import map of the page does not list is not mapped", { timeout: 5000 }, async () => {
-  await assert.rejects(import("@soksak/plugin-api/testing"), (error) => error.code === "ERR_MODULE_NOT_FOUND" || error.code === "ERR_PACKAGE_PATH_NOT_EXPORTED");
+// The published plugin API of the manifest check is installed (P157), so a subpath that the import map of the page does not list is
+// refused instead of reaching it.
+test("a subpath that the import map of the page does not list is refused, and reaches no published plugin API", { timeout: 5000 }, async () => {
+  await assert.rejects(import("@soksak/plugin-api/testing"),
+    { code: "ERR_MODULE_NOT_FOUND", message: "the plugin tests map @soksak/plugin-api/testing to no fixture of test/fixtures/plugin-api/" });
 });
 
 test("a fixture export refuses a call that the test did not arrange and answers one that it did", { timeout: 5000 }, async () => {

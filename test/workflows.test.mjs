@@ -80,18 +80,18 @@ test("no workflow checks out another repository", { timeout: 1000 }, () => {
   }
 });
 
-test("no workflow and no dependency of the package names the plugin API of core (P144)", { timeout: 1000 }, () => {
+test("no workflow names the plugin API of core (P144)", { timeout: 1000 }, () => {
   const folder = path.join(ROOT, ".github", "workflows");
   for (const file of readdirSync(folder).filter((name) => name.endsWith(".yml"))) {
     assert.doesNotMatch(readFileSync(path.join(folder, file), "utf8"), /plugin-api/, `${file} names the plugin API`);
   }
-  const declared = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"].flatMap((field) => Object.keys(PACKAGE[field] ?? {}));
-  assert.deepEqual(declared.filter((name) => name.startsWith("@soksak/plugin-api")), []);
 });
 
-test("the checks come from the kit releases, and no check reads the plugin API of core", { timeout: 1000 }, () => {
+// The checks are the commands of the kit releases and check-manifest, which reads the manifest with the readers of the plugin API
+// release that package.json pins (P157); no check reads a core checkout or another tool of core.
+test("the checks come from the kit releases and the manifest check of the pinned plugin API release", { timeout: 1000 }, () => {
   for (const file of ["Makefile", ".githooks/commit-msg", ".githooks/pre-commit"]) {
-    assert.doesNotMatch(readFileSync(path.join(ROOT, file), "utf8"), /CORE_PLUGIN_API_DIR|soksak-exposure|soksak-engines|soksak-view-check|view-check|node_modules\/@soksak|check-manifest|check-test-cases/,
-      `${file} must run only the commands of the kit releases`);
+    assert.doesNotMatch(readFileSync(path.join(ROOT, file), "utf8"), /CORE_PLUGIN_API_DIR|soksak-exposure|soksak-engines|soksak-view-check|view-check|node_modules\/@soksak|check-test-cases/,
+      `${file} must run only the commands of the kit releases and the manifest check`);
   }
 });

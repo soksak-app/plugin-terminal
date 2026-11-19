@@ -1,5 +1,5 @@
 # terminal plugin repository 의 test 와 pack(docs/features.md). pack 은 pnpm pack 으로 release 를 쓴다.
-.PHONY: install test check pack check-candidate-install check-push install-hooks
+.PHONY: install test check check-manifest pack check-candidate-install check-push install-hooks
 
 # The installation stage (core docs/spec/plugins.md#repositories): it installs the locked dependencies; the tests, checks and packs consume them without installing.
 install:
@@ -9,13 +9,18 @@ install:
 test:
 	pnpm test
 
-# check runs the checks of the kit releases that package.json pins: sok-check events counts the records missing from the sources
-# and matches events.json with the emit sites, and sok-check docs checks the records. The application validates plugin.json
-# when it installs the release, and the registry check compares the exposed names of the release with each listed core.
-check:
+# check runs check-manifest and the checks of the kit releases that package.json pins: sok-check events counts the records missing
+# from the sources and matches events.json with the emit sites, and sok-check docs checks the records. The registry check compares
+# the exposed names of the release with each listed core.
+check: check-manifest
 	pnpm exec sok-check events --config event-sources.json --catalog events.json
 	pnpm exec sok-check docs
 	pnpm exec sok-check commands
+
+# check-manifest reads plugin.json, diagnostics.json and the files of package.json with the readers of the plugin API release that
+# package.json pins, the release of the lowest core that engines.soksak admits, as the installer of core reads them.
+check-manifest:
+	node scripts/check-manifest.mjs
 
 pack: check
 	@test -n "$(OUT)" || { echo "make pack OUT=<folder>" >&2; exit 2; }

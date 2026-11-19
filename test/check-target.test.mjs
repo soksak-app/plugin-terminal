@@ -15,8 +15,9 @@ test("test runs plugin tests only", () => {
   }
 });
 
-test("check runs the event source check of the kit and the document check of the kit without running plugin tests", () => {
+test("check runs the manifest check, the event source check of the kit and the document check of the kit without running plugin tests", () => {
   const output = make("-n", "check");
+  assert.ok(output.includes("node scripts/check-manifest.mjs"), "check runs check-manifest");
   assert.ok(output.includes("pnpm exec sok-check events --config event-sources.json --catalog events.json"));
   assert.ok(output.includes("pnpm exec sok-check docs"));
   assert.equal(output.includes("pnpm test"), false);

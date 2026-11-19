@@ -20,21 +20,23 @@ test("the package declares the range of core 0.0.41 (P116)", { timeout: 1000 }, 
   assert.equal(pkg.engines.soksak, "^0.0.41");
 });
 
-// The application resolves @soksak/plugin-api through the import map of the page, so the plugin declares no dependency on it and
-// engines.soksak is its only relation to core; the tests resolve it to the fixtures of this repository (P144).
-test("the package declares no dependency on the plugin API", { timeout: 1000 }, () => {
-  for (const field of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies", "bundledDependencies"]) {
-    assert.deepEqual(Object.keys(pkg[field] ?? {}).filter((name) => name.startsWith("@soksak/plugin-api")), [], `${field} names the plugin API`);
-  }
+// The application resolves @soksak/plugin-api through the import map of the page, so the page uses no plugin API release and the
+// page tests resolve it to the fixtures of this repository (P144). The one declaration of the plugin API is the devDependency of the
+// manifest check, the published plugin API release of the lowest core that engines.soksak admits (P157).
+const PLUGIN_API_RELEASE = "https://github.com/soksak-app/core/releases/download/v0.0.41/soksak-plugin-api-0.0.41.tgz";
+test("the package declares the plugin API only as the release of the lowest admitted core for the manifest check (P157)", { timeout: 1000 }, () => {
+  const declared = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies", "bundledDependencies"]
+    .flatMap((field) => Object.entries(pkg[field] ?? {}).filter(([name]) => name.startsWith("@soksak/plugin-api")).map(([name, value]) => [field, name, value]));
+  assert.deepEqual(declared, [["devDependencies", "@soksak/plugin-api", PLUGIN_API_RELEASE]]);
+  assert.equal(pkg.engines.soksak, "^0.0.41", "the pinned plugin API release is the one of the lowest core that engines.soksak admits");
 });
 
-test("the compatibility documents state that the plugin names no plugin API release (P144)", { timeout: 1000 }, () => {
+test("the compatibility documents state that the page uses no plugin API release and the manifest check pins one (P144, P157)", { timeout: 1000 }, () => {
   const text = (file) => readFileSync(new URL(`../docs/spec/${file}`, import.meta.url), "utf8").replace(/\s+/g, " ");
-  assert.ok(text("core-compatibility.md").includes("The plugin names no plugin API release and declares no dependency on `@soksak/plugin-api`"), "core-compatibility.md");
-  assert.ok(text("core-compatibility.ko.md").includes("Plugin은 plugin API release를 지정하지 않고 `@soksak/plugin-api`에 대한 dependency를 선언하지 않는다"), "core-compatibility.ko.md");
-  for (const file of ["core-compatibility.md", "core-compatibility.ko.md"]) {
-    assert.doesNotMatch(text(file), /devDependency `@soksak\/plugin-api`|tarball/, `${file} states a pin of the plugin API`);
-  }
+  assert.ok(text("core-compatibility.md").includes("The page uses no plugin API release of its own"), "core-compatibility.md");
+  assert.ok(text("core-compatibility.md").includes("serves only the manifest check"), "core-compatibility.md");
+  assert.ok(text("core-compatibility.ko.md").includes("Page는 자기 plugin API release를 쓰지 않는다"), "core-compatibility.ko.md");
+  assert.ok(text("core-compatibility.ko.md").includes("manifest 검사에만 쓰인다"), "core-compatibility.ko.md");
 });
 
 // A range ^0.0.z admits core 0.0.z and every later 0.0 release (core docs/spec/installation.md#versions-and-ranges), so the
