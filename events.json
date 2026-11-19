@@ -567,6 +567,36 @@
       },
       "description": "A screen.rows reply of the sidecar arrived for a range that no terminal.screen.rows read waits for, such as a read that a connection change already ended; from and count are the range of the reply."
     },
+    "plugin.terminal.clipboard.refused": {
+      "layer": "plugin",
+      "class": "io",
+      "level": "info",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "store",
+              "query"
+            ]
+          },
+          "policy": {
+            "type": "string",
+            "enum": [
+              "deny",
+              "write"
+            ]
+          }
+        },
+        "required": [
+          "operation",
+          "policy"
+        ]
+      },
+      "description": "The clipboard.program setting refused an OSC 52 request of a program; operation is the store or query that was refused and policy is the setting value, and a refused query is answered with clipboard.reject."
+    },
     "plugin.terminal.frame": {
       "layer": "plugin",
       "class": "frame",

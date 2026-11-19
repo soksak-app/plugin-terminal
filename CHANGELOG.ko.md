@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P159: 설정 `clipboard.program`은 `deny`, `write`, `allow`를 받고 기본값은 `write`다. 터미널 안의 프로그램은 OSC 52로 클립보드에 쓰고 그것을 읽지 않으며, 저장된 값 `deny`와 `allow`는 그 뜻을 유지한다. 설정이 거절한 store나 query는 오류를 보이지 않는다. view는 `operation`과 `policy`를 담은 event `plugin.terminal.clipboard.refused`를 쓰고, 거절된 query에는 여전히 `clipboard.reject`로 답한다. Red: 기본 store 시험이 `terminal input failed: program clipboard store denied by policy`로 실패했다. Green: `pnpm test`가 334개 중 334개 통과한다.
 - P158: version은 0.0.49이고, 0.0.48 대신 P157을 release하며 `@soksak/sidecar-vt-alacritty` `^0.0.29`를 요구한다. release run이 v0.0.49를 게시했고, registry가 그것을 올린다.
 - P157: `make check`는 `make check-manifest`를 실행하고, 그것은 `engines.soksak`이 허용하는 가장 낮은 core인 core 0.0.41의 공개 plugin API release의 reader로 `plugin.json`, `diagnostics.json`, `package.json`의 files를 읽는다. 그 devDependency는 이 검사에만 쓰이며 page 시험은 fixture를 유지한다. `terminal.screen.rows`의 params는 0.0.48에서 core installer가 거절한 `required`, `minimum`, `maximum`을 선언하지 않는다. Red: `make check-manifest`가 `unknown field required`로 실패했다. Green: 통과한다.
 - P152: version은 0.0.48이고, P148부터 P156까지를 release하며 `@soksak/sidecar-vt-alacritty` `^0.0.29`를 요구한다. release run이 v0.0.48을 게시했고, registry가 그것을 vt-alacritty 0.0.29와 함께 올린다.

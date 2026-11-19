@@ -68,10 +68,10 @@
     },
     "clipboard.program": {
       "label": "프로그램의 클립보드 사용",
-      "description": "deny는 터미널 프로그램이 OSC 요청으로 클립보드를 읽고 쓰는 것을 막고, allow는 허용한다. 사용자가 직접 붙여넣는 것에는 영향이 없다.",
+      "description": "터미널 프로그램이 OSC 52 요청으로 클립보드를 쓰고 읽는 것을 정한다. write는 쓰기만 허용하고 읽기는 막으며, allow는 둘 다 허용하고, deny는 둘 다 막는다. 막힌 요청은 오류로 보이지 않고 기록된다. 사용자가 직접 복사하고 붙여넣는 것에는 영향이 없다.",
       "type": "enum",
-      "default": "deny",
-      "values": ["deny", "allow"]
+      "default": "write",
+      "values": ["deny", "write", "allow"]
     },
     "font.family": {
       "label": "글꼴",

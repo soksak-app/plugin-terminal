@@ -44,7 +44,8 @@ function cidsOf(event) {
 const CURSOR_SHAPES = new Set(["block", "underline", "beam"]);
 const CURSOR_BLINK_MODES = new Set(["Never", "Off", "On", "Always"]);
 const CURSOR_UNFOCUSED = new Set(["hollow", "solid", "underline", "beam", "unchanged"]);
-const PROGRAM_CLIPBOARD_POLICIES = new Set(["deny", "allow"]);
+// clipboard.program: deny refuses a store and a query of a program, write admits only a store, and allow admits both.
+const PROGRAM_CLIPBOARD_POLICIES = new Set(["deny", "write", "allow"]);
 const NOTIFICATION_POLICIES = new Set(["tab", "system"]);
 const DEFAULT_CURSOR = Object.freeze({
   row: 0, col: 0, shape: "block", visible: true, blinking: false, focused: false,
@@ -799,8 +800,15 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     if (!Number.isInteger(requestId) || requestId < 0) throw new Error("clipboard query requestId is invalid");
     await terminal.send(id, { operation: "clipboard.reject", requestId, reason });
   };
+  // A request that the setting refuses is no input failure, so it is recorded and not shown as an error.
+  const recordClipboardRefusal = (operation) => {
+    runtime.log.info("clipboard.refused", { operation, policy: programClipboardPolicy });
+  };
   const handleClipboardStore = async (body) => {
-    if (programClipboardPolicy !== "allow") throw new Error("program clipboard store denied by policy");
+    if (programClipboardPolicy === "deny") {
+      recordClipboardRefusal("store");
+      return;
+    }
     if (body.selection !== "clipboard") throw new Error(`unsupported program clipboard target: ${String(body.selection)}`);
     if (typeof body.text !== "string") throw new Error("program clipboard store requires text");
     if (!clipboard || typeof clipboard.writeText !== "function") throw new Error("program clipboard store requires a clipboard capability");
@@ -809,6 +817,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   const handleClipboardQuery = async (body) => {
     if (!Number.isInteger(body.requestId) || body.requestId < 0) throw new Error("clipboard query requestId is invalid");
     if (programClipboardPolicy !== "allow") {
+      recordClipboardRefusal("query");
       await rejectClipboardQuery(body.requestId, "program clipboard query denied by policy");
       return;
     }
