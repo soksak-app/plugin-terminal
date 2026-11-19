@@ -393,7 +393,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   }
   // Each sink of the surface is required: a missing sink is refused by name, and no default stands in for it.
   if (typeof reportSurfaceError !== "function") throw new TypeError("startTerminal requires reportSurfaceError");
-  if (tab === null || typeof tab !== "object") throw new TypeError("startTerminal requires tab");
+  if (tab === null || typeof tab !== "object" || typeof tab.error !== "function") throw new TypeError("startTerminal requires tab");
   if (textSize === null || typeof textSize !== "object" || typeof textSize.read !== "function" || typeof textSize.on !== "function") {
     throw new TypeError("startTerminal requires textSize {read, on}");
   }
@@ -674,22 +674,28 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 출처(state, session, theme, screen, trace)의 오류는 같은 종류의 다음 유효한 이벤트가 해소하고,
   // 다른 출처의 오류는 표면이 닫힐 때까지 남는다. 관련 없는 이벤트는 오류를 지우지 않는다.
   const errors = new Map();
-  // Each error that terminal.session shows reaches the surface error display when it appears, and that display writes it to
-  // the application log (core AGENTS.md, the one display path of errors); the same error again does not appear again.
+  // The tab error display shows the error that terminal.session shows, and nothing when it shows none: the display writes an
+  // error to the application log when it appears (core AGENTS.md, the one display path of errors, and core
+  // docs/spec/plugins.md, tab.error), so the same error again does not appear again.
+  const showSessionError = (before) => {
+    if (session.error !== before) tab.error(session.error ?? null);
+  };
   const setError = (source, message) => {
     console.error(message);
     runtime.log.error("error", { source, message });
-    const appears = session.error !== message;
+    const before = session.error;
     errors.delete(source);
     errors.set(source, message);
     session = { ...session, error: message };
     changed("session");
-    if (appears) reportSurfaceError(new Error(message));
+    showSessionError(before);
   };
   // 반환값은 session 을 바꿨는지다. 호출자가 changed("session") 을 알린다.
   const resolveError = (source) => {
     if (!errors.delete(source)) return false;
+    const before = session.error;
     session = { ...session, error: [...errors.values()].at(-1) };
+    showSessionError(before);
     return true;
   };
   const reportInputError = (error, source = "input") => {

@@ -56,6 +56,8 @@ export function createViewContext({ bridge, start, report, closing, diagnostics 
         footer: (text) => send("tab.footer", text),
         directory: (path) => send("tab.directory", path),
         notify: (text, policy) => send("tab.notify", { text, policy }),
+        // The error of the tab, or null to remove it (core docs/spec/plugins.md, tab.error).
+        error: (text) => send("tab.error", text),
       },
       origin: start.origin,
       project: start.project,

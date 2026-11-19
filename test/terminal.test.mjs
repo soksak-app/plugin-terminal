@@ -89,7 +89,7 @@ const SHELL_SETTINGS = {
 const NO_LOG = Object.fromEntries([["levels", () => ({ lifecycle: "off", input: "off", call: "off", io: "off", frame: "off" })], ...["error", "warn", "info", "debug", "trace"].map((level) => [level, () => {}])]);
 const sinks = () => ({
   reportSurfaceError: () => {},
-  tab: { title() {}, footer() {}, directory() {}, notify() {} },
+  tab: { title() {}, footer() {}, directory() {}, notify() {}, error() {} },
   textSize: { read: () => 1, on: () => () => {} },
   runtime: { log: NO_LOG },
   closing: new AbortController().signal,
@@ -2335,14 +2335,14 @@ test("sidecar_error_reaches_session_status: sidecar error event updates session"
     TextEncoder,
     devicePixelRatio: 1,
   };
-  const surfaceErrors = [];
+  const tab = createFakeTab();
 
   await startTerminal({
     view: fakeView,
     detachRegions: async () => {}, attachImage: fakeAttachImage.function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
-    reportSurfaceError: (error) => surfaceErrors.push(error),
+    tab,
     scale: 1,
     window: fakeWindow,
   });
@@ -2366,8 +2366,8 @@ test("sidecar_error_reaches_session_status: sidecar error event updates session"
   session = sessionStatus.readFn();
   assert(session.error, "session has error field");
   assert.equal(session.error, "Engine panic: minimum width is 1", "error message is stored");
-  assert.equal(surfaceErrors.length, 1, "sidecar failure reaches the surface status");
-  assert.equal(surfaceErrors[0].message, "Engine panic: minimum width is 1");
+  assert.deepEqual(tab.calls.filter(([kind]) => kind === "error"), [["error", "Engine panic: minimum width is 1"]],
+    "sidecar failure reaches the tab error display once");
 });
 
 test("inline image display and deletion are observable through terminal.session", async () => {
@@ -5170,6 +5170,7 @@ function createFakeTab({ reject = false } = {}) {
       if (reject) throw new TypeError("a tab notice must be 1 to 1024 characters without control characters");
       calls.push(["notify", text, policy]);
     },
+    error: (text) => calls.push(["error", text]),
   };
 }
 
@@ -5222,15 +5223,15 @@ test("a title that the tab rejects is a session error", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
   const fakeExpose = createFakeExpose();
-  const errors = [];
+  const tab = createFakeTab({ reject: true });
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
-    sidecar: fakeSidecar, expose: fakeExpose, tab: createFakeTab({ reject: true }), settings: titleSettings({}),
-    reportSurfaceError: (error) => errors.push(error.message),
+    sidecar: fakeSidecar, expose: fakeExpose, tab, settings: titleSettings({}),
     window: { TextEncoder },
   });
   fakeSidecar.triggerEvent("test-session", { event: "title", title: "x".repeat(300) });
-  assert.match(errors.join("\n"), /a tab title must be 1 to 256 characters/);
+  assert.match(tab.calls.filter(([kind]) => kind === "error").map(([, text]) => text).join("\n"),
+    /terminal title failed: a tab title must be 1 to 256 characters/);
 });
 
 test("OSC 7 records the local directory and a directory of another machine removes it", async () => {
@@ -5298,15 +5299,15 @@ test("an OSC 9 notification becomes a tab notice and a rejected one is a session
   system.triggerEvent("test-session", { event: "notification", message: "system delivery" });
   assert.deepEqual(systemTab.calls.filter(([kind]) => kind === "notify"), [["notify", "system delivery", "system"]]);
 
-  const errors = [];
   const rejecting = createFakeSidecar();
+  const rejectingTab = createFakeTab({ reject: true });
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
-    sidecar: rejecting, expose: createFakeExpose(), tab: createFakeTab({ reject: true }), settings: titleSettings({ title: "name" }),
-    reportSurfaceError: (error) => errors.push(error.message), window: { TextEncoder },
+    sidecar: rejecting, expose: createFakeExpose(), tab: rejectingTab, settings: titleSettings({ title: "name" }), window: { TextEncoder },
   });
   rejecting.triggerEvent("test-session", { event: "notification", message: "x".repeat(2000) });
-  assert.match(errors.join("\n"), /a tab notice must be 1 to 1024 characters/);
+  assert.match(rejectingTab.calls.filter(([kind]) => kind === "error").map(([, text]) => text).join("\n"),
+    /terminal notification failed: a tab notice must be 1 to 1024 characters/);
 });
 
 async function startWithLink({ links } = {}) {

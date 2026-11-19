@@ -224,6 +224,16 @@ test("the refusal of a view event without background reaches the tab error displ
   assert.deepEqual(requests(view, "tab.error"), [shown]);
 });
 
+test("the tab error display withdraws the error when terminal.session no longer shows it", async (t) => {
+  const view = await openTerminal(t);
+  await sidecarState(view, { event: "state", sessionId: "s1", cols: 80, rows: 24, cellWidth: 8, cellHeight: 16 });
+  await sidecarState(view, viewWithoutBackground(4));
+  // The next valid view event resolves the error of the source view, so terminal.session shows no error.
+  await sidecarState(view, { ...viewWithoutBackground(5), background: "#1e1e1e" });
+  assert.equal((await view.exposure.read("terminal.session")).error ?? null, null);
+  assert.deepEqual(requests(view, "tab.error"), ["terminal input failed: invalid view background from sidecar: undefined", null]);
+});
+
 test("each error that terminal.session shows reaches the tab error display when it appears", async (t) => {
   const view = await openTerminal(t);
   await sidecarState(view, { event: "state", sessionId: "s1", cols: 0, rows: 24, cellWidth: 8, cellHeight: 16 });
