@@ -1058,6 +1058,34 @@ test("the scrollbar thumb is placed relative to the track without a measured rec
   assert.deepEqual([track.hidden, thumb.style.height, thumb.style.top], [false, "max(16px, 25%)", "min(calc(100% - max(16px, 25%)), 70%)"]);
 });
 
+test("the alternate screen shows no scrollbar, sends the wheel to the sidecar and the primary scrollbar returns at the newest output", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const view = createFakeView();
+  const track = Object.assign(createFakeView(), { style: {}, hidden: false });
+  const thumb = Object.assign(createFakeView(), { style: {} });
+  await startTerminal({
+    view, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: createFakeExpose(), scrollbar: { track, thumb },
+    window: { TextEncoder },
+  });
+  openSession(fakeSidecar);
+  // The primary screen keeps 150 lines of history and shows the newest output: 50 of 200 rows are visible.
+  fakeSidecar.triggerRaw("test-session", viewEvent({ scrollback: { offset: 0, history: 150 } }));
+  assert.deepEqual([track.hidden, thumb.style.height, thumb.style.top], [false, "max(16px, 25%)", "min(calc(100% - max(16px, 25%)), 75%)"]);
+  // A program switches to the alternate screen: the sidecar reports the history of the alternate screen, which is 0.
+  fakeSidecar.triggerRaw("test-session", viewEvent({ scrollback: { offset: 0, history: 0 } }));
+  assert.equal(track.hidden, true, "the alternate screen shows no scrollbar");
+  // The wheel is a scroll operation that the sidecar routes to the program; the view moves no viewport itself.
+  fakeSidecar.getMessages().length = 0;
+  view._trigger("wheel", { deltaY: -48, deltaMode: 0, clientX: 20, clientY: 40 });
+  await fakeSidecar.until(() => sessionMessages(fakeSidecar).length === 1);
+  assert.deepEqual(sessionMessages(fakeSidecar).map(({ body }) => body), [{ operation: "scroll", lines: 3, col: 2, row: 2, shift: false }]);
+  // The program leaves the alternate screen: the primary history returns and the thumb ends at the bottom of the track.
+  fakeSidecar.triggerRaw("test-session", viewEvent({ scrollback: { offset: 0, history: 150 } }));
+  assert.deepEqual([track.hidden, thumb.style.height, thumb.style.top], [false, "max(16px, 25%)", "min(calc(100% - max(16px, 25%)), 75%)"]);
+});
+
 test("scrollbar settings set the track background, thumb color, width, and shape", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
