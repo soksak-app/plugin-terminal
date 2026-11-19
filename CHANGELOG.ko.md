@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P151: `plugin.json`은 `view` event가 `background`를 담는 첫 release인 `@soksak/sidecar-vt-alacritty` `^0.0.29`를 요구한다. Red: manifest 시험이 `^0.0.27`로 실패했다. Green: `pnpm test`가 329개 중 329개 통과한다.
 - P156: view는 `terminal.session`의 오류를 `tab.error`로 보이고 지운다. 해소된 오류는 tab에서 지워지고, tab은 다른 출처에 남은 오류를 보이거나 아무것도 보이지 않는다(`tab.error(null)`). Red: 지우기 시험이 `null` 호출 없이 실패했다. Green: `pnpm test`가 328개 중 328개 통과한다.
 - P153: 각 `terminal.screen.rows` 읽기는 correlation identifier 하나를 보내고, 그것을 담은 답이 읽기를 끝낸다. 보유한 행 밖의 범위에 대한 거절은 connection이 끝날 때까지 기다리지 않고 명령을 `terminal.screen.rows: invalidParams: <reason>`로 거절하며 session 오류를 두지 않는다. Red: 거절 시험이 `the sidecar ended before it answered: the service exited`로 실패했다. Green: `pnpm test`가 327개 중 327개 통과한다.
 - P154: `events.json`은 `plugin.terminal.screen.rows.unmatched`(class `io`, level `debug`, `from`과 `count`)를 선언하므로 `make check`가 다시 통과한다. Red: catalog 시험이 `plugin.terminal.screen.rows.unmatched is declared`로 실패했다. Green: `pnpm test`가 326개 중 326개 통과한다.
