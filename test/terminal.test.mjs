@@ -6659,3 +6659,45 @@ for (const [name, event] of INVALID_STATE_EVENTS) {
     assert.match(terminal.error() ?? "", /^terminal input failed: invalid terminal state from sidecar: /);
   });
 }
+
+// The activity of a terminal (core docs/spec/terminal-state.md#activity): the core level that the plugin derives from
+// its state and exit code.
+function expectedActivity({ state, exit }) {
+  if (state === "idle") return "idle";
+  if (state === "running") return "running";
+  if (state === "exited" && exit !== null && exit !== 0) return "failed";
+  return null;
+}
+
+async function activityTerminal() {
+  const terminal = await stateTerminal();
+  const status = terminal.expose.getStatus("terminal.activity");
+  assert.notEqual(status, undefined, "the status terminal.activity is not declared");
+  return { ...terminal, activity: () => status.readFn(), activityStatus: status };
+}
+
+for (const { name, events } of STATE_CASES) {
+  test(`terminal.activity follows the state and the exit code: ${name}`, { timeout: 10000 }, async () => {
+    const terminal = await activityTerminal();
+    assert.equal(terminal.activity(), null, "the activity before the first change");
+    for (const change of events) {
+      terminal.emit({ event: "shell.state", ...change });
+      assert.equal(terminal.activity(), expectedActivity({ state: change.to, exit: change.exit }),
+        `the activity after the change ${change.sequence}`);
+    }
+  });
+}
+
+test("terminal.activity notifies its watchers only when the level changes", { timeout: 10000 }, async () => {
+  const terminal = await activityTerminal();
+  const seen = [];
+  terminal.activityStatus.watchFn((value) => seen.push(value));
+  terminal.emit({ event: "shell.state", from: null, to: "idle", source: "osc133", sequence: 1, exit: null });
+  terminal.emit({ event: "shell.state", from: "idle", to: "running", source: "osc133", sequence: 2, exit: null });
+  terminal.emit({ event: "shell.state", from: "running", to: "exited", source: "osc133", sequence: 3, exit: 2 });
+  terminal.emit({ event: "shell.state", from: "exited", to: "idle", source: "osc133", sequence: 4, exit: null });
+  terminal.emit({ event: "shell.state", from: "idle", to: "running", source: "osc133", sequence: 5, exit: null });
+  terminal.emit({ event: "shell.state", from: "running", to: "exited", source: "osc133", sequence: 6, exit: 0 });
+  terminal.emit({ event: "shell.state.current", state: "exited", source: "osc133", sequence: 6, exit: 0 });
+  assert.deepEqual(seen, ["idle", "running", "failed", "idle", "running", null]);
+});
