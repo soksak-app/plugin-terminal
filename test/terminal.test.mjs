@@ -6588,3 +6588,68 @@ test("terminal.screen.rows rejects with the reason of the sidecar refusal of its
   assert.deepEqual(records.filter(({ event }) => event === "screen.rows.unmatched").map(({ fields }) => fields), [{ from: 0, count: 3 }],
     "the refused read waits no longer, so a later reply answers no read");
 });
+
+// The terminal state (core docs/spec/terminal-state.md). `test/fixtures/terminal-state-osc133.json` is the copy of core
+// `docs/spec/cases/terminal-state/osc133.json`; a change of the contract replaces the copy.
+const STATE_CASES = JSON.parse(readFileSync(new URL("./fixtures/terminal-state-osc133.json", import.meta.url), "utf8")).cases;
+const STATE_BEFORE_READ = { state: null, source: null, sequence: 0, exit: null };
+
+async function stateTerminal() {
+  const terminal = await errorTerminal();
+  const status = terminal.expose.getStatus("terminal.state");
+  assert.notEqual(status, undefined, "the status terminal.state is not declared");
+  return { ...terminal, state: () => status.readFn(), status };
+}
+
+for (const { name, events, read } of STATE_CASES) {
+  test(`terminal.state follows the read and the change events: ${name}`, { timeout: 10000 }, async () => {
+    const terminal = await stateTerminal();
+    assert.deepEqual(terminal.state(), STATE_BEFORE_READ, "the state before the first read");
+    await terminal.sidecar.untilMessage((body) => body.operation === "shell.state.read");
+    terminal.emit({ event: "shell.state.current", ...STATE_BEFORE_READ });
+    assert.deepEqual(terminal.state(), STATE_BEFORE_READ, "the state after the read of a session without a mark");
+    for (const change of events) {
+      terminal.emit({ event: "shell.state", ...change });
+      assert.deepEqual(terminal.state(), { state: change.to, source: change.source, sequence: change.sequence, exit: change.exit },
+        `the state after the change ${change.sequence}`);
+    }
+    assert.deepEqual(terminal.state(), read, "the state after the output equals the read of the case");
+    terminal.emit({ event: "shell.state.current", ...read });
+    assert.deepEqual(terminal.state(), read, "the read reply of the case");
+    assert.equal(terminal.error(), undefined, "a valid state reported an error");
+  });
+}
+
+test("terminal.state notifies its watchers of each change", { timeout: 10000 }, async () => {
+  const terminal = await stateTerminal();
+  const seen = [];
+  terminal.status.watchFn((value) => seen.push(value));
+  terminal.emit({ event: "shell.state", from: null, to: "running", source: "osc133", sequence: 1, exit: null });
+  terminal.emit({ event: "shell.state", from: "running", to: "exited", source: "osc133", sequence: 2, exit: 1 });
+  assert.deepEqual(seen, [
+    { state: "running", source: "osc133", sequence: 1, exit: null },
+    { state: "exited", source: "osc133", sequence: 2, exit: 1 },
+  ]);
+});
+
+const INVALID_STATE_EVENTS = [
+  ["an unknown state", { event: "shell.state", from: null, to: "busy", source: "osc133", sequence: 1, exit: null }],
+  ["a sequence of zero", { event: "shell.state", from: null, to: "idle", source: "osc133", sequence: 0, exit: null }],
+  ["a missing exit", { event: "shell.state", from: null, to: "exited", source: "osc133", sequence: 1 }],
+  ["an exit of a state other than exited", { event: "shell.state", from: null, to: "idle", source: "osc133", sequence: 1, exit: 0 }],
+  ["an exit above 255", { event: "shell.state", from: null, to: "exited", source: "osc133", sequence: 1, exit: 256 }],
+  ["an unknown source", { event: "shell.state", from: null, to: "idle", source: "screen", sequence: 1, exit: null }],
+  ["a read reply with a state and no source", { event: "shell.state.current", state: "idle", source: null, sequence: 1, exit: null }],
+  ["a read reply without a state and a sequence", { event: "shell.state.current", state: null, source: null, sequence: 3, exit: null }],
+];
+
+for (const [name, event] of INVALID_STATE_EVENTS) {
+  test(`a state event with ${name} is a sidecar error and keeps the previous state`, { timeout: 10000 }, async () => {
+    const terminal = await stateTerminal();
+    const before = { state: "running", source: "osc133", sequence: 1, exit: null };
+    terminal.emit({ event: "shell.state", from: null, to: "running", source: "osc133", sequence: 1, exit: null });
+    terminal.emit(event);
+    assert.deepEqual(terminal.state(), before, "an invalid state event changed the state");
+    assert.match(terminal.error() ?? "", /^terminal input failed: invalid terminal state from sidecar: /);
+  });
+}
