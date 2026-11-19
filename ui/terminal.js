@@ -674,13 +674,17 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 출처(state, session, theme, screen, trace)의 오류는 같은 종류의 다음 유효한 이벤트가 해소하고,
   // 다른 출처의 오류는 표면이 닫힐 때까지 남는다. 관련 없는 이벤트는 오류를 지우지 않는다.
   const errors = new Map();
+  // Each error that terminal.session shows reaches the surface error display when it appears, and that display writes it to
+  // the application log (core AGENTS.md, the one display path of errors); the same error again does not appear again.
   const setError = (source, message) => {
     console.error(message);
     runtime.log.error("error", { source, message });
+    const appears = session.error !== message;
     errors.delete(source);
     errors.set(source, message);
     session = { ...session, error: message };
     changed("session");
+    if (appears) reportSurfaceError(new Error(message));
   };
   // 반환값은 session 을 바꿨는지다. 호출자가 changed("session") 을 알린다.
   const resolveError = (source) => {
@@ -702,7 +706,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       if (resolveError("title")) changed("session");
     } catch (error) {
       setError("title", `terminal title failed: ${error.message}`);
-      reportSurfaceError(error);
     }
   };
 
@@ -1084,7 +1087,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   onRegion("error", (event) => {
     const message = `native image: ${event.reason}`;
     setError("native image", message);
-    reportSurfaceError(new Error(message));
   });
 
   // Edit 메뉴 동작은 선언된 명령을 레지스트리로 실행한다(docs/spec/terminal-runtime.md).
@@ -2070,7 +2072,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         tab.notify(body.message, notificationPolicy);
       } catch (error) {
         setError("notification", `terminal notification failed: ${error.message}`);
-        reportSurfaceError(error);
       }
     } else if (body.event === "vendor.shell.state") {
       const markers = new Set(["prompt.start", "prompt.end", "command.start", "command.finished"]);
@@ -2117,7 +2118,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       // error 이벤트를 session 상태에 저장한다
       const error = new Error(typeof body.reason === "string" ? body.reason : (typeof body.error === "string" ? body.error : "Unknown sidecar error"));
       setError("sidecar", error.message);
-      reportSurfaceError(error);
     } else if (body.event === "font" && typeof body.family === "string") {
       session = { ...session, font: body.family, fontSystem: body.system === true, fontSize: body.size };
       changed("session");
@@ -2126,7 +2126,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       const message = `session open failed: ${body.reason}`;
       setError("open", message);
       failSession(message);
-      reportSurfaceError(new Error(message));
     } else if (body.error === "Session not open" && body.request !== undefined && !session.exited) {
       requeueRefused(body.request);
     } else if (body.error) {
@@ -2134,7 +2133,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       // reason 을 버리지 않고 오류에 실어 보낸다.
       const message = typeof body.reason === "string" ? `${body.error}: ${body.reason}` : body.error;
       setError("sidecar", message);
-      reportSurfaceError(new Error(message));
     } else if (body.event) {
       // 알 수 없는 이벤트 타입을 기록한다
       runtime.log.warn("sidecar.unknown", { event: String(body.event) });
@@ -2385,6 +2383,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     setTheme,
     setCursorPolicy,
     pasteText,
+    // Shows an input error of the terminal through terminal.session and the surface error display.
+    reportInputError: (error) => reportInputError(error),
     async focus() {
       if (nativeFocused) return;
       let resolveFocus;

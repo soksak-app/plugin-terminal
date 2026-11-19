@@ -71,10 +71,11 @@ export async function mount(root, context) {
     if (!controller || typeof controller.dispose !== "function") {
       throw new TypeError("startTerminal must return { dispose() }");
     }
-    // A view is a separate document, so its press cannot reach the main document card's focus handler.
+    // A view is a separate document, so its press cannot reach the main document card's focus handler. A failed press is an
+    // input error of the terminal, which the command handler has already shown when the failure is its own.
     await context.exposure.bind(view, "terminal.focus", {}, {
       event: "pointerdown", when: (event) => event.button === 0,
-      failed: (error) => context.status.report("error", error),
+      failed: (error) => controller.reportInputError(error),
     });
   } catch (error) {
     const cleanup = await Promise.allSettled([
