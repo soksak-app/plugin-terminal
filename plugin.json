@@ -475,10 +475,9 @@
         "description": "Returns the retained screen rows from the absolute row number from, count of them (1 to 200), with their cell rows and the plain text of each row.",
         "params": {
           "type": "object",
-          "required": ["from", "count"],
           "properties": {
-            "from": { "type": "integer", "minimum": 0 },
-            "count": { "type": "integer", "minimum": 1, "maximum": 200 }
+            "from": { "type": "integer" },
+            "count": { "type": "integer" }
           }
         },
         "result": {
