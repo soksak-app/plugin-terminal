@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P169: `terminal.screen.read`, `terminal.screen.rows`, `terminal.scrollback.set` 의 설명이 screen read 가 viewport 와 alternate screen 을 따른다는 것, `from` 이 세는 행과 범위 read 가 viewport 를 움직이지 않는다는 것, viewport offset 이 alternate screen 의 program 을 scroll 하지 않는다는 것을 말한다.
 - P168: core의 공유 터미널 상태 case의 복사본이 다시 core `docs/spec/cases/terminal-state/osc133.json`과 같으며, mark `P`와 그 case 두 개를 담는다. page는 바뀌지 않고 그 case를 통과한다.
 - P167: status `terminal.activity`가 core `docs/spec/terminal-state.md#activity`가 정한 대로 `terminal.state`와 그 exit code에서 얻은 터미널의 core activity level을 publish하며, level이 바뀔 때만 알린다. 그 선언 `activity: true`는 F982를 담은 core release를 기다린다(P167-1).
 - P165: status `terminal.state`가 core `docs/spec/terminal-state.md`의 터미널 상태를 보여 준다: view는 session이 열리거나 다시 attach될 때마다 `shell.state.read`를 한 번 읽고 각 `shell.state` 변화 event를 따른다. 다른 형태의 event나 답은 session error이며 값은 유지된다. 새 test 17개는 변경하지 않은 page에서 `the status terminal.state is not declared`로 실패했고 지금 통과하며, `pnpm test`는 354개 중 354개 통과한다. 이 변경은 vt S195를 담은 sidecar release를 pin해야 사용자에게 닿는다(P166).

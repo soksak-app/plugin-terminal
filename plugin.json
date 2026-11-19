@@ -463,7 +463,7 @@
       },
       {
         "name": "terminal.screen.read",
-        "description": "Requests the current terminal screen and returns its cell rows and the frame that shows them.",
+        "description": "Requests the screen that the terminal shows now and returns its cell rows and the frame that shows them; each cell has ch and width, and a cell of width 0 continues a wide character. The rows follow the viewport: after terminal.scrollback.set they are the rows at that offset, and while a full-screen program shows the alternate screen they are the rows that the program drew.",
         "params": {
           "type": "object",
           "properties": {}
@@ -490,7 +490,7 @@
       },
       {
         "name": "terminal.screen.rows",
-        "description": "Returns the retained screen rows from the absolute row number from, count of them (1 to 200), with their cell rows and the plain text of each row.",
+        "description": "Returns count rows (1 to 200) from row from of the rows that the terminal keeps, with their cell rows and the plain text of each row, without moving the viewport. Row 0 is the first row that entered the history: the oldest kept row is the number of rows dropped past the history limit, and the viewport at offset 0 starts the history rows of terminal.session after it. A range outside the kept rows is refused with the kept range. While a full-screen program shows the alternate screen, the kept rows are only the rows of that screen.",
         "params": {
           "type": "object",
           "properties": {
@@ -551,7 +551,7 @@
       },
       {
         "name": "terminal.scrollback.set",
-        "description": "Moves the terminal viewport to the given number of lines above the newest output, limited to the retained history, without writing to the program.",
+        "description": "Moves the terminal viewport to offset lines above the newest output (0 is the newest), limited to the retained history, without writing to the program; terminal.screen.read then returns the rows at that offset. The alternate screen of a full-screen program keeps no history, so the command does not scroll such a program.",
         "params": {
           "type": "object",
           "properties": {
