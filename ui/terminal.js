@@ -1320,14 +1320,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   };
   view.addEventListener("wheel", scrollWheel, { passive: false });
 
-  // 스크롤바는 터미널이 기록을 보관하는 동안 보인다(docs/spec/terminal-runtime.md).
-  const thumbGeometry = () => {
-    const { rows, scrollback: { offset, history } } = session;
-    const height = scrollbar.track.getBoundingClientRect().height;
-    const size = Math.min(height, Math.max(16, height * rows / (rows + history)));
-    const top = Math.min(height - size, height * (history - offset) / (rows + history));
-    return { height, size, top };
-  };
   // 스크롤바 설정(docs/spec/terminal-runtime.md). 잘못된 값은 입력 오류로 보고하고 적용하지 않는다.
   const COLOR = /^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$/;
   // The default background of a view event (docs/spec/alacritty-core.md of the sidecar).
@@ -1386,13 +1378,17 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     scrollbar.thumb.style.background = scrollbarStyle.thumb;
     scrollbar.thumb.style.borderRadius = scrollbarStyle.shape === "square" ? "0px" : "999px";
   };
+  // The scrollbar is shown while the terminal keeps history. The thumb is placed in CSS relative to the track, so a change of
+  // the size of the track moves it without a new draw, and the view draws it again when rows, offset or history changes
+  // (docs/spec/acceptance.md).
   const drawScrollbar = () => {
     if (!scrollbar) return;
-    scrollbar.track.hidden = session.scrollback.history === 0;
+    const { rows, scrollback: { offset, history } } = session;
+    scrollbar.track.hidden = history === 0;
     if (scrollbar.track.hidden) return;
-    const { size, top } = thumbGeometry();
-    scrollbar.thumb.style.height = `${size}px`;
-    scrollbar.thumb.style.top = `${top}px`;
+    const size = `max(16px, ${100 * rows / (rows + history)}%)`;
+    scrollbar.thumb.style.height = size;
+    scrollbar.thumb.style.top = `min(calc(100% - ${size}), ${100 * (history - offset) / (rows + history)}%)`;
   };
   // 손잡이를 끄는 동안 포인터 아래의 오프셋으로 선언된 명령을 실행한다.
   let thumbDrag = null;
@@ -1400,8 +1396,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     if (event.button !== 0 || thumbDrag) return;
     event.preventDefault();
     event.stopPropagation();
-    const { top } = thumbGeometry();
-    thumbDrag = { pointerId: event.pointerId, grab: event.clientY - scrollbar.track.getBoundingClientRect().top - top, sent: null };
+    // clientY and the rectangles of the thumb and the track share the CSS pixels of the view document: the root view of the
+    // surface keeps page zoom 1 and the view sets no CSS zoom, because the terminal follows the text size with its font size
+    // (docs/spec/acceptance.md). The grab is the distance from the top of the thumb to the pointer.
+    thumbDrag = { pointerId: event.pointerId, grab: event.clientY - scrollbar.thumb.getBoundingClientRect().top, sent: null };
     // 끄는 동안 손잡이는 쥔 손 포인터를 보인다.
     scrollbar.thumb.dataset.dragging = "";
     scrollbar.thumb.setPointerCapture(event.pointerId);
@@ -1410,9 +1408,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     if (!thumbDrag || event.pointerId !== thumbDrag.pointerId) return;
     event.preventDefault();
     const { rows, scrollback: { history } } = session;
-    const { height } = thumbGeometry();
-    const top = event.clientY - scrollbar.track.getBoundingClientRect().top - thumbDrag.grab;
-    const offset = Math.min(history, Math.max(0, Math.round(history - top / height * (rows + history))));
+    const track = scrollbar.track.getBoundingClientRect();
+    const top = event.clientY - track.top - thumbDrag.grab;
+    const offset = Math.min(history, Math.max(0, Math.round(history - top / track.height * (rows + history))));
     if (offset === thumbDrag.sent) return;
     thumbDrag.sent = offset;
     observeInput(Promise.resolve().then(() => expose.run("terminal.scrollback.set", { offset })));
@@ -1758,6 +1756,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         exited: false,
       };
       resolveError("state");
+      // A state event follows a resize and carries the rows, which the thumb shows.
+      drawScrollbar();
       if (body.cursor !== undefined) applyCursor(body.cursor, { ...body.cursor, frame: null, render: null, caret: null, preedit: body.cursor.preedit ?? null });
       openSessionGate("state");
     } else if (body.event === "session") {
