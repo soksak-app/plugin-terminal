@@ -1,6 +1,6 @@
 # Changelog
 
-- P152: The version is 0.0.48, which releases P148 to P156 and requires `@soksak/sidecar-vt-alacritty` `^0.0.29`.
+- P152: The version is 0.0.48, which releases P148 to P156 and requires `@soksak/sidecar-vt-alacritty` `^0.0.29`; the release run published v0.0.48, and the registry lists it with vt-alacritty 0.0.29.
 - P151: `plugin.json` requires `@soksak/sidecar-vt-alacritty` `^0.0.29`, the first release whose `view` event carries `background`. Red: the manifest test failed with `^0.0.27`. Green: `pnpm test` passes 329 of 329.
 - P156: The view shows and removes the error of `terminal.session` through `tab.error`: a resolved error leaves the tab, which shows the remaining error of another source or none (`tab.error(null)`). Red: the withdrawal test failed without the `null` call. Green: `pnpm test` passes 328 of 328.
 - P153: Each `terminal.screen.rows` read sends one correlation identifier, and the answer that names it ends the read; the refusal of a range outside the retained rows rejects the command with `terminal.screen.rows: invalidParams: <reason>` instead of waiting until the connection ends, and sets no session error. Red: the refusal test failed with `the sidecar ended before it answered: the service exited`. Green: `pnpm test` passes 327 of 327.
