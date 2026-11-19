@@ -386,6 +386,19 @@
         }
       },
       {
+        "name": "terminal.state",
+        "description": "The terminal state of the session from the OSC 133 marks of its shell: `state` is `idle`, `running`, `exited` or null before the first mark, `source` is `osc133` or null, `sequence` is the number of the last change from 1 (0 before the first), and `exit` is the exit code of `exited`, from 0 to 255, or null. The page reads it after the session opens or attaches and follows each change event of the sidecar.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "state": { "type": ["string", "null"], "enum": ["idle", "running", "exited", null] },
+            "source": { "type": ["string", "null"], "enum": ["osc133", null] },
+            "sequence": { "type": "integer" },
+            "exit": { "type": ["integer", "null"] }
+          }
+        }
+      },
+      {
         "name": "terminal.compose",
         "description": "The current terminal composition state.",
         "schema": {
