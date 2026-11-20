@@ -33,10 +33,15 @@ const isFirstMessage = (line) => line.includes(` ${FIRST_MESSAGE_RECORD}: `) && 
 
 /** The definition of the role with a nonce of the run, which the agent can read only from the role file. */
 const definition = (nonce) => `Acceptance nonce ${nonce}. Answer every request with the words of the role file.`;
+/** The Korean translation of the definition, the member `ko` that format 2 of roles.json requires. */
+const definitionKo = (nonce) => `수용 검사 nonce ${nonce}. 모든 요청에 role 파일의 말로 답한다.`;
 
-/** Writes roles.json of the configuration directory with the role and the text, in the format of core docs/spec/agent-roles.md. */
-function writeRoles(configDir, text) {
-  writeFileSync(join(configDir, "roles.json"), `${JSON.stringify({ format: 1, roles: { [ROLE]: { text } } })}\n`);
+/**
+ * Writes roles.json of the configuration directory with the role, its text and its Korean translation, in format 2 of core
+ * docs/spec/agent-roles.md#role-definitions.
+ */
+function writeRoles(configDir, text, ko) {
+  writeFileSync(join(configDir, "roles.json"), `${JSON.stringify({ format: 2, roles: { [ROLE]: { text, ko } } })}\n`);
 }
 
 /** Fails with `command not found: <program>` when the program is not on the PATH of the check. */
@@ -92,7 +97,7 @@ for (const program of PROGRAMS) {
 
       // 1. The first role, with a nonce that the agent can read only from its file. The tab opens with the CLI and the role.
       const first = randomUUID();
-      writeRoles(app.configDir, definition(first));
+      writeRoles(app.configDir, definition(first), definitionKo(first));
       const { tab } = await p.run("core.layout.open", { card, plugin: PLUGIN, params: { program, args: [], role: ROLE } });
       // Every program launched with a role gets the identity as its first message: the page writes the record once it injects it.
       await untilEventLine(app.configDir, offsets, isFirstMessage, reading(app, [FIRST_MESSAGE_RECORD]));
@@ -105,7 +110,7 @@ for (const program of PROGRAMS) {
 
       // 2. A changed definition with a new nonce: one new generation, which the agent confirms.
       const second = randomUUID();
-      writeRoles(app.configDir, definition(second));
+      writeRoles(app.configDir, definition(second), definitionKo(second));
       const changed = await p.run("core.tab.role", { tab, role: ROLE });
       assert.equal(changed.generation, 2, "the changed role is generation 2");
       const confirmed = await p.until("core.tab.role", (value) => value !== null && value.generation === 2 && value.state !== "pending",

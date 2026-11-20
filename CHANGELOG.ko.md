@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P206: 인수 target이 한국어 번역 `ko`를 담은 형식 2로 `roles.json`을 쓰고, 지문 fixture가 다시 core case 파일과 같다. 검증: `make test` 512/512. 인수 target은 실행하지 않았다.
 - P205: 역할 문구 fixture에 core가 case 파일에서 지운 paste form 문구가 더는 없고, test가 fixture가 그 파일의 문구 다섯 개만 고정하는지 확인한다. 검증: 두 key가 더 있어 새 test가 실패한 Red, 그다음 역할 test 9/9의 Green.
 - P200: 역할 message는 종류(`first`, `role-change`, `role-reread`)와 함께 record `plugin.terminal.messages.delivered`를 쓰며 횟수는 쓰지 않는다. record `plugin.terminal.messages.role.delivered`는 제거한다. 검증: `test/terminal.test.mjs`의 역할 test(Red 뒤 Green).
 - P203: 대기 중인 역할로 보류된 message의 항목은 보류 이유로 `role-pending`을 갖는다. 검증: `test/terminal.test.mjs`의 해당 test(잘못된 이유로 Red, 이후 Green).

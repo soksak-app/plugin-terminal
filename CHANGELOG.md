@@ -1,5 +1,6 @@
 # Changelog
 
+- P206: The acceptance target writes `roles.json` in format 2 with the Korean translation `ko`, and the fingerprint fixture equals the core case file again. Verification: `make test` 512 of 512; the acceptance target has not run.
 - P205: The role text fixture no longer holds the paste-form texts that core removed from its case file, and a test requires that it pins exactly the five texts of that file. Verification: Red of the new test with the two extra keys, then Green of the role tests, 9 of 9.
 - P200: The role messages write the record `plugin.terminal.messages.delivered` with their kind (`first`, `role-change` or `role-reread`) and no count, and the record `plugin.terminal.messages.role.delivered` is removed. Verification: the role tests of `test/terminal.test.mjs` (Red then Green).
 - P203: A message held by a pending role keeps `role-pending` as the reason of its entry. Verification: its test in `test/terminal.test.mjs` (Red by a wrong reason, then Green).
