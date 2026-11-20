@@ -298,8 +298,10 @@ function createFakeSidecar({ delay = () => null, answers = true, watchAnswers = 
       if (answers && cids.length > 0) for (const handler of listeners.get(id) ?? []) {
         if (body.operation === "screen.watch") {
           if (watchAnswers) handler({ event: "screen.watching", enabled: body.enabled }, cids);
-        } else if (!(body.operation === "screen.read" && body.from !== undefined)) handler({ ack: true }, cids);
-        // A range read is answered by its screen.rows event or its refusal, which each test delivers with these cids.
+        } else if (!(body.operation === "screen.read" && body.from !== undefined) && body.operation !== "screen.scroll.read") {
+          handler({ ack: true }, cids);
+        }
+        // A range read and a scroll read are answered by their event or their refusal, which each test delivers with these cids.
       }
       return Promise.resolve();
     },
@@ -6634,6 +6636,92 @@ test("terminal.screen.rows requires its screen, sends it and returns the rows of
 });
 
 // The session state of core docs/spec/terminal-read.md#session-state: terminal.session keeps scrollback with dropped and the
+// The program scroll of core docs/spec/terminal-read.md#program-scroll: terminal.screen.scroll.read sends screen.scroll.read with
+// by and the quiet interval of the setting scrollReadQuiet, and returns the members of the screen.scroll event that names its cids.
+const SCROLL_REPLY = {
+  event: "screen.scroll", route: "alternate_scroll", changed: true, text: ["line 0051", ":"], restored: true,
+  settledBy: { scroll: "sync", restore: "quiet" }, quiet: 6, refreshRate: 120,
+};
+const startScrollTerminal = async (values = {}) => {
+  FakeResizeObserver.reset();
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  const shown = [];
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
+    scale: 1, window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
+    settings: { read: () => ({ ...SHELL_SETTINGS.read(), ...values }), on: () => () => {} },
+    tab: { title() {}, footer() {}, directory() {}, notify() {}, error: (text) => shown.push(text) },
+  });
+  FakeResizeObserver.triggerAll();
+  const reads = () => sidecar.getMessages().filter(({ body }) => body.operation === "screen.scroll.read").map(({ body }) => body);
+  return { sidecar, expose, shown, reads, command: expose.getCommand("terminal.screen.scroll.read") };
+};
+
+test("terminal.screen.scroll.read sends by with the quiet setting and returns the reply of the sidecar", async () => {
+  const { sidecar, expose, reads, command } = await startScrollTerminal();
+  assert(command, "terminal.screen.scroll.read command registered");
+  const reading = command({ by: 50 });
+  await sidecar.until(() => reads().length === 1);
+  assert.deepEqual(reads(), [{ operation: "screen.scroll.read", by: 50, quiet: 6 }], "the default of scrollReadQuiet is 6");
+  sidecar.triggerRaw("test-session", SCROLL_REPLY, sidecar.getCids(reads()[0]));
+  const { event, ...reply } = SCROLL_REPLY;
+  assert.deepEqual(await reading, reply);
+  assert.equal(expose.getStatus("terminal.session").readFn().error ?? null, null, "a restored read is no session error");
+});
+
+test("terminal.screen.scroll.read refuses by outside -1000 to 1000, 0 and a quiet setting outside 1 to 120 before any request", async () => {
+  const { reads, command } = await startScrollTerminal();
+  for (const params of [{}, { by: 0 }, { by: 1001 }, { by: -1001 }, { by: 1.5 }, { by: "5" }]) {
+    await assert.rejects(command(params), /by \(an integer from -1000 to 1000 other than 0\)/, JSON.stringify(params));
+  }
+  for (const quiet of [0, 121, 2.5]) {
+    const { reads: quietReads, command: quietCommand } = await startScrollTerminal({ scrollReadQuiet: quiet });
+    await assert.rejects(quietCommand({ by: 1 }), /scrollReadQuiet setting is invalid/, String(quiet));
+    assert.deepEqual(quietReads(), [], `a quiet setting of ${quiet} sends no request`);
+  }
+  assert.deepEqual(reads(), [], "a refused read sends no screen.scroll.read request");
+  const { sidecar, reads: twelve, command: read } = await startScrollTerminal({ scrollReadQuiet: 12 });
+  read({ by: -3 }).catch(() => {});
+  await sidecar.until(() => twelve().length === 1);
+  assert.deepEqual(twelve(), [{ operation: "screen.scroll.read", by: -3, quiet: 12 }], "the quiet interval follows the setting");
+});
+
+test("terminal.screen.scroll.read shows a read that did not restore the screen through the error display path", async () => {
+  const { sidecar, expose, shown, reads, command } = await startScrollTerminal();
+  const reading = command({ by: 50 });
+  await sidecar.until(() => reads().length === 1);
+  const first = { before: "line 0001", after: "line 0002" };
+  sidecar.triggerRaw("test-session", { ...SCROLL_REPLY, restored: false, first }, sidecar.getCids(reads()[0]));
+  const result = await reading;
+  assert.equal(result.restored, false);
+  assert.deepEqual(result.first, first);
+  const error = expose.getStatus("terminal.session").readFn().error;
+  assert.equal(error, 'terminal scroll read did not restore the screen: the first row was "line 0001" and is "line 0002"');
+  assert.deepEqual(shown, [error], "the tab shows the error of the session");
+
+  // A later read that restores the screen ends the error.
+  const again = command({ by: 50 });
+  await sidecar.until(() => reads().length === 2);
+  sidecar.triggerRaw("test-session", SCROLL_REPLY, sidecar.getCids(reads()[1]));
+  await again;
+  assert.equal(expose.getStatus("terminal.session").readFn().error ?? null, null);
+});
+
+test("terminal.screen.scroll.read rejects with the error of the sidecar and with a reply of another form", async () => {
+  const { sidecar, reads, command } = await startScrollTerminal();
+  const interrupted = command({ by: 50 });
+  await sidecar.until(() => reads().length === 1);
+  const reason = "the input request of the person reached the session during the scroll read";
+  sidecar.triggerRaw("test-session", { error: "scrollReadInterrupted", reason }, sidecar.getCids(reads()[0]));
+  await assert.rejects(interrupted, { message: `terminal.screen.scroll.read: scrollReadInterrupted: ${reason}` });
+
+  const malformed = command({ by: 50 });
+  await sidecar.until(() => reads().length === 2);
+  sidecar.triggerRaw("test-session", { ...SCROLL_REPLY, restored: "yes" }, sidecar.getCids(reads()[1]));
+  await assert.rejects(malformed, /terminal\.screen\.scroll\.read received an invalid reply/);
+});
+
 // alternate member of each view event and the foreground of each foreground event, and refuses an event of another form.
 test("terminal.session keeps the members of the read modes that the view and foreground events carry", async () => {
   FakeResizeObserver.reset();

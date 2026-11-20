@@ -47,3 +47,21 @@ test("terminal.session declares the members that choose a read mode", () => {
   assert.deepEqual(Object.keys(properties.foreground.properties), ["pid", "command", "cwd", "error"]);
   for (const member of ["alternate", "dropped", "foreground"]) assert.match(session.description, new RegExp(member), member);
 });
+
+// The program scroll of core docs/spec/terminal-read.md#program-scroll: the description states the mode, that input reaches the
+// program, the restore, and the modes to take first.
+const params = (entry) => entry.params.properties;
+test("terminal.screen.scroll.read states the read mode Program scroll and declares by and the quiet setting", () => {
+  const scroll = command("terminal.screen.scroll.read");
+  assert.match(scroll.description, /Read mode Program scroll/, scroll.description);
+  assert.match(scroll.description, /input reaches the program/, scroll.description);
+  assert.match(scroll.description, /restored/, scroll.description);
+  assert.match(scroll.description, /terminal\.screen\.rows/, scroll.description);
+  assert.deepEqual(params(scroll), { by: { type: "integer" } });
+  // The schema form of a manifest has no required list and no bounds, so the description states them.
+  assert.match(scroll.description, /by is required, an integer from -1000 to 1000 other than 0/, scroll.description);
+  const quiet = manifest.settings.scrollReadQuiet;
+  assert.deepEqual({ type: quiet.type, default: quiet.default, minimum: quiet.minimum, maximum: quiet.maximum },
+    { type: "integer", default: 6, minimum: 1, maximum: 120 });
+  assert.match(command("terminal.screen.rows").description, /terminal\.screen\.scroll\.read/);
+});
