@@ -4879,6 +4879,7 @@ test("vendor_events_update_the_session_and_unrelated_events_remain_unsupported",
     directory: "file:///tmp/project",
     hyperlink: { id: "docs", uri: "https://example.test" },
     notification: "build complete",
+    progress: null,
     shell: { marker: "command.finished", params: ["0"] },
   });
 
@@ -5085,11 +5086,12 @@ test("region input is buffered in order until sidecar state opens the session", 
   // 사이드카가 state 이벤트로 세션을 연다
   fakeSidecar.triggerEvent("test-session", { event: "state", sessionId: "s1", cols: 100, rows: 50, cellWidth: 8, cellHeight: 16 });
   // The open session also reads its terminal state (core docs/spec/terminal-state.md#state-read), once.
-  const inputs = () => sessionMessages(fakeSidecar).filter(({ body }) => body.operation !== "shell.state.read");
+  const reads = new Set(["shell.state.read", "program.status.read"]);
+  const inputs = () => sessionMessages(fakeSidecar).filter(({ body }) => !reads.has(body.operation));
   await fakeSidecar.until(() => inputs().length >= 3);
 
-  assert.equal(sessionMessages(fakeSidecar).filter(({ body }) => body.operation === "shell.state.read").length, 1,
-    "the open session reads its state once");
+  assert.deepEqual(sessionMessages(fakeSidecar).filter(({ body }) => reads.has(body.operation)).map(({ body }) => body.operation),
+    ["shell.state.read", "program.status.read"], "the open session reads its state and its program status once");
   messages = inputs();
   assert.equal(messages.length, 3, "open and two inputs are sent after state");
   assert.deepEqual(messages[1].body.actions, [inputInsert("a")]);
@@ -5176,10 +5178,12 @@ test("a sidecar rejection is reported without DOM-driven retry", async () => {
   fakeView.clientWidth = 600;
   fakeView.clientHeight = 300;
   FakeResizeObserver.triggerAll();
-  // The session that the state event opened reads its terminal state once (core docs/spec/terminal-state.md#state-read).
+  // The session that the state event opened reads its terminal state and its program status once
+  // (core docs/spec/terminal-state.md#state-read).
   messages = sessionMessages(fakeSidecar);
-  assert.deepEqual(messages.slice(1).map(({ body }) => body), [{ operation: "shell.state.read" }], "the open session reads its state");
-  assert.equal(messages.length, 2, "DOM resize sends no sidecar message");
+  assert.deepEqual(messages.slice(1).map(({ body }) => body), [{ operation: "shell.state.read" }, { operation: "program.status.read" }],
+    "the open session reads its state and its program status");
+  assert.equal(messages.length, 3, "DOM resize sends no sidecar message");
 });
 
 test("persistent reconnect restores the session identity before a new raster is configured", async () => {
@@ -6903,9 +6907,10 @@ for (const [name, event] of INVALID_STATE_EVENTS) {
 }
 
 // The activity of a terminal (core docs/spec/terminal-state.md#activity): the core level that the plugin derives from
-// its state and exit code.
-function expectedActivity({ state, exit }) {
-  if (state === "idle") return "idle";
+// its state and exit code. A failure of the last command lasts until the next command starts, so the prompt start that a
+// shell sends right after the finished mark keeps it.
+function expectedActivity({ state, exit }, failed) {
+  if (state === "idle") return failed ? "failed" : "idle";
   if (state === "running") return "running";
   if (state === "exited" && exit !== null && exit !== 0) return "failed";
   return null;
@@ -6922,9 +6927,12 @@ for (const { name, events } of STATE_CASES) {
   test(`terminal.activity follows the state and the exit code: ${name}`, { timeout: 10000 }, async () => {
     const terminal = await activityTerminal();
     assert.equal(terminal.activity(), null, "the activity before the first change");
+    let failed = false;
     for (const change of events) {
       terminal.emit({ event: "shell.state", ...change });
-      assert.equal(terminal.activity(), expectedActivity({ state: change.to, exit: change.exit }),
+      if (change.to === "running") failed = false;
+      if (change.to === "exited") failed = change.exit !== null && change.exit !== 0;
+      assert.equal(terminal.activity(), expectedActivity({ state: change.to, exit: change.exit }, failed),
         `the activity after the change ${change.sequence}`);
     }
   });
@@ -6941,7 +6949,94 @@ test("terminal.activity notifies its watchers only when the level changes", { ti
   terminal.emit({ event: "shell.state", from: "idle", to: "running", source: "osc133", sequence: 5, exit: null });
   terminal.emit({ event: "shell.state", from: "running", to: "exited", source: "osc133", sequence: 6, exit: 0 });
   terminal.emit({ event: "shell.state.current", state: "exited", source: "osc133", sequence: 6, exit: 0 });
-  assert.deepEqual(seen, ["idle", "running", "failed", "idle", "running", null]);
+  assert.deepEqual(seen, ["idle", "running", "failed", "running", null]);
+});
+
+// The program status of a terminal (core docs/spec/terminal-state.md#plugin-program-status).
+// `test/fixtures/terminal-state-program-status.json` is the copy of core `docs/spec/cases/terminal-state/program-status.json`.
+const PROGRAM_CASES = JSON.parse(readFileSync(new URL("./fixtures/terminal-state-program-status.json", import.meta.url), "utf8")).cases;
+const PROGRAM_BEFORE_READ = { records: [], notice: false, sequence: 0 };
+
+async function programTerminal() {
+  const terminal = await activityTerminal();
+  const status = terminal.expose.getStatus("terminal.program");
+  assert.notEqual(status, undefined, "the status terminal.program is not declared");
+  const session = () => terminal.expose.getStatus("terminal.session").readFn();
+  return { ...terminal, program: () => status.readFn(), programStatus: status, session };
+}
+
+for (const { name, events, read, activity } of PROGRAM_CASES) {
+  test(`terminal.program and terminal.activity follow the program status: ${name}`, { timeout: 10000 }, async () => {
+    const terminal = await programTerminal();
+    assert.deepEqual(terminal.program(), PROGRAM_BEFORE_READ, "the program status before the first read");
+    await terminal.sidecar.untilMessage((body) => body.operation === "program.status.read");
+    terminal.emit({ event: "program.status.current", ...PROGRAM_BEFORE_READ });
+    for (const event of events) terminal.emit(event);
+    const { event: _, ...expected } = { event: null, ...read };
+    assert.deepEqual(terminal.program(), expected, "the program status after the events equals the read of the case");
+    assert.equal(terminal.activity(), activity, "the activity of the case");
+    terminal.emit({ event: "program.status.current", ...read });
+    assert.deepEqual(terminal.program(), expected, "the read reply of the case");
+    assert.equal(terminal.activity(), activity, "the activity after the read reply");
+    assert.equal(terminal.error(), undefined, "a valid program status reported an error");
+    assert.ok(!terminal.session().unsupported.includes("program.status"), "program.status is a declared event");
+  });
+}
+
+test("a program status event after a gap of its sequence reads the program status again", { timeout: 10000 }, async () => {
+  const terminal = await programTerminal();
+  await terminal.sidecar.untilMessage((body) => body.operation === "program.status.read");
+  const reads = () => terminal.sidecar.getMessages().filter(({ body }) => body.operation === "program.status.read").length;
+  const before = reads();
+  terminal.emit({ event: "program.status", records: [], notice: true, sequence: 3 });
+  await terminal.sidecar.until(() => reads() === before + 1);
+  assert.deepEqual(terminal.program(), PROGRAM_BEFORE_READ, "an event after a gap is not applied");
+  terminal.emit({ event: "program.status.current", records: [], notice: true, sequence: 3 });
+  assert.deepEqual(terminal.program(), { records: [], notice: true, sequence: 3 });
+  terminal.emit({ event: "program.status.current", records: [], notice: false, sequence: 2 });
+  assert.deepEqual(terminal.program(), { records: [], notice: true, sequence: 3 }, "a lower read reply keeps the value");
+  assert.match(terminal.error() ?? "", /^terminal input failed: invalid program status from sidecar: a read reply below the held sequence 3: /);
+});
+
+test("a state change event after a gap of its sequence reads the state again", { timeout: 10000 }, async () => {
+  const terminal = await programTerminal();
+  await terminal.sidecar.untilMessage((body) => body.operation === "shell.state.read");
+  const reads = () => terminal.sidecar.getMessages().filter(({ body }) => body.operation === "shell.state.read").length;
+  const before = reads();
+  terminal.emit({ event: "shell.state", from: "idle", to: "running", source: "osc133", sequence: 4, exit: null });
+  await terminal.sidecar.until(() => reads() === before + 1);
+  assert.deepEqual(terminal.state(), STATE_BEFORE_READ, "an event after a gap is not applied");
+});
+
+const INVALID_PROGRAM_EVENTS = [
+  ["an unknown record state", { event: "program.status", records: [{ id: null, state: "busy", kind: null, progress: null, app: null, title: null, msg: null }], notice: false, sequence: 1 }],
+  ["a record without its members", { event: "program.status", records: [{ id: null, state: "working" }], notice: false, sequence: 1 }],
+  ["a notice that is no boolean", { event: "program.status", records: [], notice: "yes", sequence: 1 }],
+  ["a sequence of zero", { event: "program.status", records: [], notice: true, sequence: 0 }],
+  ["a progress above 100", { event: "program.status", records: [{ id: null, state: "working", kind: null, progress: 101, app: null, title: null, msg: null }], notice: false, sequence: 1 }],
+];
+
+for (const [name, event] of INVALID_PROGRAM_EVENTS) {
+  test(`a program status event with ${name} is a sidecar error and keeps the previous value`, { timeout: 10000 }, async () => {
+    const terminal = await programTerminal();
+    terminal.emit(event);
+    assert.deepEqual(terminal.program(), PROGRAM_BEFORE_READ, "an invalid event changed the program status");
+    assert.match(terminal.error() ?? "", /^terminal input failed: invalid program status from sidecar: /);
+  });
+}
+
+test("a progress report is kept in vendor.progress and a bell is a declared event", { timeout: 10000 }, async () => {
+  const terminal = await programTerminal();
+  assert.equal(terminal.session().vendor.progress, null, "no progress before the first report");
+  terminal.emit({ event: "progress", state: 1, progress: 50 });
+  assert.deepEqual(terminal.session().vendor.progress, { state: 1, progress: 50 });
+  terminal.emit({ event: "progress", state: 3, progress: null });
+  assert.deepEqual(terminal.session().vendor.progress, { state: 3, progress: null });
+  terminal.emit({ event: "bell" });
+  assert.deepEqual(terminal.session().unsupported, [], "progress and bell are declared events");
+  terminal.emit({ event: "progress", state: 5, progress: null });
+  assert.deepEqual(terminal.session().vendor.progress, { state: 3, progress: null }, "an invalid report keeps the value");
+  assert.match(terminal.error() ?? "", /^terminal input failed: invalid progress event from sidecar/);
 });
 
 // The messages of a terminal (core docs/spec/messaging.md#folder-of-a-terminal): the page registers the folder

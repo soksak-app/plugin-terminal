@@ -420,14 +420,45 @@ function scrollReplyError(body) {
   return valid ? null : JSON.stringify(body);
 }
 const TERMINAL_STATE_SOURCES = new Set(["osc133"]);
+// The core levels in their order, and the level of each state of a program status record
+// (core docs/spec/terminal-state.md#activity).
+const ACTIVITY_ORDER = ["idle", "running", "failed", "attention"];
+const RECORD_LEVELS = { blocked: "attention", error: "failed", working: "running", idle: "idle", done: "idle" };
 /**
- * Returns the core activity level of a terminal state, or null for no activity (core docs/spec/terminal-state.md#activity):
- * an exited command reports a failure only with a nonzero exit code.
+ * Returns the core activity level of a terminal, or null for no activity (core docs/spec/terminal-state.md#activity): the
+ * highest level of the records of its program, else attention for a notice, else the level of its state, where an exited
+ * command reports a failure only with a nonzero exit code and `failed` is whether the last command failed, which lasts until
+ * the next command starts.
  */
-function terminalActivity({ state, exit }) {
-  if (state === "idle") return "idle";
+function terminalActivity({ state, exit }, { records, notice }, failed) {
+  if (records.length > 0) {
+    return records.map(({ state: record }) => RECORD_LEVELS[record])
+      .reduce((high, level) => (ACTIVITY_ORDER.indexOf(level) > ACTIVITY_ORDER.indexOf(high) ? level : high));
+  }
+  if (notice) return "attention";
+  if (state === "idle") return failed ? "failed" : "idle";
   if (state === "running") return "running";
   if (state === "exited" && exit !== null && exit !== 0) return "failed";
+  return null;
+}
+const PROGRAM_RECORD_KEYS = ["id", "state", "kind", "progress", "app", "title", "msg"];
+const PROGRAM_KINDS = new Set(["permission", "question", "auth"]);
+/** Returns why a program status value of a change event or a read reply breaks the contract, or null when it holds. */
+function programStatusProblem({ records, notice, sequence }, change) {
+  if (!Number.isSafeInteger(sequence) || sequence < (change ? 1 : 0)) return "sequence";
+  if (typeof notice !== "boolean") return "notice";
+  if (!Array.isArray(records)) return "records";
+  if (sequence === 0 && (records.length > 0 || notice)) return "a read without a change";
+  const text = (value) => value === null || typeof value === "string";
+  for (const record of records) {
+    if (record === null || typeof record !== "object" || Object.keys(record).length !== PROGRAM_RECORD_KEYS.length ||
+      !PROGRAM_RECORD_KEYS.every((key) => key in record)) return "record members";
+    const { id, state, kind, progress, app, title, msg } = record;
+    if (!(state in RECORD_LEVELS)) return "record state";
+    if (!(kind === null || (state === "blocked" && PROGRAM_KINDS.has(kind)))) return "record kind";
+    if (!(progress === null || (Number.isInteger(progress) && progress >= 0 && progress <= 100))) return "record progress";
+    if (![id, app, title, msg].every(text)) return "record text";
+  }
   return null;
 }
 /** Returns why a terminal state value of a change event or a read reply breaks the contract, or null when it holds. */
@@ -484,7 +515,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     throw new TypeError(`startTerminal requires origin {directory} with a path or null, found ${JSON.stringify(origin)}`);
   }
   // 공개 status 마다 값이 바뀔 때 호출할 함수
-  const watchers = { session: new Set(), screen: new Set(), compose: new Set(), cursor: new Set(), state: new Set(), activity: new Set(),
+  const watchers = { session: new Set(), screen: new Set(), compose: new Set(), cursor: new Set(), state: new Set(), program: new Set(), activity: new Set(),
     messages: new Set() };
   const changed = (name) => {
     for (const fn of watchers[name]) fn(read[name]());
@@ -526,7 +557,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     inputHeld: null,
     // Whether the child of the session ended, which the sidecar reports with the exit event.
     exited: false,
-    vendor: { directory: null, hyperlink: null, notification: null, shell: null },
+    vendor: { directory: null, hyperlink: null, notification: null, shell: null, progress: null },
     compose: { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false },
     theme: "dark",
   };
@@ -534,12 +565,28 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // and each change event.
   const STATE_BEFORE_READ = Object.freeze({ state: null, source: null, sequence: 0, exit: null });
   let terminalState = STATE_BEFORE_READ;
+  // The program status of the session (core docs/spec/terminal-state.md#plugin-program-status): the value before the first
+  // read, then the read reply and each change event.
+  const PROGRAM_BEFORE_READ = Object.freeze({ records: [], notice: false, sequence: 0 });
+  let programStatus = PROGRAM_BEFORE_READ;
+  // Whether the last command of the session exited with a nonzero code; the next running state ends it.
+  let lastCommandFailed = false;
+  const activity = () => terminalActivity(terminalState, programStatus, lastCommandFailed);
   // Sets the terminal state and notifies the watchers of the state, and of the activity when its level changes.
   const setTerminalState = (next) => {
-    const before = terminalActivity(terminalState);
+    const before = activity();
     terminalState = next;
+    if (next.state === "running" || next.state === null) lastCommandFailed = false;
+    if (next.state === "exited") lastCommandFailed = next.exit !== null && next.exit !== 0;
     changed("state");
-    if (terminalActivity(next) !== before) changed("activity");
+    if (activity() !== before) changed("activity");
+  };
+  // Sets the program status and notifies the watchers of it, and of the activity when its level changes.
+  const setProgramStatus = (next) => {
+    const before = activity();
+    programStatus = next;
+    changed("program");
+    if (activity() !== before) changed("activity");
   };
   // The session whose state terminalState holds.
   let terminalStateSession = null;
@@ -588,7 +635,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     compose: () => compose,
     cursor: () => cursor,
     state: () => terminalState,
-    activity: () => terminalActivity(terminalState),
+    program: () => programStatus,
+    activity,
     messages: () => messagesStatus,
   };
 
@@ -1146,6 +1194,14 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // the current focus, so the order of the two does not change the state. A respawned service holds no focus and a preserved session
   // holds the focus of the view before this one, and a state event opens the gate for either. A state event of an open session sends
   // nothing.
+  // Reads the terminal state and the program status of the session, which the page holds from the replies and the change
+  // events (core docs/spec/terminal-state.md#state-read).
+  const readState = () => terminal.send(id, { operation: "shell.state.read" }).catch((error) => reportInputError(error));
+  const readProgram = () => terminal.send(id, { operation: "program.status.read" }).catch((error) => reportInputError(error));
+  const readStatus = () => {
+    readState();
+    readProgram();
+  };
   const openSessionGate = (event) => {
     const opening = !sessionOpen;
     sessionOpen = true;
@@ -1162,8 +1218,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       if (terminalStateSession !== session.sessionId) {
         terminalStateSession = session.sessionId;
         setTerminalState(STATE_BEFORE_READ);
+        setProgramStatus(PROGRAM_BEFORE_READ);
+        session = { ...session, vendor: { ...session.vendor, progress: null } };
       }
-      terminal.send(id, { operation: "shell.state.read" }).catch((error) => reportInputError(error));
+      readStatus();
     }
     flushInputQueue();
   };
@@ -2393,12 +2451,44 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       const next = body.event === "shell.state"
         ? { state: body.to, source: body.source, sequence: body.sequence, exit: body.exit }
         : { state: body.state, source: body.source, sequence: body.sequence, exit: body.exit };
-      const problem = terminalStateProblem(next, body.event === "shell.state");
+      const change = body.event === "shell.state";
+      const problem = terminalStateProblem(next, change) ??
+        (!change && next.sequence < terminalState.sequence ? `a read reply below the held sequence ${terminalState.sequence}` : null);
       if (problem !== null) {
         reportInputError(new Error(`invalid terminal state from sidecar: ${problem}: ${JSON.stringify(body)}`));
         return;
       }
+      // A change event that does not follow the held value shows that events were not received, so the page reads again.
+      if (change && next.sequence !== terminalState.sequence + 1) {
+        readState();
+        return;
+      }
       setTerminalState(next);
+    } else if (body.event === "program.status" || body.event === "program.status.current") {
+      const { event: _, ...next } = body;
+      const change = body.event === "program.status";
+      const problem = programStatusProblem(next, change) ??
+        (!change && next.sequence < programStatus.sequence ? `a read reply below the held sequence ${programStatus.sequence}` : null);
+      if (problem !== null) {
+        reportInputError(new Error(`invalid program status from sidecar: ${problem}: ${JSON.stringify(body)}`));
+        return;
+      }
+      if (change && next.sequence !== programStatus.sequence + 1) {
+        readProgram();
+        return;
+      }
+      setProgramStatus(next);
+    } else if (body.event === "progress") {
+      const { state, progress } = body;
+      if (!Number.isInteger(state) || state < 0 || state > 4 ||
+        !(progress === null || (Number.isInteger(progress) && progress >= 0 && progress <= 100))) {
+        reportInputError(new Error(`invalid progress event from sidecar: ${JSON.stringify(body)}`));
+        return;
+      }
+      session = { ...session, vendor: { ...session.vendor, progress: { state, progress } } };
+      changed("session");
+    } else if (body.event === "bell") {
+      // The sidecar takes the notice of a bell into the program status; the bell itself shows nothing on the page.
     } else if (body.event === "vendor.shell.state") {
       const markers = new Set(["prompt.start", "prompt.end", "command.start", "command.finished"]);
       if (!markers.has(body.marker) || !Array.isArray(body.params) || body.params.some((value) => typeof value !== "string")) {
@@ -2550,6 +2640,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       expose.status("terminal.cursor", read.cursor, watch("cursor")),
       expose.status("terminal.state", read.state, watch("state")),
       expose.status("terminal.activity", read.activity, watch("activity")),
+      expose.status("terminal.program", read.program, watch("program")),
       expose.status("terminal.messages", read.messages, watch("messages")),
       expose.command("terminal.messages.read", async (params) => readMessages("read", params)),
       expose.command("terminal.messages.wait", async (params) => readMessages("wait", params)),

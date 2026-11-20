@@ -104,7 +104,7 @@ test("the diagnostic entries inject preedit and record the IME trace", () => {
 
 test("the terminal exposes its session, state, input, preedit, paste, file drop, process list, screen.read, close commands, and view", () => {
   const names = (kind) => manifest.exposes[kind].map((entry) => entry.name).sort();
-  assert.deepEqual(names("status"), ["terminal.activity", "terminal.compose", "terminal.cursor", "terminal.messages", "terminal.screen", "terminal.session", "terminal.state"]);
+  assert.deepEqual(names("status"), ["terminal.activity", "terminal.compose", "terminal.cursor", "terminal.messages", "terminal.program", "terminal.screen", "terminal.session", "terminal.state"]);
   assert.deepEqual(names("commands"), ["terminal.close", "terminal.copy", "terminal.cursor.set", "terminal.drop", "terminal.focus", "terminal.image.inline.delete", "terminal.input", "terminal.link.open", "terminal.messages.read", "terminal.messages.wait", "terminal.paste", "terminal.process.list", "terminal.screen.read", "terminal.screen.rows", "terminal.screen.scroll.read", "terminal.scrollback.set", "terminal.submit"]);
   assert.deepEqual(names("element"), ["terminal.scrollbar", "terminal.scrollbar.thumb", "terminal.view"]);
 });
