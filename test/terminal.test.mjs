@@ -7820,3 +7820,20 @@ test("a receipt of a delivered message makes its entry reported, and decided kee
   assert.equal(decided[0].path, "s2.t4.txt", "the oldest entry is the message that arrived fourth");
   assert.equal(dropped, 2, "dropped counts the two entries that left decided");
 });
+
+// A receipt updates the decided entry of its token (core docs/spec/messaging.md#delivery): a receipt whose token has no entry is ignored
+// and recorded, and it marks no message that arrives later.
+test("a receipt without a decided entry is ignored and recorded, and marks no message that arrives later", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.grid(RECEIVER_GRID);
+  receiptArrives(terminal, 1, "t1");
+  await settle();
+  assert.deepEqual(records(terminal.log, "messages.receipt.ignored").map(([fields]) => fields),
+    [{ path: "test-session.receipt-t1.txt" }], "the receipt without an entry is recorded with its path");
+  assert.deepEqual(terminal.status().decided, [], "the ignored receipt makes no entry");
+  terminal.emit({ event: "file.changed", registration: "r1", path: "s2.t1.txt", from: "s2", kind: "created", seq: 2 });
+  await terminal.answerRead(2, [{ seq: 2, path: "s2.t1.txt", text: "text 1", from: "s2" }]);
+  await terminal.untilMessages((value) => value?.last?.seq === 2);
+  assert.deepEqual(terminal.status().decided, [{ path: "s2.t1.txt", state: "delivered", reason: null }],
+    "the message of the ignored token is delivered, not reported");
+});

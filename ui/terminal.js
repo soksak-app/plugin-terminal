@@ -1971,9 +1971,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     // The registration of the waiting messages and of the last decision.
     let attached = null;
     // The messages that the page injected in the working period of the program, as {path, from, token}, or null outside a working
-    // period, and the tokens of the receipts that arrived (core docs/spec/messaging.md#completion-notice).
+    // period (core docs/spec/messaging.md#completion-notice).
     let periodMessages = null;
-    const receipts = new Set();
     // The injected messages without a receipt, by token as {path, from}, and the requests of a missing report that wait for the
     // injection, as {token, from} in the order that the reports queued them (core docs/spec/messaging.md#missing-report).
     const unreported = new Map();
@@ -2015,7 +2014,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     // Decides the delivery of a message: the entry takes the state, reported when the receipt of its token arrived before it, and
     // the last decision and its record name the kind message (core docs/spec/messaging.md#delivery).
     const decide = (event, state, reason) => {
-      const final = state === "delivered" && receipts.has(tokenOf(event.path)) ? "reported" : state;
+      // An entry that a receipt marked before its decision keeps the state reported (core docs/spec/messaging.md#delivery).
+      const earlier = decided.find((item) => item.seq === event.seq);
+      const final = state === "delivered" && earlier?.state === "reported" ? "reported" : state;
       upsert(event, final, reason);
       last = { kind: "message", seq: event.seq, path: event.path, from: event.from, state: final, reason };
       runtime.log.info("messages.delivered", last);
@@ -2058,7 +2059,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
       decide(event, "delivered", null);
       const token = tokenOf(event.path);
-      if (!receipts.has(token)) unreported.set(token, { path: event.path, from: event.from });
+      if (last.state === "delivered") unreported.set(token, { path: event.path, from: event.from });
       if (periodMessages !== null) periodMessages.push({ path: event.path, from: event.from, token });
     };
     // Injects one role message: the text as it is, followed by Enter (core docs/spec/agent-roles.md#change-message).
@@ -2101,8 +2102,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         runtime.log.info("messages.delivered", last);
         publish();
       };
-      if (receipts.has(token)) {
-        record("skipped", "a receipt of the token arrived");
+      const entry = decided.find((item) => tokenOf(item.path) === token);
+      if (entry?.state !== "delivered") {
+        record("skipped", "the message is no longer awaiting its report");
         return;
       }
       const folder = `${messagesStatus.folder.slice(0, messagesStatus.folder.lastIndexOf("/") + 1)}${from}`;
@@ -2130,7 +2132,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
       const title = senderName(self);
       for (const message of messages) {
-        const reported = receipts.has(message.token);
+        const reported = decided.some((item) => tokenOf(item.path) === message.token && item.state === "reported");
         messagesRequest("terminal.messages.notice", "messages.notice", { title, answers: message.token, from: message.from, state, reported },
           (reply) => runtime.log.info("messages.notice", { path: reply.path, from: message.from, token: message.token, state, reported }),
           (error) => {
@@ -2243,7 +2245,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
           decided.length = 0;
           dropped = 0;
           unreported.clear();
-          receipts.clear();
           requestOutbox = [];
         }
         setMessages({ folder, registration, held, last, decided: snapshotDecided(), dropped });
@@ -2255,12 +2256,16 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         const token = tokenOf(body.path);
         if (token.startsWith(RECEIPT_PREFIX)) {
           // A receipt answers the report request of its token, so the page takes it and injects nothing (core docs/spec/messaging.md#report-request).
+          // A receipt updates the decided entry of its token; a receipt whose token has no entry is ignored and recorded (core
+          // docs/spec/messaging.md#delivery). The receipt is then the last decision of kind receipt.
           const answered = token.slice(RECEIPT_PREFIX.length);
-          receipts.add(answered);
-          unreported.delete(answered);
-          // The entry of the message takes the state reported, and the receipt is the last decision of kind receipt.
           const entry = decided.find((item) => tokenOf(item.path) === answered);
-          if (entry !== undefined) entry.state = "reported";
+          if (entry === undefined) {
+            runtime.log.info("messages.receipt.ignored", { path: body.path });
+            return;
+          }
+          entry.state = "reported";
+          unreported.delete(answered);
           last = { kind: "receipt", seq: body.seq, path: body.path, from: body.from, state: "reported", reason: null };
           runtime.log.info("messages.delivered", last);
           publish();
