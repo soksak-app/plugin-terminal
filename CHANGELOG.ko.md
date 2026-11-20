@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P176: `terminal.process.list` 가 core `docs/spec/process-list.md` 의 terminal 의 process list 를 읽는다. foreground program 과 background job 이며, 각각 `{group, pid, command, arguments, cwd, started}` 이고 job 은 `state` 를 가진다. `terminal.session` 은 sidecar 의 각 `processes` 이벤트에서 둘을 보관하고, 실패한 읽기에서 둘을 `null` 로 두며 그것을 보이고, page 는 이벤트 `foreground` 를 더 이상 읽지 않는다.
 - P171-2: `terminal.screen.scroll.read {by}` 가 전체 화면 program 이 그린 적 없는 글을 읽는다. 새 설정 `scrollReadQuiet`(display frame, 기본 6)과 함께 `screen.scroll.read {by, quiet}` 를 보내고 sidecar 의 답을 돌려준다(core `docs/spec/terminal-read.md#program-scroll`). screen 을 복원하지 못한 읽기는 읽기가 그것을 복원할 때까지 session 오류를 보인다.
 - P171-1: `terminal.screen.rows` 가 `screen`(`primary` 나 `alternate`)을 요구해 그것 없는 읽기를 요청 전에 거절하고 그것을 sidecar 에 보낸다. `terminal.session` 이 sidecar 의 `scrollback.dropped`, `alternate {active, history, dropped}`, `foreground {pid, command, cwd}` 를 보관한다. `terminal.screen.read` 와 `terminal.screen.rows` 의 설명이 core `docs/spec/terminal-read.md` 의 읽기 mode, 그 쓰임, 그것이 보지 못하는 것을 말한다.
 - P169: `terminal.screen.read`, `terminal.screen.rows`, `terminal.scrollback.set` 의 설명이 screen read 가 viewport 와 alternate screen 을 따른다는 것, `from` 이 세는 행과 범위 read 가 viewport 를 움직이지 않는다는 것, viewport offset 이 alternate screen 의 program 을 scroll 하지 않는다는 것을 말한다.

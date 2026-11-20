@@ -196,7 +196,7 @@
       },
       {
         "name": "terminal.session",
-        "description": "The session state: identifier, dimensions, cell size, the scrollback viewport offset, the history rows of the active screen and the rows dropped from the primary history as `scrollback {offset, history, dropped}`, whether the alternate screen is active with the rows kept above it and the kept rows dropped as `alternate {active, history, dropped}`, the leader of the foreground process group of the terminal with the path of its executable and its working directory as `foreground {pid, command, cwd}` (`null` without a foreground process group, and `command` and `cwd` null with `error` when the system refused the read), the number of selection releases the sidecar answered, the pointer shape the program set with OSC 22, the theme mode and the default background (`#rrggbb`) the sidecar applied, the reasons of the last eight output sequences the engine rejected, and the input held by the sidecar as `inputHeld`, which is `{queued, held}` while held and `null` otherwise, and whether the child of the session ended as `exited`.",
+        "description": "The session state: identifier, dimensions, cell size, the scrollback viewport offset, the history rows of the active screen and the rows dropped from the primary history as `scrollback {offset, history, dropped}`, whether the alternate screen is active with the rows kept above it and the kept rows dropped as `alternate {active, history, dropped}`, the foreground program of the terminal as `foreground {group, pid, command, arguments, cwd, started}` and its background jobs as `background`, each a job of the same form with `state` (`running` or `stopped`), which the sidecar reads after each output and at each exit and signal of a job (`command`, `arguments`, `cwd` and `started` null with `error` when the system refused a read of the process; `foreground` null when the foreground group has no process; both null while the list is not known, before the first read and after a failed read, which the session shows), which terminal.process.list reads at the time of a call, the number of selection releases the sidecar answered, the pointer shape the program set with OSC 22, the theme mode and the default background (`#rrggbb`) the sidecar applied, the reasons of the last eight output sequences the engine rejected, and the input held by the sidecar as `inputHeld`, which is `{queued, held}` while held and `null` otherwise, and whether the child of the session ended as `exited`.",
         "schema": {
           "type": "object",
           "properties": {
@@ -281,10 +281,29 @@
             "foreground": {
               "type": ["object", "null"],
               "properties": {
+                "group": { "type": "integer" },
                 "pid": { "type": "integer" },
                 "command": { "type": ["string", "null"] },
+                "arguments": { "type": ["array", "null"], "items": { "type": "string" } },
                 "cwd": { "type": ["string", "null"] },
+                "started": { "type": ["integer", "null"] },
                 "error": { "type": "string" }
+              }
+            },
+            "background": {
+              "type": ["array", "null"],
+              "items": {
+                "type": "object",
+                "properties": {
+                  "group": { "type": "integer" },
+                  "pid": { "type": "integer" },
+                  "command": { "type": ["string", "null"] },
+                  "arguments": { "type": ["array", "null"], "items": { "type": "string" } },
+                  "cwd": { "type": ["string", "null"] },
+                  "started": { "type": ["integer", "null"] },
+                  "error": { "type": "string" },
+                  "state": { "type": "string", "enum": ["running", "stopped"] }
+                }
               }
             },
             "selecting": {
@@ -566,6 +585,47 @@
               "properties": {
                 "before": { "type": ["string", "null"] },
                 "after": { "type": ["string", "null"] }
+              }
+            }
+          }
+        }
+      },
+      {
+        "name": "terminal.process.list",
+        "description": "Reads the process list of the terminal at the time of the call: the foreground program, the process of the foreground process group that holds the terminal (the shell while it waits at its prompt), and the background jobs, one for each other process group of the terminal except the group of the shell, in ascending order of the group. Each has group (the process group, which identifies a job while its processes end), pid, command (the path of its executable), arguments (the arguments after the program name, which identify an agent with its session file), cwd and started (milliseconds since the Unix epoch); a job also has state, running or stopped. When the system refused a read of a process, command, arguments, cwd and started are null and error names the read. foreground is null when the foreground group has no process. terminal.session holds the same list as the sidecar last sent it.",
+        "params": {
+          "type": "object",
+          "properties": {}
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "foreground": {
+              "type": ["object", "null"],
+              "properties": {
+                "group": { "type": "integer" },
+                "pid": { "type": "integer" },
+                "command": { "type": ["string", "null"] },
+                "arguments": { "type": ["array", "null"], "items": { "type": "string" } },
+                "cwd": { "type": ["string", "null"] },
+                "started": { "type": ["integer", "null"] },
+                "error": { "type": "string" }
+              }
+            },
+            "background": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "group": { "type": "integer" },
+                  "pid": { "type": "integer" },
+                  "command": { "type": ["string", "null"] },
+                  "arguments": { "type": ["array", "null"], "items": { "type": "string" } },
+                  "cwd": { "type": ["string", "null"] },
+                  "started": { "type": ["integer", "null"] },
+                  "error": { "type": "string" },
+                  "state": { "type": "string", "enum": ["running", "stopped"] }
+                }
               }
             }
           }

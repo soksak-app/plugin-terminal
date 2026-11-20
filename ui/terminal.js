@@ -373,17 +373,34 @@ const TERMINAL_STATES = new Set(["idle", "running", "exited"]);
 // The screens of a kept-rows read (core docs/spec/terminal-read.md#alternate-rows).
 const READ_SCREENS = new Set(["primary", "alternate"]);
 const isCount = (value) => Number.isInteger(value) && value >= 0;
-// The reason that a foreground of the sidecar (core docs/spec/terminal-read.md#session-state) is invalid, or null:
-// null, {pid, command, cwd} with text or null paths, or a refused read {pid, command: null, cwd: null, error}.
-function foregroundError(foreground) {
-  if (foreground === null) return null;
-  if (typeof foreground !== "object" || Array.isArray(foreground) || !Number.isInteger(foreground?.pid) || foreground.pid <= 0) {
-    return JSON.stringify(foreground);
+// The states of a background job (core docs/spec/process-list.md#background-jobs).
+const JOB_STATES = new Set(["running", "stopped"]);
+// The reason that a process of the process list (core docs/spec/process-list.md#process) is invalid, or null: {group, pid,
+// command, arguments, cwd, started} with text paths, text arguments and a start time, or a refused read whose command,
+// arguments, cwd and started are null with error; a background job carries state too.
+function processError(entry, job) {
+  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return JSON.stringify(entry);
+  const { group, pid, command, arguments: args, cwd, started, error, state, ...other } = entry;
+  const id = (value) => Number.isInteger(value) && value > 0;
+  const text = (value) => typeof value === "string" && value.length > 0;
+  if (Object.keys(other).length > 0 || !id(group) || !id(pid) || (job ? !JOB_STATES.has(state) : state !== undefined)) return JSON.stringify(entry);
+  const read = error === undefined && text(command) && text(cwd) && isCount(started) && Array.isArray(args) &&
+    args.every((argument) => typeof argument === "string");
+  const refused = text(error) && command === null && args === null && cwd === null && started === null;
+  return read || refused ? null : JSON.stringify(entry);
+}
+// The reason that a process list {foreground, background} of the sidecar is invalid, or null: a process or null, and an array of
+// background jobs.
+function processListError({ foreground, background }) {
+  if (foreground !== null) {
+    const failure = processError(foreground, false);
+    if (failure !== null) return failure;
   }
-  const { command, cwd, error, ...other } = foreground;
-  const path = (value) => value === null || (typeof value === "string" && value.length > 0);
-  if (Object.keys(other).some((key) => key !== "pid") || !path(command) || !path(cwd)) return JSON.stringify(foreground);
-  if (error !== undefined && (typeof error !== "string" || error.length === 0 || command !== null || cwd !== null)) return JSON.stringify(foreground);
+  if (!Array.isArray(background)) return JSON.stringify(background);
+  for (const job of background) {
+    const failure = processError(job, true);
+    if (failure !== null) return failure;
+  }
   return null;
 }
 // The routes and the ends of the waits of a scroll read (core docs/spec/terminal-read.md#program-scroll).
@@ -490,10 +507,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     selecting: false,
     // 뷰포트가 가장 새 출력보다 위에 있는 줄 수와 보관된 기록 줄 수, 기록 한도가 primary 기록에서 버린 줄 수.
     scrollback: { offset: 0, history: 0, dropped: 0 },
-    // The alternate screen and its kept rows, and the leader of the foreground process group of the terminal
-    // (core docs/spec/terminal-read.md#session-state); the sidecar sends both, and the session keeps them as they arrive.
+    // The alternate screen and its kept rows (core docs/spec/terminal-read.md#session-state), which each view event carries.
     alternate: { active: false, history: 0, dropped: 0 },
+    // The foreground program and the background jobs (core docs/spec/process-list.md#session-state), which each processes event
+    // carries; null while the list is not known, before the first event and after a failed read.
     foreground: null,
+    background: null,
     // 포인터 아래 칸의 OSC 8 링크 URI. 없으면 null.
     link: null,
     // OSC 22 로 프로그램이 정한 포인터 모양(CSS cursor 값). 링크 칸 위에서는 손 모양이 우선한다.
@@ -1676,6 +1695,35 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     entry.resolve(reply);
     return true;
   };
+  // The reads of terminal.process.list (core docs/spec/process-list.md#request). Each read sends one correlation identifier, and
+  // the sidecar names it in its answer: the process.list event or its error.
+  const processReads = new Set();
+  let processReadSequence = 0;
+  const processRead = () => new Promise((resolve, reject) => {
+    const entry = { cid: `${unansweredPrefix}-process-list-${++processReadSequence}`, resolve, reject };
+    processReads.add(entry);
+    terminal.send(id, { operation: "process.list" }, [entry.cid]).catch((error) => {
+      processReads.delete(entry);
+      reject(error);
+    });
+  });
+  // Ends the process list read that the answer names, and returns whether one did.
+  const answerProcessRead = (body, cids) => {
+    const entry = [...processReads].find((read) => cids.includes(read.cid));
+    if (entry === undefined) return false;
+    processReads.delete(entry);
+    if (body.error) {
+      entry.reject(new Error(`terminal.process.list: ${body.error}`));
+      return true;
+    }
+    const failure = body.event !== "process.list" || !("foreground" in body) ? JSON.stringify({ event: body.event }) : processListError(body);
+    if (failure !== null) {
+      entry.reject(new Error(`terminal.process.list received an invalid reply: ${failure}`));
+      return true;
+    }
+    entry.resolve({ foreground: body.foreground, background: body.background });
+    return true;
+  };
   let screenWatchEnabled = false;
   let screenWatchRegistered = false;
   let screenWatchConnected = true;
@@ -1770,6 +1818,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     const ranges = [...rangeReads];
     rangeReads.clear();
     for (const entry of ranges) entry.reject(error);
+    const processes = [...processReads];
+    processReads.clear();
+    for (const entry of processes) entry.reject(error);
     const waiter = pendingPtyRead;
     pendingPtyRead = null;
     waiter?.reject(error);
@@ -1812,6 +1863,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     if (closing.aborted) return;
     if (answerRangeRead(body, cids ?? [])) return;
     if (answerScrollRead(body, cids ?? [])) return;
+    if (answerProcessRead(body, cids ?? [])) return;
     if (body.event === "exit") {
       screenWatchConnected = false;
       screenWatchEnabled = false;
@@ -2090,15 +2142,21 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       });
       if (resolveError("view")) changed("session");
       followScreen();
-    } else if (body.event === "foreground") {
-      // The leader of the foreground process group, which the sidecar reads after each output and sends when it changes.
-      const failure = foregroundError(body.foreground);
-      if (failure !== null) {
-        reportInputError(`invalid foreground from sidecar: ${failure}`, "foreground");
+    } else if (body.event === "processes") {
+      // The process list, which the sidecar reads after each output and at each event of the members of its jobs, and sends when
+      // it changes; a failed read leaves the list unknown and is shown.
+      if (body.error !== undefined) {
+        session = { ...session, foreground: null, background: null };
+        setError("processes", `terminal process list: ${typeof body.error === "string" ? body.error : JSON.stringify(body.error)}`);
         return;
       }
-      session = { ...session, foreground: body.foreground };
-      resolveError("foreground");
+      const failure = !("foreground" in body) ? "no foreground" : processListError(body);
+      if (failure !== null) {
+        reportInputError(`invalid processes from sidecar: ${failure}`, "processes");
+        return;
+      }
+      session = { ...session, foreground: body.foreground, background: body.background };
+      resolveError("processes");
       changed("session");
     } else if (body.event === "cursor") {
       try {
@@ -2451,6 +2509,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
           throw new Error(`scrollReadQuiet setting is invalid: ${String(quiet)}`);
         }
         return scrollRead(by, quiet);
+      }),
+      expose.command("terminal.process.list", async () => {
+        if (region === null) throw new Error("Terminal not initialized");
+        return processRead();
       }),
       expose.command("terminal.close", async () => {
         await endSession();

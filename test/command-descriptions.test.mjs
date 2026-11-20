@@ -44,8 +44,24 @@ test("terminal.session declares the members that choose a read mode", () => {
   const { properties } = session.schema;
   assert.deepEqual(Object.keys(properties.scrollback.properties), ["offset", "history", "dropped"]);
   assert.deepEqual(Object.keys(properties.alternate.properties), ["active", "history", "dropped"]);
-  assert.deepEqual(Object.keys(properties.foreground.properties), ["pid", "command", "cwd", "error"]);
-  for (const member of ["alternate", "dropped", "foreground"]) assert.match(session.description, new RegExp(member), member);
+  for (const member of ["alternate", "dropped"]) assert.match(session.description, new RegExp(member), member);
+});
+
+// The process list of core docs/spec/process-list.md: terminal.session declares the foreground program and the background jobs
+// in the form of a process, and terminal.process.list returns both.
+const PROCESS_MEMBERS = ["group", "pid", "command", "arguments", "cwd", "started", "error"];
+test("terminal.session and terminal.process.list declare the foreground program and the background jobs", () => {
+  const session = manifest.exposes.status.find((entry) => entry.name === "terminal.session");
+  const { properties } = session.schema;
+  assert.deepEqual(Object.keys(properties.foreground.properties), PROCESS_MEMBERS);
+  assert.deepEqual(Object.keys(properties.background.items.properties), [...PROCESS_MEMBERS, "state"]);
+  assert.deepEqual(properties.background.items.properties.state, { type: "string", enum: ["running", "stopped"] });
+  for (const member of ["foreground", "background", "terminal.process.list"]) assert.match(session.description, new RegExp(member), member);
+  const list = command("terminal.process.list");
+  assert.deepEqual(list.params, { type: "object", properties: {} });
+  assert.deepEqual(list.result.properties.foreground, properties.foreground);
+  assert.deepEqual(list.result.properties.background, { ...properties.background, type: "array" }, "the command always returns the jobs");
+  for (const text of [/foreground program/, /background jobs/, /arguments/, /group/]) assert.match(list.description, text, list.description);
 });
 
 // The program scroll of core docs/spec/terminal-read.md#program-scroll: the description states the mode, that input reaches the
