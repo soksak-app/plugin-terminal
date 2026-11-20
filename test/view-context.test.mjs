@@ -48,6 +48,16 @@ test("the view context uses the bridge logger instead of requesting runtime.log 
   assert.equal(context.runtime.log, logger, "the bridge logger is the view logger");
 });
 
+test("the view context follows a status through the status watch of the bridge runtime", { timeout: 5000 }, () => {
+  const { bridge } = bridgeWith({ log: {}, error: () => Promise.resolve() });
+  const status = { watch() {} };
+  bridge.runtime.status = status;
+  const { context } = contextFor(bridge);
+
+  // The page follows core.grid for the title of the sender of a message (core docs/spec/messaging.md#injected-message).
+  assert.equal(context.runtime.status, status, "the page status watch is the status watch of the view runtime");
+});
+
 test("the view context uses the clipboard of the bridge runtime instead of a copy of it (P142.4)", { timeout: 5000 }, () => {
   const logger = Object.fromEntries(["error", "warn", "info", "debug", "trace"].map((level) => [level, () => {}]));
   const clipboard = { read() {}, writeText() {}, persistPNG() {} };
