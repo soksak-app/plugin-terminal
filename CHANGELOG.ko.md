@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P198: 프로그램이 쉬는 보고(`done` 또는 `idle`)마다, 페이지는 receipt가 없는 주입 message마다 보고 요청을 대기열에 넣고 hold와 guard를 거쳐 주입한다. 요청은 종류 `report-request`로 기록하며, 보고 뒤에 receipt가 도착하면 건너뛴다. 검증: `test/terminal.test.mjs`의 `at-rest report`와 `report-request` test 세 개(Red 뒤 Green)와 전체 suite.
 - P197: 페이지는 terminal의 working 기간이 끝나면 그 기간에 주입한 message마다 `messages.notice`를 보낸다. 끝 상태(`blocked`, `error`, `done`, `idle`)와 보고 표시를 담는다. 받는 receipt file은 영수증으로 읽고 주입하지 않는다. 검증: `test/terminal.test.mjs`의 `working period`, `receipt`, `notice` test 네 개(Red 뒤 Green)와 전체 suite.
 - P196: plugin이 kit 0.0.16을 pin한다.
 - P191-7, P191-8, P191-9: 줄 맞춤 확인이 stale로 거부되면 거부된 fingerprint와 현재 fingerprint를 담아 `plugin.terminal.messages.role.stale`로 기록하며 error가 아니다. 다른 거부는 모두 error 표시로 간다. page의 reread 횟수는 record `plugin.terminal.messages.role.delivered`의 유일한 횟수다. page 규칙은 `docs/spec/agent-roles.md`에 있으며, page는 화면 watch를 추가하지 않는다.

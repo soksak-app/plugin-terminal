@@ -1,5 +1,6 @@
 # Changelog
 
+- P198: At each at-rest report of the program (`done` or `idle`), the page queues the request of a missing report for each injected message without a receipt, and injects it through the hold and the guard. The request is recorded as kind `report-request`; a receipt that arrived since the report skips it. Verification: the three `at-rest report` and `report-request` tests of `test/terminal.test.mjs` (Red then Green) and the full suite.
 - P197: The page sends `messages.notice` when a working period of its terminal ends, one request per message that it injected in the period, with the end state (`blocked`, `error`, `done` or `idle`) and the report flag; a receipt file of its folder is taken as a receipt and never injected. Verification: the four `working period`, `receipt` and `notice` tests of `test/terminal.test.mjs` (Red then Green) and the full suite.
 - P196: The plugin pins the kit 0.0.16.
 - P191-7, P191-8, P191-9: A stale refusal of a line-match confirmation is recorded as `plugin.terminal.messages.role.stale` with the refused and the current fingerprint and is not an error; any other refusal still reaches the error display. The page's reread count is the one count of its record `plugin.terminal.messages.role.delivered`. The page rules are in `docs/spec/agent-roles.md`: the page adds no screen watch.

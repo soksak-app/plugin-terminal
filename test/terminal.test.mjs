@@ -7706,3 +7706,62 @@ test("a refused notice is shown through the error display of terminal.messages",
   await terminal.sidecar.until(() => terminal.tabErrors().length > 0);
   assert.match(terminal.tabErrors().join("\n"), /terminal\.messages\.notice: folder-missing: \/work\/app\/\.soksak\/messages\/s2/);
 });
+
+// The missing report (core docs/spec/messaging.md#missing-report): each at-rest report of the program asks for the report of each
+// injected message that has no receipt, through the injection of the page.
+const requestText = (from, token) => `[soksak request] Message ${token} has no report yet. Report its result with sok message send --reply ${MESSAGES_FOLDER.slice(0, MESSAGES_FOLDER.lastIndexOf("/") + 1)}${from} --answers ${token} "<report>". This request is from the application, not input from the person.`;
+// Lets the injection of the page run its queued inputs: each sent input is acknowledged by the fake sidecar, so a few turns settle it.
+const settle = async () => { for (let turn = 0; turn < 20; turn += 1) await new Promise((resolve) => setImmediate(resolve)); };
+const requestsInjected = (terminal) => terminal.injected().filter((text) => text.startsWith("[soksak request]"));
+
+test("an at-rest report asks once for the report of each injected message without a receipt, and a receipt ends the request", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.grid(RECEIVER_GRID);
+  terminal.emit(programWith([programState("working")], 1));
+  terminal.arrive(1);
+  await terminal.answerRead(1);
+  await terminal.untilMessages((value) => value?.last?.seq === 1);
+  terminal.emit(programWith([programState("done")], 2));
+  await settle();
+  assert.deepEqual(requestsInjected(terminal), [requestText("s2", "t1")], "the done report asks for the report of the message without a receipt");
+  receiptArrives(terminal, 3, "t1");
+  terminal.emit(programWith([programState("idle")], 3));
+  await settle();
+  assert.deepEqual(requestsInjected(terminal), [requestText("s2", "t1")], "a receipt of the token ends the requests of the message");
+});
+
+test("each at-rest report asks for each message of the registration, and a report that is not at rest asks for nothing", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.grid(RECEIVER_GRID);
+  terminal.emit(programWith([programState("working")], 1));
+  terminal.arrive(1);
+  terminal.arrive(2);
+  await terminal.answerRead(1);
+  await terminal.answerRead(2);
+  await terminal.untilMessages((value) => value?.last?.seq === 2);
+  terminal.emit(programWith([programState("blocked")], 2));
+  await settle();
+  assert.deepEqual(requestsInjected(terminal), [], "a blocked report is not at rest, so it asks for nothing");
+  terminal.emit(programWith([programState("done")], 3));
+  await settle();
+  assert.deepEqual(requestsInjected(terminal), [requestText("s2", "t1"), requestText("s2", "t2")],
+    "the done report asks once for each message, in the order of their injection");
+  terminal.emit(programWith([programState("idle")], 4));
+  await settle();
+  assert.equal(requestsInjected(terminal).length, 4, "the next at-rest report asks once more for each message");
+});
+
+test("the request of a missing report is recorded as delivered with the kind report-request and no file", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.grid(RECEIVER_GRID);
+  terminal.emit(programWith([programState("working")], 1));
+  terminal.arrive(1);
+  await terminal.answerRead(1);
+  await terminal.untilMessages((value) => value?.last?.seq === 1);
+  terminal.emit(programWith([programState("done")], 2));
+  await settle();
+  const records = terminal.log.records.filter(([name]) => name === "messages.delivered").map(([, fields, level]) => [fields, level]).filter(([fields]) => fields.kind === "report-request");
+  assert.deepEqual(records, [[{ kind: "report-request", seq: null, path: null, from: "soksak", state: "delivered", reason: null }, "info"]],
+    "the request is recorded with the kind report-request and no file");
+  assert.deepEqual(terminal.tabErrors(), []);
+});

@@ -598,13 +598,15 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     if (activity() !== before) changed("activity");
   };
   // Sets the program status and notifies the watchers of it, and of the activity when its level changes.
-  const setProgramStatus = (next) => {
+  const setProgramStatus = (next, change = false) => {
     const before = activity();
     programStatus = next;
     changed("program");
     // A report of the program counts toward the reread requests of a pending role (core docs/spec/agent-roles.md#requests).
     if (messagesDelivery !== null) messagesDelivery.programReport(next);
     if (messagesDelivery !== null) messagesDelivery.programChanged(next);
+    // Only a change report asks for a report; a read reply of the program asks for nothing.
+    if (change && messagesDelivery !== null) messagesDelivery.requestsFor(next);
     if (activity() !== before) changed("activity");
   };
   // The session whose state terminalState holds.
@@ -1970,6 +1972,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     // period, and the tokens of the receipts that arrived (core docs/spec/messaging.md#completion-notice).
     let periodMessages = null;
     const receipts = new Set();
+    // The injected messages without a receipt, by token as {path, from}, and the requests of a missing report that wait for the
+    // injection, as {token, from} in the order that the reports queued them (core docs/spec/messaging.md#missing-report).
+    const unreported = new Map();
+    let requestOutbox = [];
     // The hold of the injection. The role messages (forRole) are not held by role-pending: the change message and the requests are
     // what the agent needs to confirm its role (core docs/spec/messaging.md#hold-for-the-person).
     const holdOf = (forRole = false) => {
@@ -2024,7 +2030,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         return;
       }
       decide(event, "injected", null);
-      if (periodMessages !== null) periodMessages.push({ path: event.path, from: event.from, token: tokenOf(event.path) });
+      const token = tokenOf(event.path);
+      if (!receipts.has(token)) unreported.set(token, { path: event.path, from: event.from });
+      if (periodMessages !== null) periodMessages.push({ path: event.path, from: event.from, token });
     };
     // Injects one role message: the text as it is, followed by Enter (core docs/spec/agent-roles.md#change-message).
     const deliverRole = async (entry) => {
@@ -2058,6 +2066,29 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         confirm(fingerprint);
       }
     };
+    // Injects the request of a missing report (core docs/spec/messaging.md#missing-report) unless the receipt of its token arrived after
+    // the report that queued it. Its decision is a record of kind report-request, with no file, and a refusal by the guard is its state.
+    const deliverRequest = async ({ token, from }) => {
+      const record = (state, reason) => runtime.log.info("messages.delivered", { kind: "report-request", seq: null, path: null, from: "soksak", state, reason });
+      if (receipts.has(token)) {
+        record("skipped", "a receipt of the token arrived");
+        return;
+      }
+      const folder = `${messagesStatus.folder.slice(0, messagesStatus.folder.lastIndexOf("/") + 1)}${from}`;
+      const text = `[soksak request] Message ${token} has no report yet. Report its result with sok message send --reply ${folder} --answers ${token} "<report>". This request is from the application, not input from the person.`;
+      const refused = await submitLine("terminal.messages.request", text);
+      if (refused === null) {
+        record("delivered", null);
+        return;
+      }
+      if (refused.error === "guardRefused") {
+        record("refused", `guardRefused: ${refused.rule}: ${refused.reason}`);
+        return;
+      }
+      const cause = typeof refused.reason === "string" ? `${refused.error}: ${refused.reason}` : String(refused.error);
+      setError("messages", `terminal.messages: ${folder}: ${cause}`);
+      record("refused", cause);
+    };
     // Sends one notice per message of the period to its sender through the sidecar (core docs/spec/messaging.md#completion-notice).
     // The title is the text of the receiving tab, and the report flag is set when the receipt of the token arrived.
     const sendNotices = (state, messages) => {
@@ -2083,6 +2114,17 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         const entry = roleOutbox.shift();
         delivering = true;
         deliverRole(entry).catch((error) => {
+          if (error.name !== "AbortError") setError("messages", error.message);
+        }).finally(() => {
+          delivering = false;
+          review();
+        });
+        return;
+      }
+      if (requestOutbox.length > 0 && holdOf() === null) {
+        const request = requestOutbox.shift();
+        delivering = true;
+        deliverRequest(request).catch((error) => {
           if (error.name !== "AbortError") setError("messages", error.message);
         }).finally(() => {
           delivering = false;
@@ -2167,6 +2209,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
           attached = registration;
           pending = [];
           last = null;
+          unreported.clear();
+          receipts.clear();
+          requestOutbox = [];
         }
         setMessages({ folder, registration, held, last });
         review();
@@ -2177,7 +2222,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         const token = tokenOf(body.path);
         if (token.startsWith(RECEIPT_PREFIX)) {
           // A receipt answers the report request of its token, so the page takes it and injects nothing (core docs/spec/messaging.md#report-request).
-          receipts.add(token.slice(RECEIPT_PREFIX.length));
+          const answered = token.slice(RECEIPT_PREFIX.length);
+          receipts.add(answered);
+          unreported.delete(answered);
           runtime.log.info("messages.receipt", { seq: body.seq, path: body.path, from: body.from });
           return;
         }
@@ -2191,6 +2238,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       programReport,
       // Opens a working period at the first working record and ends it at the first change to another state, when the notices of the
       // messages injected in the period are sent (core docs/spec/messaging.md#completion-notice).
+      // Each at-rest report of the program queues the request of a missing report for each injected message without a receipt.
+      requestsFor(next) {
+        if (!isAtRest(next)) return;
+        for (const [token, { from }] of unreported) requestOutbox.push({ token, from });
+        review();
+      },
       programChanged(next) {
         const working = next.records.some((record) => record.state === "working");
         if (working && periodMessages === null) periodMessages = [];
@@ -2826,7 +2879,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         readProgram();
         return;
       }
-      setProgramStatus(next);
+      setProgramStatus(next, change);
     } else if (body.event === "progress") {
       const { state, progress } = body;
       if (!Number.isInteger(state) || state < 0 || state > 4 ||
