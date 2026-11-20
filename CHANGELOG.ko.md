@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P191-5: page는 role이 pending인 동안 답이 없는 상태 보고마다 상한 없이 reread request를 보내고, 각 request의 횟수를 `plugin.terminal.messages.role.delivered`에 기록한다. 상태 `unconfirmed`와 그 error 표시를 제거했으므로, 확인되지 않은 role은 error를 표시하지 않고 page는 `pending`과 `ready` 상태만 가진다.
 - P189, P190-2, P193: terminal plugin에는 launch adapter가 없다. role을 가진 모든 program은 첫 message로 identity를 받으며, page는 주입할 때 `role-first` kind의 record `plugin.terminal.messages.role.delivered`를 쓰고, acceptance target은 Claude Code와 Codex에 대해 이 record를 기다린다. generation 1에는 더 이상 change message를 보내지 않으며, Claude Code와 Codex의 첫 role은 첫 message를 받는다. `hasLaunchAdapter`와 adapter 분기를 제거했다.
 - P190-2, P191-2: page는 status `core.tab.role.path`의 role file path로 role message를 보낸다. generation 1에서는 adapter가 없는 CLI의 첫 message를, 이후 generation마다 change message를 보낸다. idle 또는 done record가 있고 working, blocked, error record가 없는 not-busy program 보고마다 pending role의 reread request 하나를 세며, 그 request는 status의 fingerprint를 담는다. 세 번째 보고는 unconfirmed role을 error 표시로 보여준다. role message는 `role-pending`으로 보류되지 않는다. end-to-end 실행은 core F1006-5.2를 기다린다.
 - P189-1: page는 Claude Code와 Codex의 argument list를 더 이상 만들지 않는다. core가 argument list를 구성하므로 `claudeLaunch`, `codexLaunch`와 adapter table을 제거했다. `hasLaunchAdapter`는 adapter가 있는 두 CLI를 밝히고, `isAtRest`는 not-busy 보고를 판정한다.
