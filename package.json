@@ -33,7 +33,7 @@
     "test": "node --import ./test/fixtures/plugin-api/register.mjs --test test/"
   },
   "devDependencies": {
-    "@soksak/kit": "https://github.com/soksak-app/kit/releases/download/v0.0.14/soksak-kit-0.0.14.tgz",
+    "@soksak/kit": "https://github.com/soksak-app/kit/releases/download/v0.0.16/soksak-kit-0.0.16.tgz",
     "@soksak/plugin-api": "https://github.com/soksak-app/core/releases/download/v0.0.41/soksak-plugin-api-0.0.41.tgz",
     "@soksak/window-check": "https://github.com/soksak-app/core/releases/download/v0.0.42/soksak-window-check-0.0.42.tgz",
     "acorn": "^8.19.0",
