@@ -1,5 +1,6 @@
 # Changelog
 
+- P197: The page sends the completion notice request `messages.notice` at the end of each working period, one per sender; the request is registered and waits for core F1000-5.2 and F1000-5.5 (no behaviour change yet).
 - P196: The plugin pins the kit 0.0.16.
 - P191-7, P191-8, P191-9: A stale refusal of a line-match confirmation is recorded as `plugin.terminal.messages.role.stale` with the refused and the current fingerprint and is not an error; any other refusal still reaches the error display. The page's reread count is the one count of its record `plugin.terminal.messages.role.delivered`. The page rules are in `docs/spec/agent-roles.md`: the page adds no screen watch.
 - P191-4, P191-6: The page confirms its role from a screen row that holds the line `soksak role <fingerprint>`, matched by the row pattern of core `docs/spec/agent-roles.md#confirmation`: it sends `core.tab.role.confirm` through the view call `runtime.command.run` on the tab surface, once per fingerprint and generation, and a refused confirmation shows its text in the error display. The page names its states `pending` and `ready` and its reread count `requests`, as core F1006-1-1 names them.
