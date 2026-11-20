@@ -1,4 +1,5 @@
 import { shellQuotePath } from "@soksak/plugin-api";
+import { launchOf } from "./agent-role.js";
 import { applyScreenMessage, screenHash } from "@soksak/plugin-api/screen-hash";
 
 // 터미널 표면의 부팅과 동작을 처리한다.
@@ -1628,8 +1629,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 세션 열기는 크기를 보내지 않는다. 호스트가 네이티브 영역을 적용하며 보낸 configure만
   // 이미지와 PTY 크기의 권위 있는 입력이다.
   // 세션은 설정 shell 이 가리키는 셸을 연다(login 은 계정의 로그인 셸). 설정이 없으면 다른 셸로 대신하지 않는다.
-  const shell = settings.read().shell;
-  if (typeof shell !== "string" || shell.length === 0) throw new Error("terminal shell setting is missing");
+  // The start parameters of the tab name the program of the session (core docs/spec/agent-roles.md#start-parameters). Without a
+  // program the session opens the shell of the shell setting, and with a program the shell setting is not read.
+  const launch = launchOf(tab.params);
+  const shell = launch.program === null ? settings.read().shell : null;
+  if (launch.program === null && (typeof shell !== "string" || shell.length === 0)) throw new Error("terminal shell setting is missing");
+  const target = launch.program === null ? { shell } : { program: launch.program, args: launch.args };
   // 터미널에서 쪼갠 터미널은 그 터미널이 마지막으로 알린 디렉터리에서, 아니면 프로젝트 루트에서 시작한다.
   // 프로젝트가 없는 창에서는 홈 디렉터리에서 시작한다(docs/spec/terminal-runtime.md).
   // default: 분할 출처에 디렉터리가 없으면 프로젝트 루트, 프로젝트도 없으면 홈 디렉터리에서 연다.
@@ -1640,8 +1645,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 디렉터리(path null)는 기록을 지우므로 탭이 시작한 디렉터리로 돌아간다.
   let working = directory;
   const openSession = () => {
-    runtime.log.info("session.open", { shell, directory: working });
-    return terminal.send(id, { operation: "open", image: "view", shell,
+    runtime.log.info("session.open", { ...target, directory: working });
+    return terminal.send(id, { operation: "open", image: "view", ...target,
       ...(working === null ? {} : { directory: working }) });
   };
   const settingsPolicy = () => {

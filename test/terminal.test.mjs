@@ -847,6 +847,34 @@ test("a session opens the shell that the shell setting names", async () => {
   assert.deepEqual(open.body, { operation: "open", image: "view", shell: "login" });
 });
 
+test("a tab whose start parameters name a program opens that program with its arguments and no shell", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: createFakeExpose(),
+    tab: { title() {}, footer() {}, directory() {}, notify() {}, error() {},
+      params: { program: "/usr/bin/recorder", args: ["--flag", "value"], role: null } },
+    settings: { read: () => ({ ...SHELL_SETTINGS.read(), shell: "login" }), on: () => () => {} },
+    window: { TextEncoder },
+  });
+  const open = fakeSidecar.getMessages().find((message) => message.body.operation === "open");
+  assert.deepEqual(open.body, { operation: "open", image: "view", program: "/usr/bin/recorder", args: ["--flag", "value"] });
+});
+
+test("a tab whose parameters name arguments without a program does not open a session", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  await assert.rejects(startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: createFakeExpose(),
+    tab: { title() {}, footer() {}, directory() {}, notify() {}, error() {}, params: { args: ["x"] } },
+    settings: { read: () => ({ ...SHELL_SETTINGS.read(), shell: "login" }), on: () => () => {} },
+    window: { TextEncoder },
+  }), /args require program/);
+  assert.equal(fakeSidecar.getMessages().some((message) => message.body.operation === "open"), false);
+});
+
 test("a session without a shell setting is not opened", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();

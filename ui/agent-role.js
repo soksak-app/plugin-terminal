@@ -99,3 +99,29 @@ export function confirmationLine(line) {
   const match = /^soksak role ([0-9a-f]{16})$/.exec(line.trim());
   return match === null ? null : match[1];
 }
+
+const ROLE_IDENTIFIER = /^[a-z][a-z0-9-]*$/;
+const isText = (value) => typeof value === "string" && value !== "";
+
+/**
+ * The launch of a terminal tab from its start parameters `{program, args, role}` (core docs/spec/agent-roles.md#start-parameters).
+ * Absent parameters, or a null program, start the shell. Returns {program, args, role} with program null for the shell.
+ */
+export function launchOf(params) {
+  if (params !== null && params !== undefined && (typeof params !== "object" || Array.isArray(params))) {
+    throw new Error("tab parameters must be an object");
+  }
+  const { program: rawProgram = null, args: rawArgs = null, role: rawRole = null } = params ?? {};
+  if (rawArgs !== null && (!Array.isArray(rawArgs) || !rawArgs.every(isText))) {
+    throw new Error("launch args must be an array of texts");
+  }
+  const args = rawArgs ?? [];
+  if (rawProgram !== null && !isText(rawProgram)) throw new Error("launch program must be a non-empty text");
+  const program = rawProgram;
+  if (program === null && args.length > 0) throw new Error("args require program");
+  if (rawRole !== null && (typeof rawRole !== "string" || rawRole.length > 64 || !ROLE_IDENTIFIER.test(rawRole))) {
+    throw new Error(`invalid role identifier ${JSON.stringify(rawRole)}`);
+  }
+  if (program === null && rawRole !== null) throw new Error("role requires program");
+  return { program, args, role: rawRole };
+}

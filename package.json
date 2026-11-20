@@ -16,6 +16,7 @@
   "files": [
     "plugin.json",
     "diagnostics.json",
+    "ui/agent-role.js",
     "ui/terminal-diagnostics.js",
     "events.json",
     "ui/terminal.html",
