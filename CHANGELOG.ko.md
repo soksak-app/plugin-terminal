@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P184: 주입 message는 보낸 쪽을 보내는 tab의 tab name, 즉 `core.grid`의 `title`로 부르며, 그 program이 정한 제목으로 결코 부르지 않는다.
 - P183: `terminal.submit`은 text를 program이 bracketed paste mode를 켰을 때 bracket되는 paste로, Enter를 paste의 reply 뒤에, message를 주입하는 함수로 보내므로, 빠르게 입력된 text를 paste로 받는 program이 줄을 제출한다(`docs/spec/submit.md`).
 - P181: view context가 page에 view runtime의 status watch를 주므로, project window의 terminal이 mount되고 P180의 sender 제목을 위해 `core.grid`를 따른다.
 - P180: page가 registration에 도착한 각 message를 `[메시지 from <title>] <text>`의 paste와 Enter로 `seq` 순서에 따라 주입하고, program이 blocked이거나 notice가 있거나 사람이 조합하거나 입력하거나 session이 input을 쥔 동안 주입을 보류한다. `terminal.messages`는 `{folder, registration, held, last}`이며, record `plugin.terminal.messages.delivered`와 `plugin.terminal.messages.held`가 각 결정과 보류를 알린다(core `docs/spec/messaging.md#injected-message`).

@@ -1904,7 +1904,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     return entered.error !== undefined ? entered : null;
   };
   const createMessagesDelivery = () => {
-    // The last value of core.grid, whose tabs give the shown title of a sender.
+    // The last value of core.grid, whose tabs give the tab name of a sender: its `title`, never a title that a program of the tab set,
+    // which core.grid reports as `label` (core docs/spec/messaging.md#injected-message).
     let grid = null;
     const stopGrid = runtime.status.watch("core.grid", (value) => { grid = value; });
     closing.addEventListener("abort", stopGrid, { once: true });
@@ -1962,7 +1963,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         pending.unshift(event);
         return;
       }
-      const refused = await submitLine("terminal.messages.inject", `[메시지 from ${tab.label ?? tab.title}] ${message.text}`);
+      const refused = await submitLine("terminal.messages.inject", `[메시지 from ${tab.title}] ${message.text}`);
       if (refused !== null) {
         refusedBy(event, refused);
         return;
