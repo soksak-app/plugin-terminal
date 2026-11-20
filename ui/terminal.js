@@ -426,19 +426,20 @@ const ACTIVITY_ORDER = ["idle", "running", "failed", "attention"];
 const RECORD_LEVELS = { blocked: "attention", error: "failed", working: "running", idle: "idle", done: "idle" };
 /**
  * Returns the core activity level of a terminal, or null for no activity (core docs/spec/terminal-state.md#activity): the
- * highest level of the records of its program, else attention for a notice, else the level of its state, where an exited
- * command reports a failure only with a nonzero exit code and `failed` is whether the last command failed, which lasts until
- * the next command starts.
+ * highest level of the records of its program, else attention for a notice, else the level of its state, where a nonzero
+ * exit code of `exited` and of the `idle` after it is the failure of the last command, which lasts until the next command
+ * starts.
  */
-function terminalActivity({ state, exit }, { records, notice }, failed) {
+function terminalActivity({ state, exit }, { records, notice }) {
   if (records.length > 0) {
     return records.map(({ state: record }) => RECORD_LEVELS[record])
       .reduce((high, level) => (ACTIVITY_ORDER.indexOf(level) > ACTIVITY_ORDER.indexOf(high) ? level : high));
   }
   if (notice) return "attention";
+  const failed = exit !== null && exit !== 0;
   if (state === "idle") return failed ? "failed" : "idle";
   if (state === "running") return "running";
-  if (state === "exited" && exit !== null && exit !== 0) return "failed";
+  if (state === "exited" && failed) return "failed";
   return null;
 }
 const PROGRAM_RECORD_KEYS = ["id", "state", "kind", "progress", "app", "title", "msg"];
@@ -471,8 +472,9 @@ function terminalStateProblem({ state, source, sequence, exit }, change) {
   if (!TERMINAL_STATES.has(state)) return "state";
   if (!TERMINAL_STATE_SOURCES.has(source)) return "source";
   if (sequence === 0) return "sequence";
-  if (state === "exited") return exit === null || (Number.isInteger(exit) && exit >= 0 && exit <= 255) ? null : "exit";
-  return exit === null ? null : "exit";
+  // `exited` and the `idle` after it carry the exit code of the last finished command; `running` carries none.
+  if (state === "running") return exit === null ? null : "exit";
+  return exit === null || (Number.isInteger(exit) && exit >= 0 && exit <= 255) ? null : "exit";
 }
 
 export async function startTerminal({ id, view, attachImage, detachRegions, sidecar, expose, theme,
@@ -569,15 +571,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // read, then the read reply and each change event.
   const PROGRAM_BEFORE_READ = Object.freeze({ records: [], notice: false, sequence: 0 });
   let programStatus = PROGRAM_BEFORE_READ;
-  // Whether the last command of the session exited with a nonzero code; the next running state ends it.
-  let lastCommandFailed = false;
-  const activity = () => terminalActivity(terminalState, programStatus, lastCommandFailed);
+  const activity = () => terminalActivity(terminalState, programStatus);
   // Sets the terminal state and notifies the watchers of the state, and of the activity when its level changes.
   const setTerminalState = (next) => {
     const before = activity();
     terminalState = next;
-    if (next.state === "running" || next.state === null) lastCommandFailed = false;
-    if (next.state === "exited") lastCommandFailed = next.exit !== null && next.exit !== 0;
     changed("state");
     if (activity() !== before) changed("activity");
   };

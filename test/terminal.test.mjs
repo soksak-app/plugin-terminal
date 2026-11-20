@@ -6888,7 +6888,8 @@ const INVALID_STATE_EVENTS = [
   ["an unknown state", { event: "shell.state", from: null, to: "busy", source: "osc133", sequence: 1, exit: null }],
   ["a sequence of zero", { event: "shell.state", from: null, to: "idle", source: "osc133", sequence: 0, exit: null }],
   ["a missing exit", { event: "shell.state", from: null, to: "exited", source: "osc133", sequence: 1 }],
-  ["an exit of a state other than exited", { event: "shell.state", from: null, to: "idle", source: "osc133", sequence: 1, exit: 0 }],
+  ["an exit of the running state", { event: "shell.state", from: null, to: "running", source: "osc133", sequence: 1, exit: 0 }],
+  ["an exit of idle above 255", { event: "shell.state", from: null, to: "idle", source: "osc133", sequence: 1, exit: 256 }],
   ["an exit above 255", { event: "shell.state", from: null, to: "exited", source: "osc133", sequence: 1, exit: 256 }],
   ["an unknown source", { event: "shell.state", from: null, to: "idle", source: "screen", sequence: 1, exit: null }],
   ["a read reply with a state and no source", { event: "shell.state.current", state: "idle", source: null, sequence: 1, exit: null }],
@@ -6907,12 +6908,13 @@ for (const [name, event] of INVALID_STATE_EVENTS) {
 }
 
 // The activity of a terminal (core docs/spec/terminal-state.md#activity): the core level that the plugin derives from
-// its state and exit code. A failure of the last command lasts until the next command starts, so the prompt start that a
-// shell sends right after the finished mark keeps it.
-function expectedActivity({ state, exit }, failed) {
+// its state and exit code. The idle state after a finished command keeps the exit code of that command until the next
+// command starts, so the prompt start that a shell sends right after the finished mark keeps the failure.
+function expectedActivity({ state, exit }) {
+  const failed = exit !== null && exit !== 0;
   if (state === "idle") return failed ? "failed" : "idle";
   if (state === "running") return "running";
-  if (state === "exited" && exit !== null && exit !== 0) return "failed";
+  if (state === "exited" && failed) return "failed";
   return null;
 }
 
@@ -6927,16 +6929,66 @@ for (const { name, events } of STATE_CASES) {
   test(`terminal.activity follows the state and the exit code: ${name}`, { timeout: 10000 }, async () => {
     const terminal = await activityTerminal();
     assert.equal(terminal.activity(), null, "the activity before the first change");
-    let failed = false;
     for (const change of events) {
       terminal.emit({ event: "shell.state", ...change });
-      if (change.to === "running") failed = false;
-      if (change.to === "exited") failed = change.exit !== null && change.exit !== 0;
-      assert.equal(terminal.activity(), expectedActivity({ state: change.to, exit: change.exit }, failed),
+      assert.equal(terminal.activity(), expectedActivity({ state: change.to, exit: change.exit }),
         `the activity after the change ${change.sequence}`);
     }
   });
 }
+
+// A page that attaches to a session after its command reads the state, which carries the exit code of the last command,
+// so the page derives the same activity as a page that saw the change events.
+for (const { name, read } of STATE_CASES) {
+  test(`terminal.activity of a page that reads the state: ${name}`, { timeout: 10000 }, async () => {
+    const terminal = await activityTerminal();
+    await terminal.sidecar.untilMessage((body) => body.operation === "shell.state.read");
+    terminal.emit({ event: "shell.state.current", ...read });
+    assert.equal(terminal.activity(), expectedActivity(read), "the activity after the read");
+  });
+}
+
+// A page that attaches to a persistent session that it did not open, as after a reload or the next mount of its tab, and a
+// page whose sidecar connection is made again, read the state and the program status of the session, and a page that
+// attaches after a failed command shows the activity that the page before it showed (core
+// docs/spec/terminal-state.md#state-read).
+test("a page that attaches to a session after a failed command reads it and shows failed", { timeout: 10000 }, async () => {
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function, sidecar, expose,
+    window: { TextEncoder },
+  });
+  const reads = () => sidecar.getMessages().map(({ body }) => body.operation)
+    .filter((operation) => operation === "shell.state.read" || operation === "program.status.read");
+  assert.deepEqual(reads(), [], "a page reads nothing before the session is attached");
+  sidecar.triggerEvent("test-session", { event: "session", sessionId: "retained-session" });
+  await sidecar.until(() => reads().length === 2);
+  assert.deepEqual(reads(), ["shell.state.read", "program.status.read"], "the attached page reads the state and the program status");
+  sidecar.triggerEvent("test-session", { event: "shell.state.current", state: "idle", source: "osc133", sequence: 3, exit: 1 });
+  sidecar.triggerEvent("test-session", { event: "program.status.current", records: [], notice: false, sequence: 0 });
+  assert.equal(expose.getStatus("terminal.activity").readFn(), "failed", "the activity of the attached page");
+  assert.equal(expose.getStatus("terminal.session").readFn().error, undefined, "the read replies reported an error");
+});
+
+test("a page whose sidecar connection is made again reads the state and the program status again", { timeout: 10000 }, async () => {
+  const terminal = await activityTerminal();
+  const reads = () => terminal.sidecar.getMessages().map(({ body }) => body.operation)
+    .filter((operation) => operation === "shell.state.read" || operation === "program.status.read");
+  await terminal.sidecar.until(() => reads().length === 2);
+  terminal.emit({ event: "shell.state.current", state: "running", source: "osc133", sequence: 1, exit: null });
+  terminal.emit({ event: "program.status.current", records: [], notice: false, sequence: 0 });
+  assert.equal(terminal.activity(), "running", "the activity before the connection ends");
+  terminal.emit({ event: "connection", connected: false });
+  terminal.emit({ event: "connection", connected: true });
+  terminal.emit({ event: "session", sessionId: "s1" });
+  await terminal.sidecar.until(() => reads().length === 4);
+  assert.deepEqual(reads().slice(2), ["shell.state.read", "program.status.read"], "the reads after the connection is made again");
+  terminal.emit({ event: "shell.state.current", state: "idle", source: "osc133", sequence: 3, exit: 2 });
+  terminal.emit({ event: "program.status.current", records: [], notice: false, sequence: 0 });
+  assert.equal(terminal.activity(), "failed", "the activity after the read of the session");
+  assert.equal(terminal.error(), undefined, "the read replies reported an error");
+});
 
 test("terminal.activity notifies its watchers only when the level changes", { timeout: 10000 }, async () => {
   const terminal = await activityTerminal();
@@ -6945,7 +6997,7 @@ test("terminal.activity notifies its watchers only when the level changes", { ti
   terminal.emit({ event: "shell.state", from: null, to: "idle", source: "osc133", sequence: 1, exit: null });
   terminal.emit({ event: "shell.state", from: "idle", to: "running", source: "osc133", sequence: 2, exit: null });
   terminal.emit({ event: "shell.state", from: "running", to: "exited", source: "osc133", sequence: 3, exit: 2 });
-  terminal.emit({ event: "shell.state", from: "exited", to: "idle", source: "osc133", sequence: 4, exit: null });
+  terminal.emit({ event: "shell.state", from: "exited", to: "idle", source: "osc133", sequence: 4, exit: 2 });
   terminal.emit({ event: "shell.state", from: "idle", to: "running", source: "osc133", sequence: 5, exit: null });
   terminal.emit({ event: "shell.state", from: "running", to: "exited", source: "osc133", sequence: 6, exit: 0 });
   terminal.emit({ event: "shell.state.current", state: "exited", source: "osc133", sequence: 6, exit: 0 });
