@@ -1,5 +1,7 @@
 # 변경 기록
 
+- P190-2, P191-2: page는 status `core.tab.role.path`의 role file path로 role message를 보낸다. generation 1에서는 adapter가 없는 CLI의 첫 message를, 이후 generation마다 change message를 보낸다. idle 또는 done record가 있고 working, blocked, error record가 없는 not-busy program 보고마다 pending role의 reread request 하나를 세며, 그 request는 status의 fingerprint를 담는다. 세 번째 보고는 unconfirmed role을 error 표시로 보여준다. role message는 `role-pending`으로 보류되지 않는다. end-to-end 실행은 core F1006-5.2를 기다린다.
+- P189-1: page는 Claude Code와 Codex의 argument list를 더 이상 만들지 않는다. core가 argument list를 구성하므로 `claudeLaunch`, `codexLaunch`와 adapter table을 제거했다. `hasLaunchAdapter`는 adapter가 있는 두 CLI를 밝히고, `isAtRest`는 not-busy 보고를 판정한다.
 - P191-3: terminal tab은 role이 pending 또는 unconfirmed인 동안 work message를 보류 이유 `role-pending`으로 보류하고, role이 ready가 되면 순서대로 주입한다(`docs/spec/messaging.md#hold-for-the-person`).
 - P192: terminal tab은 시작 parameter가 이름 붙인 program을 그 argument와 함께 shell 없이 연다. program 없는 argument나 role, 잘못된 program, argument, role 값은 요청 전에 거부한다(core `docs/spec/agent-roles.md#start-parameters`).
 - P191-1: page는 고정된 문구로 change message와 reread request를 만들고, pending role의 not-busy 보고마다 reread request를 센다(첫 번째와 두 번째 request, 그 뒤 request 없이 `unconfirmed`). pending 또는 unconfirmed role의 work message를 보류하며, 양 끝 공백을 뺀 `soksak role <fingerprint>` 줄을 일치시킨다.
