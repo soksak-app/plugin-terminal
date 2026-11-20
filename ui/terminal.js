@@ -1903,9 +1903,16 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     const entered = await answeredInput(name, { type: "input", actions: [ENTER], preedit: compose });
     return entered.error !== undefined ? entered : null;
   };
+  // The sender of an injected message is the text that its tab shows when the message is injected, its label or its name, on one
+  // line and cut to 40 characters, because a title that a program sets, such as the whole first prompt of an agent, made the prefix
+  // read as part of the input of the person (core docs/spec/messaging.md#injected-message).
+  const SENDER_LIMIT = 40;
+  const senderName = (tab) => {
+    const shown = [...(tab.label ?? tab.title).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, "")];
+    return shown.length > SENDER_LIMIT ? `${shown.slice(0, SENDER_LIMIT - 1).join("")}…` : shown.join("");
+  };
   const createMessagesDelivery = () => {
-    // The last value of core.grid, whose tabs give the tab name of a sender: its `title`, never a title that a program of the tab set,
-    // which core.grid reports as `label` (core docs/spec/messaging.md#injected-message).
+    // The last value of core.grid, whose tabs give the shown text of a sender (core docs/spec/messaging.md#injected-message).
     let grid = null;
     const stopGrid = runtime.status.watch("core.grid", (value) => { grid = value; });
     closing.addEventListener("abort", stopGrid, { once: true });
@@ -1963,7 +1970,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         pending.unshift(event);
         return;
       }
-      const refused = await submitLine("terminal.messages.inject", `[메시지 from ${tab.title}] ${message.text}`);
+      const refused = await submitLine("terminal.messages.inject", `[메시지 from ${senderName(tab)}] ${message.text}`);
       if (refused !== null) {
         refusedBy(event, refused);
         return;

@@ -1,5 +1,6 @@
 # Changelog
 
+- P185: An injected message names its sender by the text that the sending tab shows at the injection, its label or its name, on one line and cut to 40 characters.
 - P184: An injected message names its sender by the tab name of the sending tab, its `title` in `core.grid`, and never by the title that its program set.
 - P183: `terminal.submit` sends its text as a paste, bracketed when the program enabled bracketed paste mode, and Enter after the reply of the paste, through the function that injects a message, so a program that takes fast typed text as a paste submits the line (`docs/spec/submit.md`).
 - P181: The view context gives the page the status watch of the view runtime, so a terminal of a project window mounts and follows `core.grid` for the sender titles of P180.

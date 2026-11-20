@@ -7269,7 +7269,7 @@ test("file events are known events, and the close of the registration resets ter
 // The injection of the messages (core docs/spec/messaging.md#injected-message): the page injects the message of each created or
 // modified file event as a paste of `[메시지 from <title>] <text>` and Enter, in increasing seq and one at a time, holds it by the
 // reasons of the hold in their order, and reports the delivery in terminal.messages with the records of the event log.
-// A title that a program of the sending tab set (OSC 0/2), such as the first prompt of an agent, which the tab name replaces.
+// A title that a program of the sending tab set (OSC 0/2), such as the first prompt of an agent, which the injection cuts to 40 characters.
 const LONG_PROGRAM_TITLE = "너는 작업자 codex 이다. 현재 폴더에서 지휘자와 함께 브라우저 게임을 만든다 | demo-game";
 const SENDER_GRID = { cards: [{ tabs: [{ id: "s2", plugin: "terminal", label: null, title: "sender" }, { id: "s3", plugin: "terminal", label: LONG_PROGRAM_TITLE, title: "탭 2" }] }] };
 const BLOCKED = { id: null, state: "blocked", kind: "permission", progress: null, app: "agent", title: null, msg: "Run the tests?" };
@@ -7308,6 +7308,22 @@ async function deliveryTerminal(options) {
   return { ...terminal, emit, arrive, answerRead, untilMessages, injected, input };
 }
 
+// The sender is the text that the tab of the sender shows when the message is injected: its label, the title that its surface reported,
+// on one line, or its name (core docs/spec/messaging.md#injected-message).
+test("a sender whose tab shows a label is injected with the label on one line, and a renamed label at the next injection", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  const labelled = (label) => ({ cards: [{ tabs: [{ id: "s2", plugin: "terminal", label, title: "탭 1" }] }] });
+  terminal.grid(labelled("빌드\u0007 작업\n중"));
+  terminal.arrive(1);
+  await terminal.answerRead(1);
+  await terminal.untilMessages((value) => value?.last?.seq === 1);
+  terminal.grid(labelled("새 이름"));
+  terminal.arrive(2);
+  await terminal.answerRead(2);
+  await terminal.untilMessages((value) => value?.last?.seq === 2);
+  assert.deepEqual(terminal.injected(), ["[메시지 from 빌드 작업중] text 1", "Enter", "[메시지 from 새 이름] text 2", "Enter"]);
+});
+
 test("a created message is injected as the paste of its sender title and text and then Enter, and is the last delivery", { timeout: 10000 }, async () => {
   const terminal = await deliveryTerminal();
   terminal.arrive(1);
@@ -7321,7 +7337,7 @@ test("a created message is injected as the paste of its sender title and text an
   assert.deepEqual(terminal.tabErrors(), []);
 });
 
-test("the sender of an injected message is the tab name of the sending tab, never a title that its program set, and the messages are injected one at a time in increasing seq", { timeout: 10000 }, async () => {
+test("the sender of an injected message is the shown text of the sending tab cut to 40 characters, and the messages are injected one at a time in increasing seq", { timeout: 10000 }, async () => {
   const terminal = await deliveryTerminal();
   terminal.arrive(1, "s3");
   terminal.arrive(2, "s2");
@@ -7330,7 +7346,7 @@ test("the sender of an injected message is the tab name of the sending tab, neve
   await terminal.answerRead(1, [{ seq: 1, path: "s3.t1.txt", text: "text 1", from: "s3" }]);
   await terminal.answerRead(2);
   await terminal.untilMessages((value) => value?.last?.seq === 2);
-  assert.deepEqual(terminal.injected(), ["[메시지 from 탭 2] text 1", "Enter", "[메시지 from sender] text 2", "Enter"]);
+  assert.deepEqual(terminal.injected(), ["[메시지 from 너는 작업자 codex 이다. 현재 폴더에서 지휘자와 함께 브라우저 게…] text 1", "Enter", "[메시지 from sender] text 2", "Enter"]);
 });
 
 test("a message of a sender without a tab is refused, and a removed message is skipped, without input", { timeout: 10000 }, async () => {
