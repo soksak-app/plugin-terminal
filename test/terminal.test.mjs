@@ -6412,10 +6412,27 @@ test("an error of applyScreenMessage is written to the log as an error of the sc
 /** The event log that keeps each record as [event, fields, level], with the fields copied as JSON. */
 function capturedLog() {
   const records = [];
+  // The checks of the waits for records, each run when a record is written.
+  let waiters = [];
+  const write = (event, fields, level) => {
+    records.push([event, JSON.parse(JSON.stringify(typeof fields === "function" ? fields() : fields)), level]);
+    const checks = waiters;
+    waiters = [];
+    for (const check of checks) check();
+  };
   const log = Object.fromEntries(["error", "warn", "info", "debug", "trace"].map((level) => [level,
-    (event, fields) => records.push([event, JSON.parse(JSON.stringify(typeof fields === "function" ? fields() : fields)), level])]));
+    (event, fields) => write(event, fields, level)]));
   const levels = () => ({ lifecycle: "trace", input: "trace", call: "trace", io: "trace", frame: "trace" });
-  return { records, runtime: { log: { ...log, levels } } };
+  // Resolves with the fields of the first record of the event that the predicate accepts, once the page writes it.
+  const untilRecord = (event, accepts) => new Promise((resolve) => {
+    const check = () => {
+      const found = records.find(([name, fields]) => name === event && accepts(fields));
+      if (found) resolve(found[1]);
+      else waiters.push(check);
+    };
+    check();
+  });
+  return { records, untilRecord, runtime: { log: { ...log, levels } } };
 }
 
 const pageOptions = (sidecar = createFakeSidecar()) => ({
@@ -7525,8 +7542,8 @@ test("a reread request follows each report at rest while the role is pending, an
   t.role(roleStatus({ generation: 1, state: "ready", seq: 2 }));
   t.emit({ event: "program.status", records: [IDLE], notice: false, sequence: 5 });
   assert.equal(t.injected().length, 10, "a ready role sends no request");
-  // The record of the last injection is written when its reply arrives, which the fake sidecar delivers on a later task.
-  await new Promise((resolve) => setImmediate(resolve));
+  // The record of the last injection is written when its reply arrives; the wait ends with that record.
+  await t.log.untilRecord("messages.role.delivered", (fields) => fields.requests === 4);
   assert.deepEqual(records(t.log, "messages.role.delivered").map(([fields]) => fields), [
     { kind: "role-first" },
     { kind: "role-reread", requests: 1 },
@@ -7535,6 +7552,27 @@ test("a reread request follows each report at rest while the role is pending, an
     { kind: "role-reread", requests: 4 },
   ], "each reread request is recorded with its count");
   assert.deepEqual(t.tabErrors(), [], "a pending role without confirmation shows no error");
+});
+
+test("a wrong confirmation keeps the role pending, and the next report at rest sends a reread request", { timeout: 10000 }, async () => {
+  const t = await deliveryTerminal({ params: { program: "claude", args: [], role: "reviewer" } });
+  t.emit({ event: "program.status.current", records: [], notice: false, sequence: 0 });
+  t.role(roleStatus({ generation: 1, seq: 1 }));
+  await t.sidecar.until(() => t.injected().length === 2);
+  t.emit({ event: "program.status", records: [IDLE], notice: false, sequence: 1 });
+  await t.sidecar.until(() => t.injected().length === 4);
+  // The answer carried another fingerprint: core keeps the role pending, with a new seq and the fingerprint of the file.
+  t.role(roleStatus({ generation: 1, state: "pending", seq: 2 }));
+  t.emit({ event: "program.status", records: [IDLE], notice: false, sequence: 2 });
+  await t.sidecar.until(() => t.injected().length === 6);
+  assert.equal(t.injected()[4], rereadRequest(ROLE_FILE_PATH, ROLE_FINGERPRINT), "the request names the fingerprint of the file");
+  await t.log.untilRecord("messages.role.delivered", (fields) => fields.requests === 2);
+  assert.deepEqual(records(t.log, "messages.role.delivered").map(([fields]) => fields), [
+    { kind: "role-first" },
+    { kind: "role-reread", requests: 1 },
+    { kind: "role-reread", requests: 2 },
+  ]);
+  assert.deepEqual(t.tabErrors(), []);
 });
 
 test("a file event of another registration and a removal inject nothing", { timeout: 10000 }, async () => {
