@@ -1,5 +1,5 @@
 # terminal plugin repository 의 test 와 pack(docs/features.md). pack 은 pnpm pack 으로 release 를 쓴다.
-.PHONY: install test test-app check check-manifest pack check-candidate-install check-push install-hooks
+.PHONY: install test test-app check check-manifest pack check-candidate-install check-push install-hooks test-app-agent-role
 
 # The installation stage (core docs/spec/plugins.md#repositories): it installs the locked dependencies; the tests, checks and packs consume them without installing.
 install:
@@ -14,6 +14,12 @@ test:
 # no workflow runs it.
 test-app:
 	pnpm exec sok-test-app
+
+# test-app-agent-role runs the acceptance of the agent roles (acceptance/agent-role.test.mjs): the real Claude Code and Codex in tabs
+# that core.layout.open opens with a role, judged by the status core.tab.role. It needs a display and a person's computer and runs
+# only when the person runs it; `make test-app` does not run it.
+test-app-agent-role:
+	pnpm exec sok-test-app acceptance/agent-role.test.mjs
 
 # check runs check-manifest and the checks of the kit releases that package.json pins: sok-check events counts the records missing
 # from the sources and matches events.json with the emit sites, and sok-check docs checks the records. The registry check compares

@@ -50,3 +50,10 @@ test("make test-app runs the window checks of the published core application and
     assert.doesNotMatch(readFileSync(path.join(folder, file), "utf8"), /test-app|sok-test-app/, `${file} runs the window checks`);
   }
 });
+
+test("make test-app-agent-role runs only the agent role acceptance, outside the window checks of make test-app", { timeout: 5000 }, () => {
+  const output = execFileSync("make", ["-n", "test-app-agent-role"], { cwd: ROOT, encoding: "utf8" });
+  assert.equal(output.trim(), "pnpm exec sok-test-app acceptance/agent-role.test.mjs");
+  assert.equal(existsSync(path.join(ROOT, "acceptance", "agent-role.test.mjs")), true);
+  assert.equal(existsSync(path.join(ROOT, "e2e", "agent-role.test.mjs")), false, "the acceptance is not an e2e check of make test-app");
+});
