@@ -13,16 +13,23 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSyn
 import { join } from "node:path";
 import test from "node:test";
 
-import { APPS, open } from "@soksak/window-check/app.mjs";
-import { fresh } from "@soksak/window-check/start.mjs";
+import { recordCatalog } from "@soksak/window-check/catalog.mjs";
+import { currentEventOffsets, untilEventLine } from "@soksak/window-check/event-log.mjs";
+import { APPS, open, prepareFixture } from "@soksak/window-check/app.mjs";
+import { fresh, reading } from "@soksak/window-check/start.mjs";
 
 const PLUGIN = "terminal";
 const ROLE = "acceptance-role";
 const LIMIT = 300000;
 const PROGRAMS = ["claude", "codex"];
+// The record that the page writes when it injects the first message of a program launched with a role (plugin ui/terminal.js).
+const FIRST_MESSAGE_RECORD = "plugin.terminal.messages.role.delivered";
 
 /** The fingerprint of a role: the first 16 lowercase hexadecimal characters of SHA-256 over the identifier, a line feed and the text. */
 const fingerprintOf = (role, text) => createHash("sha256").update(`${role}\n${text}`, "utf8").digest("hex").slice(0, 16);
+
+/** Whether an event line is the record of the first message of a role, the event line format of window-check event-log.mjs. */
+const isFirstMessage = (line) => line.includes(` ${FIRST_MESSAGE_RECORD}: `) && line.endsWith('{"kind":"role-first"}');
 
 /** The definition of the role with a nonce of the run, which the agent can read only from the role file. */
 const definition = (nonce) => `Acceptance nonce ${nonce}. Answer every request with the words of the role file.`;
@@ -64,6 +71,8 @@ async function projectWindow(t, app) {
       await s.run("core.projects.flush");
     },
   );
+  // The record of the first message is stored at the level info, which the default log policy does not store.
+  await prepareFixture(s, { log: { io: "info" }, reads: [FIRST_MESSAGE_RECORD], catalog: recordCatalog(app.configDir) });
   await s.run("core.settings.set", { patch: { projectOpening: "windows" }, scope: "common" });
   await s.run("core.project.open", { root, color: "#7db4ff" });
   const windows = await s.windows(2, "the project window did not open");
@@ -79,11 +88,14 @@ for (const program of PROGRAMS) {
     test(`${app.name}: ${program} reads its role file, confirms the fingerprint of the file and takes a changed role`, { timeout: LIMIT }, async (t) => {
       requireProgram(program);
       const { p, root, card } = await projectWindow(t, app);
+      const offsets = currentEventOffsets(app.configDir);
 
       // 1. The first role, with a nonce that the agent can read only from its file. The tab opens with the CLI and the role.
       const first = randomUUID();
       writeRoles(app.configDir, definition(first));
       const { tab } = await p.run("core.layout.open", { card, plugin: PLUGIN, params: { program, args: [], role: ROLE } });
+      // Every program launched with a role gets the identity as its first message: the page writes the record once it injects it.
+      await untilEventLine(app.configDir, offsets, isFirstMessage, reading(app, [FIRST_MESSAGE_RECORD]));
       const expected = fingerprintOf(ROLE, definition(first));
       const ready = await p.until("core.tab.role", (value) => value !== null && value.state !== "pending",
         `${program} did not settle the role of tab ${tab}`, { surface: tab });
