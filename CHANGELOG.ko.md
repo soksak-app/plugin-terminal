@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P202: 전달의 한계는 `decided` 항목뿐이다. 요청과 working 기간의 notice는 항목에서 얻으며, 항목이 `decided`를 떠나면 요청을 멈추고 `plugin.terminal.messages.dropped`를 쓴다. 검증: `test/terminal.test.mjs`의 한계 test(Red 뒤 Green)와 전체 suite.
 - P201: 영수증은 그 token의 decided 항목을 갱신하고 `reported`를 설정한다. 항목이 없는 token의 영수증은 무시하고 `plugin.terminal.messages.receipt.ignored`로 기록한다. 검증: `test/terminal.test.mjs`의 영수증 test(Red 뒤 Green)와 전체 suite.
 - P199: `terminal.messages`는 `decided`(registration의 최근 message 64개와 상태 `held`, `delivered`, `reported`, `refused`, `skipped`)와 `dropped`를 가지며, `last`는 종류를 밝힌다. 주입 상태는 spec의 이름인 `delivered`이며, receipt는 `reported`를 설정한다. 검증: `test/terminal.test.mjs`의 전달 상태 test(Red 뒤 Green), 갱신한 status와 manifest 기대값, 전체 suite.
 - P198: 프로그램이 쉬는 보고(`done` 또는 `idle`)마다, 페이지는 receipt가 없는 주입 message마다 보고 요청을 대기열에 넣고 hold와 guard를 거쳐 주입한다. 요청은 종류 `report-request`로 기록하며, 보고 뒤에 receipt가 도착하면 건너뛴다. 검증: `test/terminal.test.mjs`의 `at-rest report`와 `report-request` test 세 개(Red 뒤 Green)와 전체 suite.

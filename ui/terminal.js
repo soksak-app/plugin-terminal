@@ -1970,14 +1970,15 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     let last = null;
     // The registration of the waiting messages and of the last decision.
     let attached = null;
-    // The messages that the page injected in the working period of the program, as {path, from, token}, or null outside a working
-    // period (core docs/spec/messaging.md#completion-notice).
-    let periodMessages = null;
-    // The injected messages without a receipt, by token as {path, from}, and the requests of a missing report that wait for the
-    // injection, as {token, from} in the order that the reports queued them (core docs/spec/messaging.md#missing-report).
-    const unreported = new Map();
+    // The working period of the program that the page injects messages in: the number of the period, or null outside a working period
+    // (core docs/spec/messaging.md#completion-notice). The periods are counted from 1 for each registration.
+    let period = null;
+    let periods = 0;
+    // The requests of a missing report that wait for the injection, as {seq, token, from} in the order that the reports queued them
+    // (core docs/spec/messaging.md#missing-report).
     let requestOutbox = [];
-    // The states of the messages of the registration, oldest first, as {seq, path, state, reason}, and the count of the entries that left.
+    // The states of the messages of the registration, oldest first, as {seq, path, from, state, reason, period}, and the count of the
+    // entries that left (core docs/spec/messaging.md#delivery). The entries are the only record of the messages awaiting a report.
     const decided = [];
     let dropped = 0;
     // The hold of the injection. The role messages (forRole) are not held by role-pending: the change message and the requests are
@@ -2005,10 +2006,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         entry.reason = reason;
         return;
       }
-      decided.push({ seq: event.seq, path: event.path, state, reason });
+      decided.push({ seq: event.seq, path: event.path, from: event.from, state, reason, period: null });
       if (decided.length > DECIDED_LIMIT) {
-        decided.shift();
+        const gone = decided.shift();
         dropped += 1;
+        // The entry that leaves decided stops its requests, so the loss is written as a record (core docs/spec/messaging.md#delivery).
+        runtime.log.info("messages.dropped", { path: gone.path, state: gone.state });
       }
     };
     // Decides the delivery of a message: the entry takes the state, reported when the receipt of its token arrived before it, and
@@ -2018,6 +2021,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       const earlier = decided.find((item) => item.seq === event.seq);
       const final = state === "delivered" && earlier?.state === "reported" ? "reported" : state;
       upsert(event, final, reason);
+      // The entry of a message delivered in a working period keeps the period, which its notice is sent for.
+      if (final === "delivered" && period !== null) decided.find((item) => item.seq === event.seq).period = period;
       last = { kind: "message", seq: event.seq, path: event.path, from: event.from, state: final, reason };
       runtime.log.info("messages.delivered", last);
       publish();
@@ -2059,8 +2064,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
       decide(event, "delivered", null);
       const token = tokenOf(event.path);
-      if (last.state === "delivered") unreported.set(token, { path: event.path, from: event.from });
-      if (periodMessages !== null) periodMessages.push({ path: event.path, from: event.from, token });
     };
     // Injects one role message: the text as it is, followed by Enter (core docs/spec/agent-roles.md#change-message).
     const deliverRole = async (entry) => {
@@ -2096,13 +2099,14 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     };
     // Injects the request of a missing report (core docs/spec/messaging.md#missing-report) unless the receipt of its token arrived after
     // the report that queued it. Its decision is a record of kind report-request, with no file, and a refusal by the guard is its state.
-    const deliverRequest = async ({ token, from }) => {
+    const deliverRequest = async (request) => {
+      const { token, from } = request;
       const record = (state, reason) => {
         last = { kind: "report-request", seq: null, path: null, from: "soksak", state, reason };
         runtime.log.info("messages.delivered", last);
         publish();
       };
-      const entry = decided.find((item) => tokenOf(item.path) === token);
+      const entry = decided.find((item) => item.seq === request.seq);
       if (entry?.state !== "delivered") {
         record("skipped", "the message is no longer awaiting its report");
         return;
@@ -2124,19 +2128,20 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     };
     // Sends one notice per message of the period to its sender through the sidecar (core docs/spec/messaging.md#completion-notice).
     // The title is the text of the receiving tab, and the report flag is set when the receipt of the token arrived.
-    const sendNotices = (state, messages) => {
+    const sendNotices = (state, entries) => {
       const self = (grid?.cards ?? []).flatMap((card) => card.tabs).find((item) => item.id === id);
       if (self === undefined) {
         setError("messages", `terminal.messages: notice: the tab ${id} is not in core.grid`);
         return;
       }
       const title = senderName(self);
-      for (const message of messages) {
-        const reported = decided.some((item) => tokenOf(item.path) === message.token && item.state === "reported");
-        messagesRequest("terminal.messages.notice", "messages.notice", { title, answers: message.token, from: message.from, state, reported },
-          (reply) => runtime.log.info("messages.notice", { path: reply.path, from: message.from, token: message.token, state, reported }),
+      for (const entry of entries) {
+        const token = tokenOf(entry.path);
+        const reported = entry.state === "reported";
+        messagesRequest("terminal.messages.notice", "messages.notice", { title, answers: token, from: entry.from, state, reported },
+          (reply) => runtime.log.info("messages.notice", { path: reply.path, from: entry.from, token, state, reported }),
           (error) => {
-            if (error.name !== "AbortError") setError("messages", `terminal.messages: ${message.path}: ${error.message}`);
+            if (error.name !== "AbortError") setError("messages", `terminal.messages: ${entry.path}: ${error.message}`);
           });
       }
     };
@@ -2244,7 +2249,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
           last = null;
           decided.length = 0;
           dropped = 0;
-          unreported.clear();
+          period = null;
           requestOutbox = [];
         }
         setMessages({ folder, registration, held, last, decided: snapshotDecided(), dropped });
@@ -2265,7 +2270,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
             return;
           }
           entry.state = "reported";
-          unreported.delete(answered);
           last = { kind: "receipt", seq: body.seq, path: body.path, from: body.from, state: "reported", reason: null };
           runtime.log.info("messages.delivered", last);
           publish();
@@ -2290,16 +2294,21 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       // Each at-rest report of the program queues the request of a missing report for each injected message without a receipt.
       requestsFor(next) {
         if (!isAtRest(next)) return;
-        for (const [token, { from }] of unreported) requestOutbox.push({ token, from });
+        for (const entry of decided) {
+          if (entry.state === "delivered") requestOutbox.push({ seq: entry.seq, token: tokenOf(entry.path), from: entry.from });
+        }
         review();
       },
       programChanged(next) {
         const working = next.records.some((record) => record.state === "working");
-        if (working && periodMessages === null) periodMessages = [];
-        if (working || periodMessages === null) return;
-        const ended = periodMessages;
-        periodMessages = null;
-        sendNotices(endStateOf(next.records), ended);
+        if (working && period === null) {
+          periods += 1;
+          period = periods;
+        }
+        if (working || period === null) return;
+        const ended = period;
+        period = null;
+        sendNotices(endStateOf(next.records), decided.filter((item) => item.period === ended));
       },
       screenChanged: confirmVisibleLines,
     };

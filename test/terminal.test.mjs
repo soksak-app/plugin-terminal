@@ -7837,3 +7837,51 @@ test("a receipt without a decided entry is ignored and recorded, and marks no me
   assert.deepEqual(terminal.status().decided, [{ path: "s2.t1.txt", state: "delivered", reason: null }],
     "the message of the ignored token is delivered, not reported");
 });
+
+// The bounds of the delivery (core docs/spec/messaging.md#delivery): the messages awaiting a report and the notices of a period are the
+// decided entries, so an entry that leaves decided stops its requests and its notice, and writes its dropped record.
+const deliverMessages = async (terminal, count) => {
+  for (let seq = 1; seq <= count; seq += 1) {
+    terminal.arrive(seq);
+    await terminal.answerRead(seq);
+    await terminal.untilMessages((value) => value?.last?.seq === seq);
+  }
+};
+// Lets the injection of the page run until the predicate holds, bounded by the number of turns.
+const settleUntil = async (holds) => { for (let turn = 0; turn < 5000 && !holds(); turn += 1) await new Promise((resolve) => setImmediate(resolve)); };
+
+test("an entry that leaves decided writes the dropped record with its path and state", { timeout: 20000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.grid(RECEIVER_GRID);
+  await deliverMessages(terminal, 65);
+  assert.deepEqual(records(terminal.log, "messages.dropped").map(([fields]) => fields), [{ path: "s2.t1.txt", state: "delivered" }],
+    "the entry of the first message left decided, so its record states the loss");
+  assert.equal(terminal.status().dropped, 1);
+  assert.equal(terminal.status().decided.length, 64);
+});
+
+test("a report requests only the messages whose entries are still in decided", { timeout: 20000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.grid(RECEIVER_GRID);
+  await deliverMessages(terminal, 65);
+  terminal.emit(programWith([programState("working")], 1));
+  terminal.emit(programWith([programState("done")], 2));
+  await settleUntil(() => requestsInjected(terminal).length >= 64);
+  await settle();
+  const requested = requestsInjected(terminal);
+  assert.equal(requested.length, 64, "one request for each entry that is still awaiting its report");
+  assert.ok(requested.every((text) => !text.includes("Message t1 ")), "the dropped message gets no request");
+  const requests = records(terminal.log, "messages.delivered").map(([fields]) => fields).filter((fields) => fields.kind === "report-request");
+  assert.deepEqual(requests.filter((fields) => fields.state !== "delivered"), [], "no request of a dropped message is queued, so none is recorded as skipped");
+});
+
+test("the notice of a period covers the messages that are still in decided", { timeout: 20000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.grid(RECEIVER_GRID);
+  terminal.emit(programWith([programState("working")], 1));
+  await deliverMessages(terminal, 65);
+  terminal.emit(programWith([programState("done")], 2));
+  const tokens = terminal.sent("messages.notice").map(({ answers }) => answers);
+  assert.equal(tokens.length, 64, "one notice for each entry that is still in decided");
+  assert.ok(!tokens.includes("t1"), "the entry that left decided gets no notice");
+});
