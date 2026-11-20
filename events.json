@@ -598,7 +598,10 @@
             "enum": [
               "message",
               "receipt",
-              "report-request"
+              "report-request",
+              "first",
+              "role-change",
+              "role-reread"
             ]
           },
           "seq": {
@@ -641,9 +644,9 @@
           "reason"
         ]
       },
-      "description": "The page decided the delivery of a message or a request (core docs/spec/messaging.md#delivery): kind is message for a file of the registration, receipt for a receipt, and report-request for a request of a missing report, which has seq and path null and from soksak; state is delivered, reported, refused or skipped; reason is null for delivered and the reason otherwise."
+      "description": "The page decided the delivery of a message, a receipt, a request of a missing report or a role message (core docs/spec/messaging.md#delivery): kind names the decision, seq and path are those of the file event and null for a kind without a file, from is the sender (soksak for a kind without a file), state is delivered, reported, refused or skipped, and reason is null for delivered and the reason otherwise."
     },
-    "plugin.terminal.messages.role.delivered": {
+    "plugin.terminal.messages.notice": {
       "layer": "plugin",
       "class": "io",
       "level": "info",
@@ -651,24 +654,84 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
-          "kind": {
+          "path": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          },
+          "state": {
             "type": "string",
             "enum": [
-              "role-first",
-              "role-change",
-              "role-reread"
+              "done",
+              "error",
+              "blocked",
+              "idle"
             ]
           },
-          "requests": {
-            "type": "integer",
-            "minimum": 1
+          "reported": {
+            "type": "boolean"
           }
         },
         "required": [
-          "kind"
+          "path",
+          "from",
+          "token",
+          "state",
+          "reported"
         ]
       },
-      "description": "The page injected a role message of its tab (core docs/spec/agent-roles.md): kind is role-first (the first message of a program launched with a role), role-change (the change message) or role-reread (a reread request); requests is the number of the reread request of the generation, sent with role-reread only. A refused injection is shown through the error display, not through this event."
+      "description": "The sidecar wrote the completion notice of a message of the registration (core docs/spec/messaging.md#completion-notice): path is the name of the notice, from the sender, token the token of the message, state the end state of the working period and reported the report flag."
+    },
+    "plugin.terminal.messages.receipt.ignored": {
+      "layer": "plugin",
+      "class": "io",
+      "level": "info",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "description": "A receipt whose token has no decided entry was ignored (core docs/spec/messaging.md#delivery): path is the path of the receipt file."
+    },
+    "plugin.terminal.messages.dropped": {
+      "layer": "plugin",
+      "class": "io",
+      "level": "info",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "held",
+              "delivered",
+              "reported",
+              "refused",
+              "skipped"
+            ]
+          }
+        },
+        "required": [
+          "path",
+          "state"
+        ]
+      },
+      "description": "An entry left the decided list of the registration, so its report requests stop and dropped counts it (core docs/spec/messaging.md#delivery): path and state are those of the entry."
     },
     "plugin.terminal.messages.role.stale": {
       "layer": "plugin",

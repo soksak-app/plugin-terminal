@@ -1,5 +1,8 @@
 # Changelog
 
+- P200: The role messages write the record `plugin.terminal.messages.delivered` with their kind (`first`, `role-change` or `role-reread`) and no count, and the record `plugin.terminal.messages.role.delivered` is removed. Verification: the role tests of `test/terminal.test.mjs` (Red then Green).
+- P203: A message held by a pending role keeps `role-pending` as the reason of its entry. Verification: its test in `test/terminal.test.mjs` (Red by a wrong reason, then Green).
+- P204: Every messages record that the page writes is declared in `events.json` with its class and level, and the declaration test in `test/events.test.mjs` checks it (Red then Green).
 - P202: The bounds of the delivery are the `decided` entries alone: the requests and the notices of a working period are taken from them, and an entry that leaves `decided` stops its requests and writes `plugin.terminal.messages.dropped`. Verification: the bounds tests of `test/terminal.test.mjs` (Red then Green) and the full suite.
 - P201: A receipt updates the decided entry of its token and sets `reported` on it. A receipt whose token has no entry is ignored and recorded as `plugin.terminal.messages.receipt.ignored`. Verification: the receipt test of `test/terminal.test.mjs` (Red then Green) and the full suite.
 - P199: `terminal.messages` holds `decided` (the last 64 messages of the registration with their states, `held`, `delivered`, `reported`, `refused` or `skipped`) and `dropped`, and `last` names its kind. The injected state is `delivered`, as the spec names it, and a receipt sets `reported`. Verification: the delivery state tests of `test/terminal.test.mjs` (Red then Green), the updated status and manifest expectations, and the full suite.

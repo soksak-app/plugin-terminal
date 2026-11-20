@@ -1,5 +1,8 @@
 # 변경 기록
 
+- P200: 역할 message는 종류(`first`, `role-change`, `role-reread`)와 함께 record `plugin.terminal.messages.delivered`를 쓰며 횟수는 쓰지 않는다. record `plugin.terminal.messages.role.delivered`는 제거한다. 검증: `test/terminal.test.mjs`의 역할 test(Red 뒤 Green).
+- P203: 대기 중인 역할로 보류된 message의 항목은 보류 이유로 `role-pending`을 갖는다. 검증: `test/terminal.test.mjs`의 해당 test(잘못된 이유로 Red, 이후 Green).
+- P204: page가 쓰는 messages record는 모두 class와 level과 함께 `events.json`에 선언하며, `test/events.test.mjs`의 선언 test가 이를 검사한다(Red 뒤 Green).
 - P202: 전달의 한계는 `decided` 항목뿐이다. 요청과 working 기간의 notice는 항목에서 얻으며, 항목이 `decided`를 떠나면 요청을 멈추고 `plugin.terminal.messages.dropped`를 쓴다. 검증: `test/terminal.test.mjs`의 한계 test(Red 뒤 Green)와 전체 suite.
 - P201: 영수증은 그 token의 decided 항목을 갱신하고 `reported`를 설정한다. 항목이 없는 token의 영수증은 무시하고 `plugin.terminal.messages.receipt.ignored`로 기록한다. 검증: `test/terminal.test.mjs`의 영수증 test(Red 뒤 Green)와 전체 suite.
 - P199: `terminal.messages`는 `decided`(registration의 최근 message 64개와 상태 `held`, `delivered`, `reported`, `refused`, `skipped`)와 `dropped`를 가지며, `last`는 종류를 밝힌다. 주입 상태는 spec의 이름인 `delivered`이며, receipt는 `reported`를 설정한다. 검증: `test/terminal.test.mjs`의 전달 상태 test(Red 뒤 Green), 갱신한 status와 manifest 기대값, 전체 suite.

@@ -95,3 +95,13 @@ test("the catalog declares the program clipboard request that the clipboard.prog
   assert.equal(validate({ operation: "paste", policy: "deny" }), false, "an operation other than store or query is refused");
   assert.equal(validate({ operation: "store" }), false, "a record without policy is refused");
 });
+
+test("every messages record that the page writes is declared, and the delivery record has the kinds of the spec", () => {
+  const source = readFileSync(new URL("../ui/terminal.js", import.meta.url), "utf8");
+  const written = new Set([...source.matchAll(/runtime\.log\.(?:debug|info|warn|error|trace)\(\s*"(messages\.[a-z_.]+)"/g)].map((match) => match[1]));
+  assert.ok(written.size > 0, "the page writes messages records");
+  for (const name of written) assert.ok(catalog.events[`plugin.terminal.${name}`], `plugin.terminal.${name} is declared`);
+  assert.deepEqual(catalog.events["plugin.terminal.messages.delivered"].fields.properties.kind.enum,
+    ["message", "receipt", "report-request", "first", "role-change", "role-reread"], "the kinds of the delivery record (core docs/spec/messaging.md#delivery)");
+  assert.equal(catalog.events["plugin.terminal.messages.role.delivered"], undefined, "the role records are the delivery record");
+});
