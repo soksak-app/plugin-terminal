@@ -2014,7 +2014,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         setError("messages", `terminal.messages: ${entry.kind}: ${cause}`);
         return;
       }
-      runtime.log.info("messages.delivered", { kind: entry.kind, seq: null, path: null, from: "soksak", state: "injected", reason: null });
+      runtime.log.info("messages.role.delivered", { kind: entry.kind });
     };
     const deliverNext = () => {
       if (delivering || messagesStatus === null) return;

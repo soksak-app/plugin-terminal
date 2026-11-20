@@ -627,6 +627,29 @@
       },
       "description": "The page decided the delivery of a message of its registration (core docs/spec/messaging.md#delivery): seq, path and from are those of the file event, state is injected, refused or skipped, and reason is null for injected and the reason of a refused or skipped message."
     },
+    "plugin.terminal.messages.role.delivered": {
+      "layer": "plugin",
+      "class": "io",
+      "level": "info",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "role-first",
+              "role-change",
+              "role-reread"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "description": "The page injected a role message of its tab (core docs/spec/agent-roles.md): kind is role-first (the first message of a CLI without an adapter), role-change (the change message) or role-reread (a reread request). A refused injection is shown through the error display, not through this event."
+    },
     "plugin.terminal.messages.held": {
       "layer": "plugin",
       "class": "io",
