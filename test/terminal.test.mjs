@@ -7225,8 +7225,8 @@ test("a terminal of a project registers its folder when its sidecar port connect
   const seen = [];
   expose.getStatus("terminal.messages").watchFn((value) => seen.push(value));
   sidecar.triggerRaw("test-session", { registration: "r1", folder: MESSAGES_FOLDER }, cids);
-  assert.deepEqual(status(), { folder: MESSAGES_FOLDER, registration: "r1", held: null, last: null });
-  assert.deepEqual(seen, [{ folder: MESSAGES_FOLDER, registration: "r1", held: null, last: null }], "the reply notifies the watchers of terminal.messages");
+  assert.deepEqual(status(), { folder: MESSAGES_FOLDER, registration: "r1", held: null, last: null, decided: [], dropped: 0 });
+  assert.deepEqual(seen, [{ folder: MESSAGES_FOLDER, registration: "r1", held: null, last: null, decided: [], dropped: 0 }], "the reply notifies the watchers of terminal.messages");
 
   sidecar.triggerRaw("test-session", { event: "connection", connected: false, reason: "the service exited" });
   assert.equal(status(), null, "an ended connection holds no registration");
@@ -7238,7 +7238,7 @@ test("a terminal of a project registers its folder when its sidecar port connect
   assert.equal(again.length, 1);
   assert.notDeepEqual(again, cids, "each registration has its own correlation identifier");
   sidecar.triggerRaw("test-session", { registration: "r2", folder: MESSAGES_FOLDER }, again);
-  assert.deepEqual(status(), { folder: MESSAGES_FOLDER, registration: "r2", held: null, last: null });
+  assert.deepEqual(status(), { folder: MESSAGES_FOLDER, registration: "r2", held: null, last: null, decided: [], dropped: 0 });
 });
 
 test("a terminal without a project registers no folder and reports terminal.messages as null", { timeout: 10000 }, async () => {
@@ -7320,7 +7320,7 @@ test("file events are known events, and the close of the registration resets ter
   const { sidecar, expose, log, sent, status, tabErrors } = await messagesTerminal();
   sidecar.triggerRaw("test-session", { registration: "r1", folder: MESSAGES_FOLDER }, sidecar.getCids(sent("messages.register")[0]));
   sidecar.triggerRaw("test-session", { event: "file.changed", registration: "r1", path: "1-from-s2.txt", from: "s2", kind: "created", seq: 1 });
-  assert.deepEqual(status(), { folder: MESSAGES_FOLDER, registration: "r1", held: null, last: null }, "a file event changes no registration");
+  assert.deepEqual(status(), { folder: MESSAGES_FOLDER, registration: "r1", held: null, last: null, decided: [], dropped: 0 }, "a file event changes no registration");
   sidecar.triggerRaw("test-session", { event: "registration.closed", registration: "r1", reason: "folder-removed" });
   assert.equal(status(), null, "a closed registration is no registration");
   assert.deepEqual(tabErrors(), ["terminal.messages: registration-closed: folder-removed"]);
@@ -7393,9 +7393,10 @@ test("a created message is injected as the paste of its sender title and text an
   const status = await terminal.untilMessages((value) => value?.last !== null);
   assert.deepEqual(terminal.injected(), [injectedLine("sender", "text 1"), "Enter"], "the paste of the visible text and then Enter");
   assert.deepEqual(status, { folder: MESSAGES_FOLDER, registration: "r1", held: null,
-    last: { seq: 1, path: "s2.t1.txt", from: "s2", state: "injected", reason: null } });
+    last: { kind: "message", seq: 1, path: "s2.t1.txt", from: "s2", state: "delivered", reason: null },
+    decided: [{ path: "s2.t1.txt", state: "delivered", reason: null }], dropped: 0 });
   assert.deepEqual(records(terminal.log, "messages.delivered").map(([fields, level]) => [fields, level]),
-    [[{ seq: 1, path: "s2.t1.txt", from: "s2", state: "injected", reason: null }, "info"]]);
+    [[{ kind: "message", seq: 1, path: "s2.t1.txt", from: "s2", state: "delivered", reason: null }, "info"]]);
   assert.deepEqual(terminal.tabErrors(), []);
 });
 
@@ -7416,11 +7417,11 @@ test("a message of a sender without a tab is refused, and a removed message is s
   terminal.arrive(1, "s9");
   await terminal.answerRead(1, [{ seq: 1, path: "s9.t1.txt", text: "text 1", from: "s9" }]);
   assert.deepEqual((await terminal.untilMessages((value) => value?.last?.seq === 1)).last,
-    { seq: 1, path: "s9.t1.txt", from: "s9", state: "refused", reason: "sender s9 has no tab in the window" });
+    { kind: "message", seq: 1, path: "s9.t1.txt", from: "s9", state: "refused", reason: "sender s9 has no tab in the window" });
   terminal.arrive(2);
   await terminal.answerRead(2, []);
   assert.deepEqual((await terminal.untilMessages((value) => value?.last?.seq === 2)).last,
-    { seq: 2, path: "s2.t2.txt", from: "s2", state: "skipped", reason: "message 2 is not in the folder" });
+    { kind: "message", seq: 2, path: "s2.t2.txt", from: "s2", state: "skipped", reason: "message 2 is not in the folder" });
   assert.deepEqual(terminal.injected(), [], "a refused or skipped message sends no input");
 });
 
@@ -7432,7 +7433,7 @@ test("a paste that the guard refuses sends no Enter and is the delivery refused 
   const paste = terminal.sidecar.getMessages().map(({ body }) => body).find((body) => body.operation === "paste");
   terminal.sidecar.triggerRaw("test-session", { error: "guardRefused", rule: "rm-recursive", reason: "removes a tree" }, terminal.sidecar.getCids(paste));
   assert.deepEqual((await terminal.untilMessages((value) => value?.last !== null)).last,
-    { seq: 1, path: "s2.t1.txt", from: "s2", state: "refused", reason: "guardRefused: rm-recursive: removes a tree" });
+    { kind: "message", seq: 1, path: "s2.t1.txt", from: "s2", state: "refused", reason: "guardRefused: rm-recursive: removes a tree" });
   assert.deepEqual(terminal.injected(), [injectedLine("sender", "text 1")], "a refused paste sends no Enter");
   assert.deepEqual(terminal.tabErrors(), [], "a guard refusal is a delivery, not an error");
 });
@@ -7445,7 +7446,7 @@ test("an input error other than the guard is shown and is the delivery refused w
   const paste = terminal.sidecar.getMessages().map(({ body }) => body).find((body) => body.operation === "paste");
   terminal.sidecar.triggerRaw("test-session", { error: "invalidParams", reason: "paste text is empty" }, terminal.sidecar.getCids(paste));
   assert.deepEqual((await terminal.untilMessages((value) => value?.last !== null)).last,
-    { seq: 1, path: "s2.t1.txt", from: "s2", state: "refused", reason: "invalidParams: paste text is empty" });
+    { kind: "message", seq: 1, path: "s2.t1.txt", from: "s2", state: "refused", reason: "invalidParams: paste text is empty" });
   assert.deepEqual(terminal.tabErrors(), ["terminal.messages: s2.t1.txt: invalidParams: paste text is empty"]);
 });
 
@@ -7764,4 +7765,58 @@ test("the request of a missing report is recorded as delivered with the kind rep
   assert.deepEqual(records, [[{ kind: "report-request", seq: null, path: null, from: "soksak", state: "delivered", reason: null }, "info"]],
     "the request is recorded with the kind report-request and no file");
   assert.deepEqual(terminal.tabErrors(), []);
+});
+
+// The delivery states of each message of the registration (core docs/spec/messaging.md#delivery): decided holds the last 64 messages
+// with their states, dropped counts the entries that left it, and the states are held, delivered, reported, refused and skipped.
+test("a message that arrives while a hold applies is held, then delivered when the hold ends", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.grid(RECEIVER_GRID);
+  terminal.emit(programWith([programState("blocked")], 1));
+  terminal.arrive(1);
+  await settle();
+  assert.deepEqual(terminal.status().decided, [{ path: "s2.t1.txt", state: "held", reason: "blocked" }],
+    "a message that arrives while the program is blocked is held with the reason of the hold");
+  terminal.emit(programWith([programState("done")], 2));
+  await terminal.answerRead(1);
+  await terminal.untilMessages((value) => value?.last?.seq === 1);
+  assert.deepEqual(terminal.status().decided, [{ path: "s2.t1.txt", state: "delivered", reason: null }],
+    "the same entry is delivered when the hold ends, and no second entry is made");
+});
+
+test("a message of a sender without a tab is refused, and a removed message is skipped, in decided", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.grid(RECEIVER_GRID);
+  terminal.arrive(1, "s9");
+  terminal.arrive(2);
+  await terminal.answerRead(1, [{ seq: 1, path: "s9.t1.txt", text: "text 1", from: "s9" }]);
+  await terminal.answerRead(2, []);
+  await terminal.untilMessages((value) => value?.last?.seq === 2);
+  assert.deepEqual(terminal.status().decided, [
+    { path: "s9.t1.txt", state: "refused", reason: "sender s9 has no tab in the window" },
+    { path: "s2.t2.txt", state: "skipped", reason: "message 2 is not in the folder" },
+  ]);
+});
+
+test("a receipt of a delivered message makes its entry reported, and decided keeps the last 64 entries with dropped counting the rest", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.grid(RECEIVER_GRID);
+  terminal.arrive(1);
+  await terminal.answerRead(1);
+  await terminal.untilMessages((value) => value?.last?.seq === 1);
+  receiptArrives(terminal, 2, "t1");
+  await settle();
+  assert.deepEqual(terminal.status().last, { kind: "receipt", seq: 2, path: "test-session.receipt-t1.txt", from: "test-session", state: "reported", reason: null },
+    "the receipt is the last decision of its kind receipt");
+  assert.deepEqual(terminal.status().decided, [{ path: "s2.t1.txt", state: "reported", reason: null }]);
+  // The receipt used the sequence 2, so the messages are 1 and 3 to 67: 66 entries, of which the first two leave.
+  for (let seq = 3; seq <= 67; seq += 1) {
+    terminal.arrive(seq);
+    await terminal.answerRead(seq);
+    await terminal.untilMessages((value) => value?.last?.seq === seq);
+  }
+  const { decided, dropped } = terminal.status();
+  assert.equal(decided.length, 64, "decided holds the last 64 messages");
+  assert.equal(decided[0].path, "s2.t4.txt", "the oldest entry is the message that arrived fourth");
+  assert.equal(dropped, 2, "dropped counts the two entries that left decided");
 });

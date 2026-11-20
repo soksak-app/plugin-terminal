@@ -98,7 +98,7 @@ for (const app of Object.values(APPS)) {
     assert.deepEqual(reply.receiver, { surface: receiver, plugin: PLUGIN, held: null }, `the send reported a hold: ${JSON.stringify(reply)}`);
     const delivered = await p.until(`${PLUGIN}.messages`, (value) => value?.last?.path === reply.path,
       `${PLUGIN} tab ${receiver} decided no delivery of ${reply.path}`, { surface: receiver });
-    assert.deepEqual(delivered.last, { seq: delivered.last.seq, path: reply.path, from: sender, state: "injected", reason: null });
+    assert.deepEqual(delivered.last, { seq: delivered.last.seq, path: reply.path, from: sender, state: "delivered", reason: null });
 
     writeFileSync(pipe, "end\n");
     const lines = await untilScreen((current) => current.some((line) => NOT_FOUND.test(line)),
@@ -130,7 +130,7 @@ for (const app of Object.values(APPS)) {
     await p.run(`${PLUGIN}.input`, { bytes: "y\r" }, receiver);
     const delivered = await p.until(`${PLUGIN}.messages`, (value) => value?.last?.path === reply.path,
       `${PLUGIN} tab ${receiver} did not inject ${reply.path} after the answer`, { surface: receiver });
-    assert.deepEqual(delivered.last, { seq: delivered.last.seq, path: reply.path, from: sender, state: "injected", reason: null });
+    assert.deepEqual(delivered.last, { seq: delivered.last.seq, path: reply.path, from: sender, state: "delivered", reason: null });
     assert.equal(delivered.held, null, "the hold did not end with the answer");
     const lines = await untilScreen((current) => current.some((line) => NOT_FOUND.test(line)),
       `${PLUGIN} tab ${receiver} did not submit the injected line after the answer`);
@@ -148,7 +148,7 @@ for (const app of Object.values(APPS)) {
     const request = send("build the game");
     assert.equal(readFileSync(join(folder, request.path), "utf8"),
       `build the game (끝나면 결과를 sok message send --reply ${senderFolder} "<보고>"로 보고하라)`, "the message does not carry the report request");
-    await p.until(`${PLUGIN}.messages`, (value) => value?.last?.path === request.path && value.last.state === "injected",
+    await p.until(`${PLUGIN}.messages`, (value) => value?.last?.path === request.path && value.last.state === "delivered",
       `${PLUGIN} tab ${receiver} did not inject ${request.path}`, { surface: receiver });
 
     // The report from --reply carries the text alone under a report name, and the page of the sender injects it.
@@ -156,7 +156,7 @@ for (const app of Object.values(APPS)) {
     assert.match(answer.path, new RegExp(`^${receiver}\\.report-[^.]+\\.txt$`), `the report has no report name: ${answer.path}`);
     assert.deepEqual(answer.receiver, { surface: sender, plugin: PLUGIN, held: null }, `the report reported a hold: ${JSON.stringify(answer)}`);
     assert.equal(readFileSync(join(senderFolder, answer.path), "utf8"), "done", "the report carries a request");
-    await p.until(`${PLUGIN}.messages`, (value) => value?.last?.path === answer.path && value.last.state === "injected",
+    await p.until(`${PLUGIN}.messages`, (value) => value?.last?.path === answer.path && value.last.state === "delivered",
       `${PLUGIN} tab ${sender} did not inject the report ${answer.path}`, { surface: sender });
     await p.until(`${PLUGIN}.screen`, (rows) => screenLines(rows).some((line) => NOT_FOUND.test(line)),
       `${PLUGIN} tab ${sender} did not submit the injected report`, { surface: sender });

@@ -593,11 +593,25 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "message",
+              "receipt",
+              "report-request"
+            ]
+          },
           "seq": {
-            "type": "integer"
+            "type": [
+              "integer",
+              "null"
+            ]
           },
           "path": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "from": {
             "type": "string"
@@ -605,7 +619,8 @@
           "state": {
             "type": "string",
             "enum": [
-              "injected",
+              "delivered",
+              "reported",
               "refused",
               "skipped"
             ]
@@ -618,6 +633,7 @@
           }
         },
         "required": [
+          "kind",
           "seq",
           "path",
           "from",
@@ -625,7 +641,7 @@
           "reason"
         ]
       },
-      "description": "The page decided the delivery of a message of its registration (core docs/spec/messaging.md#delivery): seq, path and from are those of the file event, state is injected, refused or skipped, and reason is null for injected and the reason of a refused or skipped message."
+      "description": "The page decided the delivery of a message or a request (core docs/spec/messaging.md#delivery): kind is message for a file of the registration, receipt for a receipt, and report-request for a request of a missing report, which has seq and path null and from soksak; state is delivered, reported, refused or skipped; reason is null for delivered and the reason otherwise."
     },
     "plugin.terminal.messages.role.delivered": {
       "layer": "plugin",

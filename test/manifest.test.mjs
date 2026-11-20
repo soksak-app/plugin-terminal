@@ -122,10 +122,11 @@ test("the messages commands declare the cursor parameters and terminal.messages 
   }
   const status = manifest.exposes.status.find((entry) => entry.name === "terminal.messages");
   assert.ok(status, "terminal.messages is declared");
-  assert.deepEqual(Object.keys(status.schema.properties), ["folder", "registration", "held", "last"],
+  assert.deepEqual(Object.keys(status.schema.properties), ["folder", "registration", "held", "decided", "dropped", "last"],
     "terminal.messages holds the delivery beside the registration (core docs/spec/messaging.md#delivery)");
   assert.deepEqual(status.schema.properties.held.properties.reason.enum, ["blocked", "notice", "composition", "typing", "input-held"]);
-  assert.deepEqual(status.schema.properties.last.properties.state.enum, ["injected", "refused", "skipped"]);
+  assert.deepEqual(status.schema.properties.last.properties.state.enum, ["delivered", "reported", "refused", "skipped"]);
+  assert.deepEqual(status.schema.properties.decided.items.properties.state.enum, ["held", "delivered", "reported", "refused", "skipped"]);
 });
 
 test("the context menu of the surface copies and pastes", () => {

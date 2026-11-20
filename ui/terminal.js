@@ -446,6 +446,8 @@ function terminalActivity({ state, exit }, { records, notice }) {
 // The prefix of the token of a receipt file, and the end state of a notice that the records of the program at the end of a working
 // period give, the first of this order that a record holds; a period ends with no working record, so the order holds no working.
 const RECEIPT_PREFIX = "receipt-";
+// The number of messages of the registration that terminal.messages keeps in decided (core docs/spec/messaging.md#delivery).
+const DECIDED_LIMIT = 64;
 const NOTICE_STATES = ["blocked", "error", "done", "idle"];
 function endStateOf(records) {
   return NOTICE_STATES.find((state) => records.some((record) => record.state === state)) ?? "idle";
@@ -1976,6 +1978,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     // injection, as {token, from} in the order that the reports queued them (core docs/spec/messaging.md#missing-report).
     const unreported = new Map();
     let requestOutbox = [];
+    // The states of the messages of the registration, oldest first, as {seq, path, state, reason}, and the count of the entries that left.
+    const decided = [];
+    let dropped = 0;
     // The hold of the injection. The role messages (forRole) are not held by role-pending: the change message and the requests are
     // what the agent needs to confirm its role (core docs/spec/messaging.md#hold-for-the-person).
     const holdOf = (forRole = false) => {
@@ -1988,12 +1993,31 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       if (!forRole && roleState === "pending") return { reason: "role-pending", kind: null };
       return null;
     };
+    const snapshotDecided = () => decided.map(({ path, state, reason }) => ({ path, state, reason }));
     const publish = () => {
       if (messagesStatus === null) return;
-      setMessages({ folder: messagesStatus.folder, registration: messagesStatus.registration, held, last });
+      setMessages({ folder: messagesStatus.folder, registration: messagesStatus.registration, held, last, decided: snapshotDecided(), dropped });
     };
+    // Sets the state of the entry of a message, which is made at its first state (held or a decision) and kept to the limit.
+    const upsert = (event, state, reason) => {
+      const entry = decided.find((item) => item.seq === event.seq);
+      if (entry !== undefined) {
+        entry.state = state;
+        entry.reason = reason;
+        return;
+      }
+      decided.push({ seq: event.seq, path: event.path, state, reason });
+      if (decided.length > DECIDED_LIMIT) {
+        decided.shift();
+        dropped += 1;
+      }
+    };
+    // Decides the delivery of a message: the entry takes the state, reported when the receipt of its token arrived before it, and
+    // the last decision and its record name the kind message (core docs/spec/messaging.md#delivery).
     const decide = (event, state, reason) => {
-      last = { seq: event.seq, path: event.path, from: event.from, state, reason };
+      const final = state === "delivered" && receipts.has(tokenOf(event.path)) ? "reported" : state;
+      upsert(event, final, reason);
+      last = { kind: "message", seq: event.seq, path: event.path, from: event.from, state: final, reason };
       runtime.log.info("messages.delivered", last);
       publish();
     };
@@ -2020,7 +2044,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         return;
       }
       // A hold that started while the page read the message keeps it waiting.
-      if (holdOf() !== null) {
+      const blockedBy = holdOf();
+      if (blockedBy !== null) {
+        upsert(event, "held", blockedBy.reason);
+        publish();
         pending.unshift(event);
         return;
       }
@@ -2029,7 +2056,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         refusedBy(event, refused);
         return;
       }
-      decide(event, "injected", null);
+      decide(event, "delivered", null);
       const token = tokenOf(event.path);
       if (!receipts.has(token)) unreported.set(token, { path: event.path, from: event.from });
       if (periodMessages !== null) periodMessages.push({ path: event.path, from: event.from, token });
@@ -2069,7 +2096,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     // Injects the request of a missing report (core docs/spec/messaging.md#missing-report) unless the receipt of its token arrived after
     // the report that queued it. Its decision is a record of kind report-request, with no file, and a refusal by the guard is its state.
     const deliverRequest = async ({ token, from }) => {
-      const record = (state, reason) => runtime.log.info("messages.delivered", { kind: "report-request", seq: null, path: null, from: "soksak", state, reason });
+      const record = (state, reason) => {
+        last = { kind: "report-request", seq: null, path: null, from: "soksak", state, reason };
+        runtime.log.info("messages.delivered", last);
+        publish();
+      };
       if (receipts.has(token)) {
         record("skipped", "a receipt of the token arrived");
         return;
@@ -2209,11 +2240,13 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
           attached = registration;
           pending = [];
           last = null;
+          decided.length = 0;
+          dropped = 0;
           unreported.clear();
           receipts.clear();
           requestOutbox = [];
         }
-        setMessages({ folder, registration, held, last });
+        setMessages({ folder, registration, held, last, decided: snapshotDecided(), dropped });
         review();
       },
       fileChanged(body) {
@@ -2225,10 +2258,21 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
           const answered = token.slice(RECEIPT_PREFIX.length);
           receipts.add(answered);
           unreported.delete(answered);
-          runtime.log.info("messages.receipt", { seq: body.seq, path: body.path, from: body.from });
+          // The entry of the message takes the state reported, and the receipt is the last decision of kind receipt.
+          const entry = decided.find((item) => tokenOf(item.path) === answered);
+          if (entry !== undefined) entry.state = "reported";
+          last = { kind: "receipt", seq: body.seq, path: body.path, from: body.from, state: "reported", reason: null };
+          runtime.log.info("messages.delivered", last);
+          publish();
           return;
         }
         pending.push({ seq: body.seq, path: body.path, from: body.from });
+        // A message that arrives while a hold applies is held with the reason of the hold (core docs/spec/messaging.md#delivery).
+        const blockedBy = holdOf();
+        if (blockedBy !== null) {
+          upsert(body, "held", blockedBy.reason);
+          publish();
+        }
         review();
       },
       typed(on) {
