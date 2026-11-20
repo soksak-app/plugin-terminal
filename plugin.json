@@ -463,12 +463,30 @@
       },
       {
         "name": "terminal.messages",
-        "description": "The messages folder that the terminal registered with its sidecar (core docs/spec/messaging.md#folder-of-a-terminal): folder is <root>/.soksak/messages/<surface> of the project of the window, which the sidecar creates, and registration is the identifier of the registration, the epoch of the cursor of terminal.messages.read and terminal.messages.wait. It is null before the reply, in a window without a project, while the sidecar connection is down and after the registration closes. A refused or closed registration is shown as the error terminal.messages: <error>: <reason>.",
+        "description": "The messages folder that the terminal registered with its sidecar (core docs/spec/messaging.md#folder-of-a-terminal): folder is <root>/.soksak/messages/<surface> of the project of the window, which the sidecar creates, and registration is the identifier of the registration, the epoch of the cursor of terminal.messages.read and terminal.messages.wait. It is null before the reply, in a window without a project, while the sidecar connection is down and after the registration closes. A refused or closed registration is shown as the error terminal.messages: <error>: <reason>. held is null while nothing holds the injection of the messages and {reason, kind, pending} while a hold applies (core docs/spec/messaging.md#hold-for-the-person), and last is null before the first decision and then {seq, path, from, state, reason} of the last message that the page injected, refused or skipped (core docs/spec/messaging.md#delivery).",
         "schema": {
           "type": ["object", "null"],
           "properties": {
             "folder": { "type": "string" },
-            "registration": { "type": "string" }
+            "registration": { "type": "string" },
+            "held": {
+              "type": ["object", "null"],
+              "properties": {
+                "reason": { "type": "string", "enum": ["blocked", "notice", "composition", "typing", "input-held"] },
+                "kind": { "type": ["string", "null"], "enum": ["permission", "question", "auth", null] },
+                "pending": { "type": "integer" }
+              }
+            },
+            "last": {
+              "type": ["object", "null"],
+              "properties": {
+                "seq": { "type": "integer" },
+                "path": { "type": "string" },
+                "from": { "type": "string" },
+                "state": { "type": "string", "enum": ["injected", "refused", "skipped"] },
+                "reason": { "type": ["string", "null"] }
+              }
+            }
           }
         }
       },

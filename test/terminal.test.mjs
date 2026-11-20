@@ -5542,7 +5542,7 @@ test("a session without an origin directory opens in the project root, and witho
     await startTerminal({
       view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
       sidecar: fakeSidecar, expose: createFakeExpose(), tab: createFakeTab(), project,
-      settings: titleSettings({}), window: { TextEncoder },
+      settings: titleSettings({}), window: { TextEncoder }, runtime: { ...capturedLog().runtime, status: { watch: () => () => {} } },
     });
     const open = fakeSidecar.getMessages().find((message) => message.body.operation === "open");
     assert.deepEqual(open.body, { operation: "open", image: "view", shell: "login", ...expected });
@@ -7096,15 +7096,24 @@ test("a progress report is kept in vendor.progress and a bell is a declared even
 // relays the reads of terminal.messages.read and terminal.messages.wait to the sidecar.
 const MESSAGES_PROJECT = { id: "prj-app", root: "/work/app" };
 const MESSAGES_FOLDER = "/work/app/.soksak/messages/test-session";
-async function messagesTerminal({ project = MESSAGES_PROJECT, closing = new AbortController().signal } = {}) {
+async function messagesTerminal({ project = MESSAGES_PROJECT, closing = new AbortController().signal, answers = true } = {}) {
   FakeResizeObserver.reset();
-  const sidecar = createFakeSidecar();
+  const sidecar = createFakeSidecar({ answers });
   const expose = createFakeExpose();
   const tab = createFakeTab();
   const log = capturedLog();
+  const attachImage = createFakeAttachImage();
+  // The status watch of the runtime holds the watches of core.grid, and grid(value) delivers a value of core.grid to them.
+  const gridWatches = new Set();
+  const grid = (value) => { for (const listener of gridWatches) listener(value); };
+  const statusWatch = (name, listener) => {
+    assert.equal(name, "core.grid", "the page follows only core.grid");
+    gridWatches.add(listener);
+    return () => gridWatches.delete(listener);
+  };
   await startTerminal({
-    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
-    sidecar, expose, tab, project, closing, runtime: log.runtime, window: { TextEncoder },
+    view: createFakeView(), detachRegions: async () => {}, attachImage: attachImage.function,
+    sidecar, expose, tab, project, closing, runtime: { ...log.runtime, status: { watch: statusWatch } }, window: { TextEncoder },
   });
   const sent = (operation) => sidecar.getMessages().filter(({ body }) => body.operation === operation).map(({ body }) => body);
   const status = () => {
@@ -7118,7 +7127,7 @@ async function messagesTerminal({ project = MESSAGES_PROJECT, closing = new Abor
     return handler;
   };
   const tabErrors = () => tab.calls.filter(([kind, text]) => kind === "error" && text !== null).map(([, text]) => text);
-  return { sidecar, expose, tab, log, sent, status, command, tabErrors };
+  return { sidecar, expose, tab, log, sent, status, command, tabErrors, attachImage, grid, gridWatches };
 }
 
 test("a terminal of a project registers its folder when its sidecar port connects and after each reconnection", { timeout: 10000 }, async () => {
@@ -7131,8 +7140,8 @@ test("a terminal of a project registers its folder when its sidecar port connect
   const seen = [];
   expose.getStatus("terminal.messages").watchFn((value) => seen.push(value));
   sidecar.triggerRaw("test-session", { registration: "r1", folder: MESSAGES_FOLDER }, cids);
-  assert.deepEqual(status(), { folder: MESSAGES_FOLDER, registration: "r1" });
-  assert.deepEqual(seen, [{ folder: MESSAGES_FOLDER, registration: "r1" }], "the reply notifies the watchers of terminal.messages");
+  assert.deepEqual(status(), { folder: MESSAGES_FOLDER, registration: "r1", held: null, last: null });
+  assert.deepEqual(seen, [{ folder: MESSAGES_FOLDER, registration: "r1", held: null, last: null }], "the reply notifies the watchers of terminal.messages");
 
   sidecar.triggerRaw("test-session", { event: "connection", connected: false, reason: "the service exited" });
   assert.equal(status(), null, "an ended connection holds no registration");
@@ -7144,7 +7153,7 @@ test("a terminal of a project registers its folder when its sidecar port connect
   assert.equal(again.length, 1);
   assert.notDeepEqual(again, cids, "each registration has its own correlation identifier");
   sidecar.triggerRaw("test-session", { registration: "r2", folder: MESSAGES_FOLDER }, again);
-  assert.deepEqual(status(), { folder: MESSAGES_FOLDER, registration: "r2" });
+  assert.deepEqual(status(), { folder: MESSAGES_FOLDER, registration: "r2", held: null, last: null });
 });
 
 test("a terminal without a project registers no folder and reports terminal.messages as null", { timeout: 10000 }, async () => {
@@ -7226,10 +7235,177 @@ test("file events are known events, and the close of the registration resets ter
   const { sidecar, expose, log, sent, status, tabErrors } = await messagesTerminal();
   sidecar.triggerRaw("test-session", { registration: "r1", folder: MESSAGES_FOLDER }, sidecar.getCids(sent("messages.register")[0]));
   sidecar.triggerRaw("test-session", { event: "file.changed", registration: "r1", path: "1-from-s2.txt", from: "s2", kind: "created", seq: 1 });
-  assert.deepEqual(status(), { folder: MESSAGES_FOLDER, registration: "r1" }, "a file event changes no registration");
+  assert.deepEqual(status(), { folder: MESSAGES_FOLDER, registration: "r1", held: null, last: null }, "a file event changes no registration");
   sidecar.triggerRaw("test-session", { event: "registration.closed", registration: "r1", reason: "folder-removed" });
   assert.equal(status(), null, "a closed registration is no registration");
   assert.deepEqual(tabErrors(), ["terminal.messages: registration-closed: folder-removed"]);
   assert.deepEqual(records(log, "sidecar.unknown"), [], "the file events are no unknown events");
   assert.deepEqual(expose.getStatus("terminal.session").readFn().unsupported, []);
+});
+
+// The injection of the messages (core docs/spec/messaging.md#injected-message): the page injects the message of each created or
+// modified file event as a paste of `[메시지 from <title>] <text>` and Enter, in increasing seq and one at a time, holds it by the
+// reasons of the hold in their order, and reports the delivery in terminal.messages with the records of the event log.
+const SENDER_GRID = { cards: [{ tabs: [{ id: "s2", plugin: "terminal", label: null, title: "sender" }, { id: "s3", plugin: "terminal", label: "build", title: "zsh" }] }] };
+const BLOCKED = { id: null, state: "blocked", kind: "permission", progress: null, app: "agent", title: null, msg: "Run the tests?" };
+async function deliveryTerminal(options) {
+  const terminal = await messagesTerminal(options);
+  const { sidecar, sent } = terminal;
+  sidecar.triggerRaw("test-session", { registration: "r1", folder: MESSAGES_FOLDER }, sidecar.getCids(sent("messages.register")[0]));
+  terminal.grid(SENDER_GRID);
+  openSession(sidecar);
+  const emit = (event) => sidecar.triggerRaw("test-session", event);
+  const arrive = (seq, from = "s2") => emit({ event: "file.changed", registration: "r1", path: `${from}.t${seq}.txt`, from, kind: "created", seq });
+  // Answers the read of the message seq with the messages, or with the message of the file event when messages is absent.
+  const answerRead = async (seq, messages) => {
+    await sidecar.untilMessage((body) => body.operation === "messages.read" && body.after === seq - 1);
+    const body = sent("messages.read").find((item) => item.after === seq - 1);
+    assert.deepEqual(body, { operation: "messages.read", after: seq - 1, registration: "r1" });
+    const from = messages?.[0]?.from ?? "s2";
+    sidecar.triggerRaw("test-session", { registration: "r1", messages: messages ?? [{ seq, path: `${from}.t${seq}.txt`, text: `text ${seq}`, from }],
+      last: seq }, sidecar.getCids(body));
+  };
+  // Resolves with the value of terminal.messages once it holds.
+  const untilMessages = (holds) => new Promise((resolve) => {
+    if (holds(terminal.status())) { resolve(terminal.status()); return; }
+    const stop = terminal.expose.getStatus("terminal.messages").watchFn((value) => {
+      if (!holds(value)) return;
+      stop();
+      resolve(value);
+    });
+  });
+  // The inputs of the injection, without the native inputs of the person, whose cids are those of inputEvent.
+  const injected = () => sidecar.getMessages().map(({ body }) => body)
+    .filter((body) => !sidecar.getCids(body).some((cid) => cid.startsWith("terminal.input.")))
+    .filter((body) => body.operation === "paste" || (body.operation === "input" && body.actions.some((action) => action.key === "Enter")))
+    .map((body) => (body.operation === "paste" ? body.text : "Enter"));
+  const input = (actions, preedit = inputPreedit()) => terminal.attachImage.triggerRaw("input", inputEvent(actions, preedit));
+  return { ...terminal, emit, arrive, answerRead, untilMessages, injected, input };
+}
+
+test("a created message is injected as the paste of its sender title and text and then Enter, and is the last delivery", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.arrive(1);
+  await terminal.answerRead(1);
+  const status = await terminal.untilMessages((value) => value?.last !== null);
+  assert.deepEqual(terminal.injected(), ["[메시지 from sender] text 1", "Enter"], "the paste of the visible text and then Enter");
+  assert.deepEqual(status, { folder: MESSAGES_FOLDER, registration: "r1", held: null,
+    last: { seq: 1, path: "s2.t1.txt", from: "s2", state: "injected", reason: null } });
+  assert.deepEqual(records(terminal.log, "messages.delivered").map(([fields, level]) => [fields, level]),
+    [[{ seq: 1, path: "s2.t1.txt", from: "s2", state: "injected", reason: null }, "info"]]);
+  assert.deepEqual(terminal.tabErrors(), []);
+});
+
+test("the label of the sending tab is its title, and the messages are injected one at a time in increasing seq", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.arrive(1, "s3");
+  terminal.arrive(2, "s2");
+  await terminal.sidecar.untilMessage((body) => body.operation === "messages.read");
+  assert.equal(terminal.sent("messages.read").length, 1, "the next message is read after the decision of the one before it");
+  await terminal.answerRead(1, [{ seq: 1, path: "s3.t1.txt", text: "text 1", from: "s3" }]);
+  await terminal.answerRead(2);
+  await terminal.untilMessages((value) => value?.last?.seq === 2);
+  assert.deepEqual(terminal.injected(), ["[메시지 from build] text 1", "Enter", "[메시지 from sender] text 2", "Enter"]);
+});
+
+test("a message of a sender without a tab is refused, and a removed message is skipped, without input", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.arrive(1, "s9");
+  await terminal.answerRead(1, [{ seq: 1, path: "s9.t1.txt", text: "text 1", from: "s9" }]);
+  assert.deepEqual((await terminal.untilMessages((value) => value?.last?.seq === 1)).last,
+    { seq: 1, path: "s9.t1.txt", from: "s9", state: "refused", reason: "sender s9 has no tab in the window" });
+  terminal.arrive(2);
+  await terminal.answerRead(2, []);
+  assert.deepEqual((await terminal.untilMessages((value) => value?.last?.seq === 2)).last,
+    { seq: 2, path: "s2.t2.txt", from: "s2", state: "skipped", reason: "message 2 is not in the folder" });
+  assert.deepEqual(terminal.injected(), [], "a refused or skipped message sends no input");
+});
+
+test("a paste that the guard refuses sends no Enter and is the delivery refused with the rule and its reason", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal({ answers: false });
+  terminal.arrive(1);
+  await terminal.answerRead(1);
+  await terminal.sidecar.untilMessage((body) => body.operation === "paste");
+  const paste = terminal.sidecar.getMessages().map(({ body }) => body).find((body) => body.operation === "paste");
+  terminal.sidecar.triggerRaw("test-session", { error: "guardRefused", rule: "rm-recursive", reason: "removes a tree" }, terminal.sidecar.getCids(paste));
+  assert.deepEqual((await terminal.untilMessages((value) => value?.last !== null)).last,
+    { seq: 1, path: "s2.t1.txt", from: "s2", state: "refused", reason: "guardRefused: rm-recursive: removes a tree" });
+  assert.deepEqual(terminal.injected(), ["[메시지 from sender] text 1"], "a refused paste sends no Enter");
+  assert.deepEqual(terminal.tabErrors(), [], "a guard refusal is a delivery, not an error");
+});
+
+test("an input error other than the guard is shown and is the delivery refused with its error", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal({ answers: false });
+  terminal.arrive(1);
+  await terminal.answerRead(1);
+  await terminal.sidecar.untilMessage((body) => body.operation === "paste");
+  const paste = terminal.sidecar.getMessages().map(({ body }) => body).find((body) => body.operation === "paste");
+  terminal.sidecar.triggerRaw("test-session", { error: "invalidParams", reason: "paste text is empty" }, terminal.sidecar.getCids(paste));
+  assert.deepEqual((await terminal.untilMessages((value) => value?.last !== null)).last,
+    { seq: 1, path: "s2.t1.txt", from: "s2", state: "refused", reason: "invalidParams: paste text is empty" });
+  assert.deepEqual(terminal.tabErrors(), ["terminal.messages: s2.t1.txt: invalidParams: paste text is empty"]);
+});
+
+// Each reason of the hold, the event that starts it and the event that ends it.
+const HOLD_CASES = [
+  ["blocked", { reason: "blocked", kind: "permission" },
+    (t) => t.emit({ event: "program.status.current", records: [BLOCKED], notice: false, sequence: 1 }),
+    (t) => t.emit({ event: "program.status.current", records: [], notice: false, sequence: 2 })],
+  ["notice", { reason: "notice", kind: null },
+    (t) => t.emit({ event: "program.status.current", records: [], notice: true, sequence: 1 }),
+    (t) => t.emit({ event: "program.status.current", records: [], notice: false, sequence: 2 })],
+  ["composition", { reason: "composition", kind: null },
+    (t) => t.input([], inputPreedit("ㅎ")),
+    (t) => t.input([], inputPreedit())],
+  ["typing", { reason: "typing", kind: null },
+    (t) => t.input([inputInsert("ls")]),
+    (t) => t.input([inputKey("Enter")])],
+  ["typing ended by Ctrl+C", { reason: "typing", kind: null },
+    (t) => t.input([inputInsert("ls")]),
+    (t) => t.input([inputKey("Char", "c", { ctrl: true })])],
+  ["typing ended by the idle state", { reason: "typing", kind: null },
+    (t) => {
+      t.emit({ event: "shell.state.current", state: "running", source: "osc133", sequence: 1, exit: null });
+      t.input([inputInsert("ls")]);
+    },
+    (t) => t.emit({ event: "shell.state", from: "running", to: "idle", source: "osc133", sequence: 2, exit: 0 })],
+  ["input-held", { reason: "input-held", kind: null },
+    (t) => t.emit({ event: "input_held", queued: 3, held: true }),
+    (t) => t.emit({ event: "input_held", queued: 0, held: false })],
+];
+
+for (const [name, hold, start, end] of HOLD_CASES) {
+  test(`the hold ${name} keeps a message waiting with its reason and injects it when the hold ends`, { timeout: 10000 }, async () => {
+    const terminal = await deliveryTerminal();
+    await start(terminal);
+    assert.deepEqual(terminal.status().held, { ...hold, pending: 0 }, "the hold applies before any message");
+    terminal.arrive(1);
+    assert.deepEqual(terminal.status().held, { ...hold, pending: 1 }, "the held message is pending");
+    assert.deepEqual(terminal.sent("messages.read"), [], "a held message is not read for injection");
+    await end(terminal);
+    await terminal.answerRead(1);
+    await terminal.untilMessages((value) => value?.last !== null);
+    assert.equal(terminal.status().held, null);
+    assert.deepEqual(terminal.injected(), ["[메시지 from sender] text 1", "Enter"]);
+    assert.deepEqual(records(terminal.log, "messages.held").map(([fields]) => fields),
+      [{ ...hold, pending: 0 }, { reason: null, kind: null, pending: 1 }], "the start and the end of the hold are records");
+  });
+}
+
+test("a blocked record holds before a notice, and the hold names the first reason that applies", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.input([inputInsert("ls")]);
+  assert.deepEqual(terminal.status().held, { reason: "typing", kind: null, pending: 0 });
+  terminal.emit({ event: "program.status.current", records: [], notice: true, sequence: 1 });
+  assert.deepEqual(terminal.status().held, { reason: "notice", kind: null, pending: 0 });
+  terminal.emit({ event: "program.status.current", records: [{ ...BLOCKED, kind: "question" }], notice: true, sequence: 2 });
+  assert.deepEqual(terminal.status().held, { reason: "blocked", kind: "question", pending: 0 });
+});
+
+test("a file event of another registration and a removal inject nothing", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.emit({ event: "file.changed", registration: "other", path: "s2.t1.txt", from: "s2", kind: "created", seq: 1 });
+  terminal.emit({ event: "file.changed", registration: "r1", path: "s2.t1.txt", from: "s2", kind: "removed", seq: 1 });
+  assert.deepEqual(terminal.sent("messages.read"), [], "only a created or modified message of the registration is read");
+  assert.deepEqual(terminal.status().last, null);
 });

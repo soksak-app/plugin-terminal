@@ -67,7 +67,7 @@ export async function mount(root, context) {
       reportSurfaceError: (error) => context.status.report("error", error),
       diagnostics: context.diagnostics,
       clipboard: context.runtime.clipboard,
-      runtime: { log: context.runtime.log } });
+      runtime: { log: context.runtime.log, status: context.runtime.status } });
     if (!controller || typeof controller.dispose !== "function") {
       throw new TypeError("startTerminal must return { dispose() }");
     }

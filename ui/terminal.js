@@ -492,7 +492,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 이 표면의 실제 글자 배율(docs/spec/text-size.md). Required.
   textSize,
   // The runtime of the surface, of which the terminal uses the event log (context.runtime.log, core
-  // docs/spec/plugins.md#logging). Required.
+  // docs/spec/plugins.md#logging) and, in a window with a project, the status watch of core.grid (context.runtime.status). Required.
   runtime,
   window: globalWindow = globalThis.window }) {
   // 브라우저 환경에서 필요한 객체들
@@ -519,8 +519,13 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 공개 status 마다 값이 바뀔 때 호출할 함수
   const watchers = { session: new Set(), screen: new Set(), compose: new Set(), cursor: new Set(), state: new Set(), program: new Set(), activity: new Set(),
     messages: new Set() };
+  // The delivery of the messages of the registration, which a page with a project creates below with the messages; it reviews its
+  // hold at each change of a status that the hold reads (core docs/spec/messaging.md#hold-for-the-person).
+  let messagesDelivery = null;
+  const HOLD_STATUSES = new Set(["session", "compose", "state", "program"]);
   const changed = (name) => {
     for (const fn of watchers[name]) fn(read[name]());
+    if (messagesDelivery !== null && HOLD_STATUSES.has(name)) messagesDelivery.review();
   };
   const watch = (name) => (fn) => {
     watchers[name].add(fn);
@@ -911,7 +916,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     if (!Array.isArray(value) || value.length === 0) throw new Error("terminal file drop has no file URLs");
     return value.map((url) => shellQuotePath(fileURLPath(url))).join(" ");
   };
-  const dropFiles = async ({ urls } = {}) => sendPaste(dropFileURLs(urls));
+  // A drop and a paste of the person are typing on the input line (core docs/spec/messaging.md#hold-for-the-person).
+  const dropFiles = async ({ urls } = {}) => {
+    const text = dropFileURLs(urls);
+    messagesDelivery?.typed(true);
+    return sendPaste(text);
+  };
   const pasteText = async () => {
     if (!clipboard || typeof clipboard.read !== "function") {
       throw new Error("terminal.paste requires a clipboard capability");
@@ -919,6 +929,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     // 뗌의 복사가 아직 오지 않았으면 그 text가 clipboard에 쓰이기를 기다린다.
     await waitForCopy;
     const text = await clipboard.read("text");
+    messagesDelivery?.typed(true);
     if (text !== null) {
       if (typeof text !== "string") throw new Error("text clipboard returned a non-text value");
       return sendPaste(text);
@@ -1239,6 +1250,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     traceNative("native-input", { input: traceInput, cids });
     applyCompose(preedit);
     for (const action of actions) {
+      // An insert of the person starts a line on the input line, and Enter or Ctrl+C ends it (core
+      // docs/spec/messaging.md#hold-for-the-person, typing).
+      if (action.type === "insert" && action.text !== "") messagesDelivery?.typed(true);
+      if (action.type === "key" && (action.key === "Enter" || (action.key === "Char" && action.text === "c" && action.ctrl))) {
+        messagesDelivery?.typed(false);
+      }
       if (action.type === "focus") {
         nativeFocused = action.focused;
         notifyPointer({ kind: "pointer-focus", focused: nativeFocused });
@@ -1811,7 +1828,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       return true;
     }
     messagesRequests.delete(cid);
-    if (typeof body.error === "string") entry.reject(new Error(`${entry.name}: ${body.error}: ${body.reason}`));
+    if (entry.input) {
+      // The reply of an injected input ends that input as the reply of any input does, and the delivery judges its body.
+      const held = unanswered.find((item) => item.cids.includes(cid));
+      if (held !== undefined) forgetInput(held);
+      entry.resolve(body);
+    } else if (typeof body.error === "string") entry.reject(new Error(`${entry.name}: ${body.error}: ${body.reason}`));
     else entry.resolve(body);
     return true;
   };
@@ -1843,7 +1865,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         return;
       }
       if (resolveError("messages")) changed("session");
-      setMessages({ folder: reply.folder, registration: reply.registration });
+      messagesDelivery.attach(reply.folder, reply.registration);
     }, refused);
   };
   // The reads take the cursor {after, registration} and send the members that are present; the sidecar checks their values.
@@ -1855,6 +1877,143 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     return new Promise((resolve, reject) => messagesRequest(`terminal.messages.${name}`, `messages.${name}`,
       { ...(after === undefined ? {} : { after }), ...(registration === undefined ? {} : { registration }) }, resolve, reject));
   };
+  // The injection of the messages of the registration (core docs/spec/messaging.md#injected-message). The page injects the message of
+  // each created or modified file event in increasing seq, one at a time, as the paste of `[메시지 from <title>] <text>` and then Enter,
+  // each after the reply of the input before it, and holds the injection by the reasons of the hold in their order. terminal.messages
+  // is {folder, registration, held, last}, and each decision and each change of the hold is a record of the event log.
+  const ENTER = Object.freeze({ type: "key", key: "Enter", shift: false, alt: false, ctrl: false });
+  const createMessagesDelivery = () => {
+    // The last value of core.grid, whose tabs give the shown title of a sender.
+    let grid = null;
+    const stopGrid = runtime.status.watch("core.grid", (value) => { grid = value; });
+    closing.addEventListener("abort", stopGrid, { once: true });
+    let typing = false;
+    let lastState = terminalState.state;
+    // The file events {seq, path, from} whose messages wait, in increasing seq.
+    let pending = [];
+    let delivering = false;
+    let held = null;
+    let last = null;
+    // The registration of the waiting messages and of the last decision.
+    let attached = null;
+    const holdOf = () => {
+      const blocked = programStatus.records.find((record) => record.state === "blocked");
+      if (blocked !== undefined) return { reason: "blocked", kind: blocked.kind };
+      if (programStatus.records.length === 0 && programStatus.notice) return { reason: "notice", kind: null };
+      if (compose.text !== "") return { reason: "composition", kind: null };
+      if (typing) return { reason: "typing", kind: null };
+      if (session.inputHeld !== null) return { reason: "input-held", kind: null };
+      return null;
+    };
+    const publish = () => {
+      if (messagesStatus === null) return;
+      setMessages({ folder: messagesStatus.folder, registration: messagesStatus.registration, held, last });
+    };
+    const decide = (event, state, reason) => {
+      last = { seq: event.seq, path: event.path, from: event.from, state, reason };
+      runtime.log.info("messages.delivered", last);
+      publish();
+    };
+    // Sends one input of the injection through the input queue and resolves with its reply, an acknowledgement or an error.
+    const inject = (entry) => new Promise((resolve, reject) => {
+      const cid = `${messagesPrefix}${++messagesSequence}`;
+      messagesRequests.set(cid, { name: "terminal.messages.inject", resolve, reject, input: true });
+      enqueueInput(entry, [cid], true).catch((error) => {
+        messagesRequests.delete(cid);
+        reject(error);
+      });
+    });
+    // Decides the delivery of a refused input; an error other than the guard is shown through the error display.
+    const refusedBy = (event, reply) => {
+      if (reply.error === "guardRefused") {
+        decide(event, "refused", `guardRefused: ${reply.rule}: ${reply.reason}`);
+        return;
+      }
+      const cause = typeof reply.reason === "string" ? `${reply.error}: ${reply.reason}` : String(reply.error);
+      setError("messages", `terminal.messages: ${event.path}: ${cause}`);
+      decide(event, "refused", cause);
+    };
+    const deliver = async (event) => {
+      const reply = await readMessages("read", { after: event.seq - 1, registration: messagesStatus.registration });
+      const message = reply.messages.find((item) => item.seq === event.seq);
+      if (message === undefined) {
+        decide(event, "skipped", `message ${event.seq} is not in the folder`);
+        return;
+      }
+      const tab = (grid?.cards ?? []).flatMap((card) => card.tabs).find((item) => item.id === message.from);
+      if (tab === undefined) {
+        decide(event, "refused", `sender ${message.from} has no tab in the window`);
+        return;
+      }
+      // A hold that started while the page read the message keeps it waiting.
+      if (holdOf() !== null) {
+        pending.unshift(event);
+        return;
+      }
+      const pasted = await inject({ type: "paste", text: `[메시지 from ${tab.label ?? tab.title}] ${message.text}` });
+      if (pasted.error !== undefined) {
+        refusedBy(event, pasted);
+        return;
+      }
+      const entered = await inject({ type: "input", actions: [ENTER], preedit: compose });
+      if (entered.error !== undefined) {
+        refusedBy(event, entered);
+        return;
+      }
+      decide(event, "injected", null);
+    };
+    const deliverNext = () => {
+      if (delivering || pending.length === 0 || messagesStatus === null || holdOf() !== null) return;
+      delivering = true;
+      deliver(pending.shift()).catch((error) => {
+        if (error.name !== "AbortError") setError("messages", error.message);
+      }).finally(() => {
+        delivering = false;
+        review();
+      });
+    };
+    // Follows the statuses that the hold reads: the hold of terminal.messages, the record of each start, change and end of the
+    // hold, and the injection of the waiting messages when no hold applies.
+    const review = () => {
+      if (terminalState.state === "idle" && lastState !== "idle") typing = false;
+      lastState = terminalState.state;
+      if (messagesStatus === null) return;
+      const hold = holdOf();
+      const next = hold === null ? null : { ...hold, pending: pending.length };
+      if ((held?.reason ?? null) !== (next?.reason ?? null) || (held?.kind ?? null) !== (next?.kind ?? null)) {
+        runtime.log.info("messages.held", next ?? { reason: null, kind: null, pending: pending.length });
+      }
+      if (JSON.stringify(next) !== JSON.stringify(held)) {
+        held = next;
+        publish();
+      }
+      deliverNext();
+    };
+    return {
+      review,
+      // A registration other than the one before starts its own seq, so the waiting messages and the last decision end with it.
+      attach(folder, registration) {
+        if (registration !== attached) {
+          attached = registration;
+          pending = [];
+          last = null;
+        }
+        setMessages({ folder, registration, held, last });
+        review();
+      },
+      fileChanged(body) {
+        if (messagesStatus === null || body.registration !== messagesStatus.registration) return;
+        if (body.kind !== "created" && body.kind !== "modified") return;
+        pending.push({ seq: body.seq, path: body.path, from: body.from });
+        review();
+      },
+      typed(on) {
+        typing = on;
+        review();
+      },
+    };
+  };
+  if (messagesFolder !== null) messagesDelivery = createMessagesDelivery();
   let screenWatchEnabled = false;
   let screenWatchRegistered = false;
   let screenWatchConnected = true;
@@ -2118,8 +2277,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     } else if (body.event === "screen.watching") {
       // A late acknowledgement of an ended transition owns no current state.
     } else if (body.event === "file.changed") {
-      // A message of the registered folder changed. The reads of terminal.messages.read and terminal.messages.wait deliver it, so
-      // the page holds no state of it.
+      // A message of the registered folder changed. The reads of terminal.messages.read and terminal.messages.wait deliver it, and
+      // the delivery injects it.
+      messagesDelivery?.fileChanged(body);
     } else if (body.event === "registration.closed") {
       if (messagesStatus !== null && body.registration === messagesStatus.registration) setMessages(null);
       setError("messages", `terminal.messages: registration-closed: ${body.reason}`);

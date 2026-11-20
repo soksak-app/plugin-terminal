@@ -585,6 +585,94 @@
       },
       "description": "A reply of the sidecar arrived for a messages request that no longer waits, such as a request that the end of the sidecar connection or the close of the view already ended; refused is whether the reply is a refusal {error, reason}."
     },
+    "plugin.terminal.messages.delivered": {
+      "layer": "plugin",
+      "class": "io",
+      "level": "info",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "seq": {
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "injected",
+              "refused",
+              "skipped"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "seq",
+          "path",
+          "from",
+          "state",
+          "reason"
+        ]
+      },
+      "description": "The page decided the delivery of a message of its registration (core docs/spec/messaging.md#delivery): seq, path and from are those of the file event, state is injected, refused or skipped, and reason is null for injected and the reason of a refused or skipped message."
+    },
+    "plugin.terminal.messages.held": {
+      "layer": "plugin",
+      "class": "io",
+      "level": "info",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "blocked",
+              "notice",
+              "composition",
+              "typing",
+              "input-held",
+              null
+            ]
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "permission",
+              "question",
+              "auth",
+              null
+            ]
+          },
+          "pending": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reason",
+          "kind",
+          "pending"
+        ]
+      },
+      "description": "A hold of the injection of the messages started, changed its reason or ended (core docs/spec/messaging.md#hold-for-the-person): reason is the first reason that applies, or null at the end, kind is the kind of a blocked record or null, and pending is the number of messages that wait."
+    },
     "plugin.terminal.clipboard.refused": {
       "layer": "plugin",
       "class": "io",
