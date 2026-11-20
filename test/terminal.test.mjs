@@ -298,10 +298,12 @@ function createFakeSidecar({ delay = () => null, answers = true, watchAnswers = 
       if (answers && cids.length > 0) for (const handler of listeners.get(id) ?? []) {
         if (body.operation === "screen.watch") {
           if (watchAnswers) handler({ event: "screen.watching", enabled: body.enabled }, cids);
-        } else if (!(body.operation === "screen.read" && body.from !== undefined) && body.operation !== "screen.scroll.read") {
+        } else if (!(body.operation === "screen.read" && body.from !== undefined) && body.operation !== "screen.scroll.read"
+          && !String(body.operation).startsWith("messages.")) {
           handler({ ack: true }, cids);
         }
-        // A range read and a scroll read are answered by their event or their refusal, which each test delivers with these cids.
+        // A range read, a scroll read and a messages request are answered by their reply or their refusal, which each test delivers
+        // with these cids.
       }
       return Promise.resolve();
     },
@@ -6864,4 +6866,147 @@ test("terminal.activity notifies its watchers only when the level changes", { ti
   terminal.emit({ event: "shell.state", from: "running", to: "exited", source: "osc133", sequence: 6, exit: 0 });
   terminal.emit({ event: "shell.state.current", state: "exited", source: "osc133", sequence: 6, exit: 0 });
   assert.deepEqual(seen, ["idle", "running", "failed", "idle", "running", null]);
+});
+
+// The messages of a terminal (core docs/spec/messaging.md#folder-of-a-terminal): the page registers the folder
+// <root>/.soksak/messages/<surface> of the project of its start values with the sidecar, reports it as terminal.messages, and
+// relays the reads of terminal.messages.read and terminal.messages.wait to the sidecar.
+const MESSAGES_PROJECT = { id: "prj-app", root: "/work/app" };
+const MESSAGES_FOLDER = "/work/app/.soksak/messages/test-session";
+async function messagesTerminal({ project = MESSAGES_PROJECT, closing = new AbortController().signal } = {}) {
+  FakeResizeObserver.reset();
+  const sidecar = createFakeSidecar();
+  const expose = createFakeExpose();
+  const tab = createFakeTab();
+  const log = capturedLog();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar, expose, tab, project, closing, runtime: log.runtime, window: { TextEncoder },
+  });
+  const sent = (operation) => sidecar.getMessages().filter(({ body }) => body.operation === operation).map(({ body }) => body);
+  const status = () => {
+    const entry = expose.getStatus("terminal.messages");
+    assert.notEqual(entry, undefined, "the status terminal.messages is not registered");
+    return entry.readFn();
+  };
+  const command = (name) => {
+    const handler = expose.getCommand(name);
+    assert.notEqual(handler, undefined, `the command ${name} is not registered`);
+    return handler;
+  };
+  const tabErrors = () => tab.calls.filter(([kind, text]) => kind === "error" && text !== null).map(([, text]) => text);
+  return { sidecar, expose, tab, log, sent, status, command, tabErrors };
+}
+
+test("a terminal of a project registers its folder when its sidecar port connects and after each reconnection", { timeout: 10000 }, async () => {
+  const { sidecar, expose, sent, status } = await messagesTerminal();
+  assert.deepEqual(sent("messages.register"), [{ operation: "messages.register", folder: MESSAGES_FOLDER }],
+    "the page registers the folder of its surface in the project once its sidecar port is connected");
+  const cids = sidecar.getCids(sent("messages.register")[0]);
+  assert.equal(cids.length, 1, "the registration carries one correlation identifier");
+  assert.equal(status(), null, "terminal.messages is null before the reply");
+  const seen = [];
+  expose.getStatus("terminal.messages").watchFn((value) => seen.push(value));
+  sidecar.triggerRaw("test-session", { registration: "r1", folder: MESSAGES_FOLDER }, cids);
+  assert.deepEqual(status(), { folder: MESSAGES_FOLDER, registration: "r1" });
+  assert.deepEqual(seen, [{ folder: MESSAGES_FOLDER, registration: "r1" }], "the reply notifies the watchers of terminal.messages");
+
+  sidecar.triggerRaw("test-session", { event: "connection", connected: false, reason: "the service exited" });
+  assert.equal(status(), null, "an ended connection holds no registration");
+  assert.equal(sent("messages.register").length, 1, "an ended connection sends no registration");
+  sidecar.triggerRaw("test-session", { event: "connection", connected: true });
+  assert.deepEqual(sent("messages.register"), [{ operation: "messages.register", folder: MESSAGES_FOLDER },
+    { operation: "messages.register", folder: MESSAGES_FOLDER }], "a reconnection registers the same folder again");
+  const again = sidecar.getCids(sent("messages.register")[1]);
+  assert.equal(again.length, 1);
+  assert.notDeepEqual(again, cids, "each registration has its own correlation identifier");
+  sidecar.triggerRaw("test-session", { registration: "r2", folder: MESSAGES_FOLDER }, again);
+  assert.deepEqual(status(), { folder: MESSAGES_FOLDER, registration: "r2" });
+});
+
+test("a terminal without a project registers no folder and reports terminal.messages as null", { timeout: 10000 }, async () => {
+  const { sidecar, sent, status } = await messagesTerminal({ project: null });
+  assert.deepEqual(sent("messages.register"), [], "a window without a project registers no folder");
+  assert.equal(status(), null);
+  sidecar.triggerRaw("test-session", { event: "connection", connected: true });
+  assert.deepEqual(sent("messages.register"), [], "a reconnection without a project registers no folder");
+});
+
+test("a refused registration keeps terminal.messages null and shows its error through the tab error display", { timeout: 10000 }, async () => {
+  const { sidecar, log, sent, status, tabErrors } = await messagesTerminal();
+  const reason = `${MESSAGES_FOLDER} is registered by surface other`;
+  sidecar.triggerRaw("test-session", { error: "already-registered", reason }, sidecar.getCids(sent("messages.register")[0]));
+  const text = `terminal.messages: already-registered: ${reason}`;
+  assert.equal(status(), null, "a refused registration holds no registration");
+  assert.deepEqual(tabErrors(), [text], "the tab error display shows the refusal");
+  assert.deepEqual(records(log, "error").map(([fields, level]) => [fields.message, level]), [[text, "error"]],
+    "the refusal is the error record of the application log");
+});
+
+for (const name of ["read", "wait"]) {
+  test(`terminal.messages.${name} sends the parameters that are present with one correlation identifier and answers the reply`, { timeout: 10000 }, async () => {
+    const { sidecar, expose, sent, command } = await messagesTerminal();
+    const operation = `messages.${name}`;
+    const run = command(`terminal.messages.${name}`);
+    const answer = { registration: "r1", messages: [{ seq: 4, path: "1-from-s2.txt", text: "hello", from: "s2" }], last: 4 };
+    const reading = run({ after: 3, registration: "r1" });
+    assert.deepEqual(sent(operation), [{ operation, after: 3, registration: "r1" }]);
+    const cids = sidecar.getCids(sent(operation)[0]);
+    assert.equal(cids.length, 1, "the request carries one correlation identifier");
+    sidecar.triggerRaw("test-session", answer, cids);
+    assert.deepEqual(await reading, answer, "the command answers the body of the reply that echoes its identifier");
+
+    const bare = run({});
+    assert.deepEqual(sent(operation)[1], { operation }, "a parameter that is absent is not sent");
+    const epoch = "registration r0 is not the current registration r1";
+    sidecar.triggerRaw("test-session", { error: "epoch-changed", reason: epoch }, sidecar.getCids(sent(operation)[1]));
+    await assert.rejects(bare, { message: `terminal.messages.${name}: epoch-changed: ${epoch}` });
+
+    const unchecked = run({ after: -1 });
+    assert.deepEqual(sent(operation)[2], { operation, after: -1 }, "the page leaves the check of the cursor to the sidecar");
+    const refusal = "after must be an integer of at least 0, got -1";
+    sidecar.triggerRaw("test-session", { error: "invalidParams", reason: refusal }, sidecar.getCids(sent(operation)[2]));
+    await assert.rejects(unchecked, { message: `terminal.messages.${name}: invalidParams: ${refusal}` });
+    assert.equal(expose.getStatus("terminal.session").readFn().error ?? null, null, "a refused read is no session error");
+
+    await assert.rejects(run({ after: 0, folder: "/tmp" }), { message: `terminal.messages.${name} takes only after and registration, got folder` });
+    assert.equal(sent(operation).length, 3, "a parameter that the command does not take sends no request");
+  });
+}
+
+test("the end of the sidecar connection rejects each waiting messages request", { timeout: 10000 }, async () => {
+  const { sidecar, log, sent, command } = await messagesTerminal();
+  const read = command("terminal.messages.read")({});
+  const wait = command("terminal.messages.wait")({ after: 2, registration: "r1" });
+  sidecar.triggerRaw("test-session", { event: "connection", connected: false, reason: "the service exited" });
+  await assert.rejects(read, { message: "terminal.messages.read: the sidecar connection ended" });
+  await assert.rejects(wait, { message: "terminal.messages.wait: the sidecar connection ended" });
+  // A reply under an identifier whose request ended answers no request and is a record of its own, not a session error.
+  sidecar.triggerRaw("test-session", { error: "registration-closed", reason: "folder-removed" }, sidecar.getCids(sent("messages.wait")[0]));
+  assert.deepEqual(records(log, "messages.unmatched"), [[{ refused: true }, "debug"]]);
+
+  const failed = command("terminal.messages.wait")({});
+  sidecar.triggerFailure("test-session", "the service exited");
+  await assert.rejects(failed, { message: "terminal.messages.wait: the sidecar connection ended" },
+    "the sidecar-failure of the surface ends the connection of the wait");
+});
+
+test("the close of the view rejects each waiting messages request", { timeout: 10000 }, async () => {
+  const closing = new AbortController();
+  const { command } = await messagesTerminal({ closing: closing.signal });
+  const wait = command("terminal.messages.wait")({});
+  closing.abort();
+  await assert.rejects(wait, { message: "terminal.messages.wait: the view closed" });
+});
+
+test("file events are known events, and the close of the registration resets terminal.messages and shows its reason", { timeout: 10000 }, async () => {
+  const { sidecar, expose, log, sent, status, tabErrors } = await messagesTerminal();
+  sidecar.triggerRaw("test-session", { registration: "r1", folder: MESSAGES_FOLDER }, sidecar.getCids(sent("messages.register")[0]));
+  sidecar.triggerRaw("test-session", { event: "file.changed", registration: "r1", path: "1-from-s2.txt", from: "s2", kind: "created", seq: 1 });
+  assert.deepEqual(status(), { folder: MESSAGES_FOLDER, registration: "r1" }, "a file event changes no registration");
+  sidecar.triggerRaw("test-session", { event: "registration.closed", registration: "r1", reason: "folder-removed" });
+  assert.equal(status(), null, "a closed registration is no registration");
+  assert.deepEqual(tabErrors(), ["terminal.messages: registration-closed: folder-removed"]);
+  assert.deepEqual(records(log, "sidecar.unknown"), [], "the file events are no unknown events");
+  assert.deepEqual(expose.getStatus("terminal.session").readFn().unsupported, []);
 });

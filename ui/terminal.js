@@ -467,7 +467,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     throw new TypeError(`startTerminal requires origin {directory} with a path or null, found ${JSON.stringify(origin)}`);
   }
   // 공개 status 마다 값이 바뀔 때 호출할 함수
-  const watchers = { session: new Set(), screen: new Set(), compose: new Set(), cursor: new Set(), state: new Set(), activity: new Set() };
+  const watchers = { session: new Set(), screen: new Set(), compose: new Set(), cursor: new Set(), state: new Set(), activity: new Set(),
+    messages: new Set() };
   const changed = (name) => {
     for (const fn of watchers[name]) fn(read[name]());
   };
@@ -569,6 +570,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     cursor: () => cursor,
     state: () => terminalState,
     activity: () => terminalActivity(terminalState),
+    messages: () => messagesStatus,
   };
 
   // 터미널 사이드카가 이 표면의 VT 세션을 실행한다. 보내는 모든 메시지는 본문 전체와 결과를, 받는 모든 이벤트는 본문 전체를
@@ -1676,6 +1678,79 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     entry.resolve(reply);
     return true;
   };
+  // The messages of the terminal (core docs/spec/messaging.md#folder-of-a-terminal). The page registers the folder
+  // <root>/.soksak/messages/<surface> of the project of its start values with the sidecar, which creates it, and terminal.messages
+  // is the registration of the reply; a window without a project registers no folder. The registration and the reads of
+  // terminal.messages.read and terminal.messages.wait each send one correlation identifier, which their reply names.
+  const messagesFolder = project === null ? null : `${project.root}/.soksak/messages/${id}`;
+  let messagesStatus = null;
+  const messagesPrefix = `${unansweredPrefix}-messages-`;
+  const messagesRequests = new Map();
+  let messagesSequence = 0;
+  // The reply calls resolve or reject while the page handles it, so the status of a registration changes with its reply.
+  const messagesRequest = (name, operation, body, resolve, reject) => {
+    const cid = `${messagesPrefix}${++messagesSequence}`;
+    messagesRequests.set(cid, { name, resolve, reject });
+    terminal.send(id, { operation, ...body }, [cid]).catch((error) => {
+      messagesRequests.delete(cid);
+      reject(error);
+    });
+  };
+  // Ends the messages request that the reply names, and returns whether the reply names a messages request. A reply of a request
+  // that ended already answers no request and is recorded.
+  const answerMessages = (body, cids) => {
+    const cid = cids.find((item) => item.startsWith(messagesPrefix));
+    if (cid === undefined) return false;
+    const entry = messagesRequests.get(cid);
+    if (entry === undefined) {
+      runtime.log.debug("messages.unmatched", { refused: typeof body.error === "string" }, { cids });
+      return true;
+    }
+    messagesRequests.delete(cid);
+    if (typeof body.error === "string") entry.reject(new Error(`${entry.name}: ${body.error}: ${body.reason}`));
+    else entry.resolve(body);
+    return true;
+  };
+  // The sidecar ends the requests of a connection that ended without a reply (core docs/spec/messaging.md#wire-decisions, point 7),
+  // so the end of the connection or the close of the view ends each request that waits. The close of the view is an AbortError,
+  // which the registration does not report.
+  const endMessagesRequests = (cause, aborted = false) => {
+    const ended = [...messagesRequests.values()];
+    messagesRequests.clear();
+    for (const { name, reject } of ended) {
+      reject(aborted ? new DOMException(`${name}: ${cause}`, "AbortError") : new Error(`${name}: ${cause}`));
+    }
+  };
+  const setMessages = (value) => {
+    if (messagesStatus === value) return;
+    messagesStatus = value;
+    changed("messages");
+  };
+  // A repeated registration of the same folder answers the same registration (core docs/spec/messaging.md#wire-decisions, point 10),
+  // so the page registers at each connection of its sidecar port.
+  const registerMessages = () => {
+    if (messagesFolder === null) return;
+    const refused = (error) => {
+      if (error.name !== "AbortError") setError("messages", error.message);
+    };
+    messagesRequest("terminal.messages", "messages.register", { folder: messagesFolder }, (reply) => {
+      if (typeof reply.registration !== "string" || reply.registration === "" || reply.folder !== messagesFolder) {
+        refused(new Error(`terminal.messages received a mismatched reply: ${JSON.stringify({ registration: reply.registration, folder: reply.folder })}`));
+        return;
+      }
+      if (resolveError("messages")) changed("session");
+      setMessages({ folder: reply.folder, registration: reply.registration });
+    }, refused);
+  };
+  // The reads take the cursor {after, registration} and send the members that are present; the sidecar checks their values.
+  const readMessages = (name, params) => {
+    const values = params ?? {};
+    const other = Object.keys(values).find((key) => key !== "after" && key !== "registration");
+    if (other !== undefined) throw new Error(`terminal.messages.${name} takes only after and registration, got ${other}`);
+    const { after, registration } = values;
+    return new Promise((resolve, reject) => messagesRequest(`terminal.messages.${name}`, `messages.${name}`,
+      { ...(after === undefined ? {} : { after }), ...(registration === undefined ? {} : { registration }) }, resolve, reject));
+  };
   let screenWatchEnabled = false;
   let screenWatchRegistered = false;
   let screenWatchConnected = true;
@@ -1787,7 +1862,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     screenReadAwaited = false;
     screenReadAgain = false;
     endSidecarWaits(error);
+    endMessagesRequests("the sidecar connection ended");
+    setMessages(null);
   });
+  const closeMessagesRequests = () => endMessagesRequests("the view closed", true);
+  closing.addEventListener("abort", closeMessagesRequests, { once: true });
   // The close of the view ends the waits that no event of the detached view answers. The disable acknowledgement of the watch is
   // still matched, because its listener runs before the guard of the closed view.
   const closeSidecarWaits = () => endSidecarWaits(new DOMException("the view closed", "AbortError"));
@@ -1812,6 +1891,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     if (closing.aborted) return;
     if (answerRangeRead(body, cids ?? [])) return;
     if (answerScrollRead(body, cids ?? [])) return;
+    if (answerMessages(body, cids ?? [])) return;
     if (body.event === "exit") {
       screenWatchConnected = false;
       screenWatchEnabled = false;
@@ -1903,6 +1983,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       screenReadAwaited = false;
       screenReadAgain = false;
       endSidecarWaits(new Error("the sidecar connection changed before it answered"));
+      endMessagesRequests("the sidecar connection ended");
+      setMessages(null);
       // 영속 사이드카의 연결이 다시 맺혔다(V5-106). 이전 연결이 남긴 사이드카 오류는
       // 해소하고 세션을 다시 연다 — 재스폰된 서비스에는 이 표면의 세션이 없다. 실패했으면
       // 연결 끊김과 그 까닭을 세션 오류로 남긴다. 입력은 다시 열릴 때까지 대기열에 쌓인다.
@@ -1913,6 +1995,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         const resolved = resolveError("open");
         if (resolveError("sidecar") || resolved) changed("session");
         rerunBootstrap().catch((error) => reportInputError(error));
+        registerMessages();
       } else {
         const reason = typeof body.reason === "string" && body.reason.length > 0 ? `: ${body.reason}` : "";
         // The sidecar sends no held:false for a connection that ended, so the held input is cleared here.
@@ -1926,6 +2009,12 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       followScreen();
     } else if (body.event === "screen.watching") {
       // A late acknowledgement of an ended transition owns no current state.
+    } else if (body.event === "file.changed") {
+      // A message of the registered folder changed. The reads of terminal.messages.read and terminal.messages.wait deliver it, so
+      // the page holds no state of it.
+    } else if (body.event === "registration.closed") {
+      if (messagesStatus !== null && body.registration === messagesStatus.registration) setMessages(null);
+      setError("messages", `terminal.messages: registration-closed: ${body.reason}`);
     } else if (body.event === "screen") {
       if (body.base === false && screenReadAwaited) {
         runtime.log.debug("screen.refused", { number: body.number, previous: body.previous });
@@ -2322,6 +2411,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     }
   });
 
+  registerMessages();
   await rerunBootstrap();
 
   let themeReady = Promise.resolve();
@@ -2402,6 +2492,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       expose.status("terminal.cursor", read.cursor, watch("cursor")),
       expose.status("terminal.state", read.state, watch("state")),
       expose.status("terminal.activity", read.activity, watch("activity")),
+      expose.status("terminal.messages", read.messages, watch("messages")),
+      expose.command("terminal.messages.read", async (params) => readMessages("read", params)),
+      expose.command("terminal.messages.wait", async (params) => readMessages("wait", params)),
       expose.command("terminal.input", async ({ bytes }) => {
         if (typeof bytes !== "string") throw new Error("terminal.input requires bytes");
         try {
@@ -2602,6 +2695,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
       closing.removeEventListener("abort", closeScreenWatch);
       closing.removeEventListener("abort", closeSidecarWaits);
+      closing.removeEventListener("abort", closeMessagesRequests);
       if (diagnostics) for (const type of pointerTraceTypes) view.removeEventListener(type, tracePointer);
       const offTheme = await themeSubscription?.dispose;
       // default: 테마나 설정 구독이 없으면 해제 함수도 없다.
