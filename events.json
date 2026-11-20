@@ -648,7 +648,7 @@
           "kind"
         ]
       },
-      "description": "The page injected a role message of its tab (core docs/spec/agent-roles.md): kind is role-first (the first message of a CLI without an adapter), role-change (the change message) or role-reread (a reread request). A refused injection is shown through the error display, not through this event."
+      "description": "The page injected a role message of its tab (core docs/spec/agent-roles.md): kind is role-first (the first message of a program launched with a role), role-change (the change message) or role-reread (a reread request). A refused injection is shown through the error display, not through this event."
     },
     "plugin.terminal.messages.held": {
       "layer": "plugin",

@@ -1,5 +1,5 @@
 import { shellQuotePath } from "@soksak/plugin-api";
-import { changeMessage, firstMessage, hasLaunchAdapter, holdsWork, isAtRest, launchOf, notBusyReport, rereadRequest } from "./agent-role.js";
+import { changeMessage, firstMessage, holdsWork, isAtRest, launchOf, notBusyReport, rereadRequest } from "./agent-role.js";
 import { applyScreenMessage, screenHash } from "@soksak/plugin-api/screen-hash";
 
 // 터미널 표면의 부팅과 동작을 처리한다.
@@ -2056,8 +2056,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
       deliverNext();
     };
-    // A new generation of the role queues its start message: the first message of a CLI without an adapter at the first generation,
-    // and the change message otherwise (core docs/spec/agent-roles.md#resume). The message names the path of the status.
+    // A new generation of the role queues its start message: the first message at the first generation, and the change message
+    // otherwise (core docs/spec/agent-roles.md#resume). The message names the path of the status.
     const announceRole = (value) => {
       if (value === null) {
         announced = null;
@@ -2073,8 +2073,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       announced = value.generation;
       requests = 0;
       roleOutbox = [];
-      const cli = launch.program.split("/").pop();
-      const kind = value.generation === 1 && !hasLaunchAdapter(cli) ? "role-first" : "role-change";
+      const kind = value.generation === 1 ? "role-first" : "role-change";
       const text = kind === "role-first" ? firstMessage(value.path) : changeMessage(value.path);
       roleOutbox.push({ kind, text });
     };

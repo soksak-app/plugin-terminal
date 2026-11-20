@@ -7499,13 +7499,16 @@ test("a role change of an agent CLI sends the change message that names the path
   assert.deepEqual(t.injected(), [changeMessage(ROLE_FILE_PATH), "Enter"], "the change message names the path of the role file");
 });
 
-test("the first role of a CLI without an adapter sends the first message that names the path of the status", { timeout: 10000 }, async () => {
-  const t = await deliveryTerminal({ params: { program: "/usr/bin/aider", args: [], role: "reviewer" } });
-  t.emit({ event: "program.status.current", records: [], notice: false, sequence: 0 });
-  t.role(roleStatus({ generation: 1, seq: 1 }));
-  await t.sidecar.until(() => t.injected().length === 2);
-  assert.deepEqual(t.injected(), [firstMessage(ROLE_FILE_PATH), "Enter"]);
-});
+// Every program launched with a role gets the identity as its first message (core docs/spec/agent-roles.md#first-message).
+for (const program of ["claude", "codex", "/usr/bin/aider"]) {
+  test(`the first role of ${program} sends the first message that names the path of the status`, { timeout: 10000 }, async () => {
+    const t = await deliveryTerminal({ params: { program, args: [], role: "reviewer" } });
+    t.emit({ event: "program.status.current", records: [], notice: false, sequence: 0 });
+    t.role(roleStatus({ generation: 1, seq: 1 }));
+    await t.sidecar.until(() => t.injected().length === 2);
+    assert.deepEqual(t.injected(), [firstMessage(ROLE_FILE_PATH), "Enter"]);
+  });
+}
 
 test("reread requests are counted by the not-busy reports, and the third report marks the role unconfirmed", { timeout: 10000 }, async () => {
   const t = await deliveryTerminal({ params: { program: "claude", args: [], role: "reviewer" } });

@@ -1,5 +1,5 @@
-// The English texts that soksak gives an agent and the launch adapters that carry its stable identity (core
-// docs/spec/agent-roles.md#stable-identity and docs/spec/agent-roles.md#launch-adapters). The texts are the ones that core
+// The English texts that soksak gives an agent: the identity of its stable role and the messages that carry it (core
+// docs/spec/agent-roles.md#stable-identity). The texts are the ones that core
 // docs/spec/cases/agent-roles/fingerprint.json pins; `<role file>` is the absolute path of the role file of the tab.
 
 const ROLE_FILE = "<role file>";
@@ -30,12 +30,7 @@ export function identityText(roleFile) {
   return IDENTITY.replace(ROLE_FILE, roleFile);
 }
 
-/** Whether the CLI has a launch adapter, which core composes into the argument list of a tab with a role (core docs/spec/agent-roles.md#launch-adapters). */
-export function hasLaunchAdapter(cli) {
-  return cli === "claude" || cli === "codex";
-}
-
-/** The first message of a CLI without an adapter: the identity, then the first-message suffix on its own line. */
+/** The first message of a program launched with a role: the identity, then the first-message suffix on its own line (core docs/spec/agent-roles.md#first-message). */
 export function firstMessage(roleFile) {
   return `${identityText(roleFile)}\n${FIRST_MESSAGE_SUFFIX}`;
 }
