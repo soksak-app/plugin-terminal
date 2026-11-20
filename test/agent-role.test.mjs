@@ -12,6 +12,13 @@ const fill = (text, values) => Object.entries(values).reduce((out, [key, value])
 const ROLE_FILE = "/Users/example/config/agents/surface-1/role.md";
 const IDENTITY_FILE = "/Users/example/config/agents/surface-1/identity.txt";
 
+// The fixture is a copy of the core case file, which pins exactly these texts; a text that the case file no longer holds must not
+// stay in the copy.
+test("the fixture pins the texts of the core case file and no other", () => {
+  assert.deepEqual(Object.keys(CASES.texts).sort(),
+    ["change_message", "first_message_suffix", "identity", "reread_request", "role_file_first_line"]);
+});
+
 test("the identity text names the role file and equals the pinned text", () => {
   assert.equal(identityText(ROLE_FILE), fill(CASES.texts.identity, { "<role file>": ROLE_FILE }));
 });
