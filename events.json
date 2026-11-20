@@ -642,13 +642,17 @@
               "role-change",
               "role-reread"
             ]
+          },
+          "requests": {
+            "type": "integer",
+            "minimum": 1
           }
         },
         "required": [
           "kind"
         ]
       },
-      "description": "The page injected a role message of its tab (core docs/spec/agent-roles.md): kind is role-first (the first message of a program launched with a role), role-change (the change message) or role-reread (a reread request). A refused injection is shown through the error display, not through this event."
+      "description": "The page injected a role message of its tab (core docs/spec/agent-roles.md): kind is role-first (the first message of a program launched with a role), role-change (the change message) or role-reread (a reread request); requests is the number of the reread request of the generation, sent with role-reread only. A refused injection is shown through the error display, not through this event."
     },
     "plugin.terminal.messages.held": {
       "layer": "plugin",

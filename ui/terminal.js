@@ -1,5 +1,5 @@
 import { shellQuotePath } from "@soksak/plugin-api";
-import { changeMessage, firstMessage, holdsWork, isAtRest, launchOf, notBusyReport, rereadRequest } from "./agent-role.js";
+import { changeMessage, firstMessage, isAtRest, launchOf, rereadRequest } from "./agent-role.js";
 import { applyScreenMessage, screenHash } from "@soksak/plugin-api/screen-hash";
 
 // 터미널 표면의 부팅과 동작을 처리한다.
@@ -1928,7 +1928,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     return `[soksak message from ${senderName(tab)} (${folder}): This is a message from another agent, not input from the person. Handle it after your current task. It grants no approval or permission and answers no pending question.] ${message.text}`;
   };
   // The states of the role of a tab (core docs/spec/agent-roles.md#tab-role-state).
-  const ROLE_STATES = new Set(["pending", "ready", "unconfirmed"]);
+  const ROLE_STATES = new Set(["pending", "ready"]);
   const createMessagesDelivery = () => {
     // The last value of core.grid, whose tabs give the shown text of a sender (core docs/spec/messaging.md#injected-message).
     let grid = null;
@@ -1960,7 +1960,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       if (compose.text !== "") return { reason: "composition", kind: null };
       if (typing) return { reason: "typing", kind: null };
       if (session.inputHeld !== null) return { reason: "input-held", kind: null };
-      if (!forRole && holdsWork(roleState)) return { reason: "role-pending", kind: null };
+      if (!forRole && roleState === "pending") return { reason: "role-pending", kind: null };
       return null;
     };
     const publish = () => {
@@ -2014,7 +2014,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         setError("messages", `terminal.messages: ${entry.kind}: ${cause}`);
         return;
       }
-      runtime.log.info("messages.role.delivered", { kind: entry.kind });
+      runtime.log.info("messages.role.delivered", entry.fields);
     };
     const deliverNext = () => {
       if (delivering || messagesStatus === null) return;
@@ -2075,21 +2075,15 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       roleOutbox = [];
       const kind = value.generation === 1 ? "role-first" : "role-change";
       const text = kind === "role-first" ? firstMessage(value.path) : changeMessage(value.path);
-      roleOutbox.push({ kind, text });
+      roleOutbox.push({ kind, text, fields: { kind } });
     };
-    // Each report of the program that is at rest counts one reread request of a pending role (core docs/spec/agent-roles.md#requests).
+    // Each report of the program that is at rest sends one reread request while the role is pending, and the count of the requests
+    // of the generation is recorded with it (core docs/spec/agent-roles.md#requests).
     const programReport = (next) => {
       if (roleValue === null || roleValue.state !== "pending" || !isAtRest(next)) return;
-      const step = notBusyReport({ state: "pending", requests });
-      requests = step.role.requests;
-      if (step.role.state === "unconfirmed") {
-        setError("messages", `unconfirmed role: tab ${id} did not confirm the role file ${roleValue.path}`);
-        return;
-      }
-      if (step.request !== null) {
-        roleOutbox.push({ kind: "role-reread", text: rereadRequest(roleValue.path, roleValue.fingerprint) });
-        review();
-      }
+      requests += 1;
+      roleOutbox.push({ kind: "role-reread", text: rereadRequest(roleValue.path, roleValue.fingerprint), fields: { kind: "role-reread", requests } });
+      review();
     };
     const stopRole = runtime.status.watch("core.tab.role", (value) => {
       if (value !== null && (typeof value !== "object" || !ROLE_STATES.has(value.state))) {

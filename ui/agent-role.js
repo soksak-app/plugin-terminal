@@ -51,23 +51,6 @@ export function rereadRequest(roleFile, fingerprint) {
   return REREAD_REQUEST.split(ROLE_FILE).join(roleFile).split(FINGERPRINT).join(fingerprint);
 }
 
-/**
- * One report that the program of a tab is not busy, applied to the role record {state, requests} of the tab. While the state is
- * pending, the first such report sends request 1, the next sends request 2, and the next marks the state unconfirmed without a
- * request (core docs/spec/agent-roles.md#requests). Returns the new record and the number of the request sent, or null.
- */
-export function notBusyReport(role) {
-  if (role.state !== "pending") return { role, request: null };
-  if (role.requests >= 2) return { role: { ...role, state: "unconfirmed" }, request: null };
-  const requests = role.requests + 1;
-  return { role: { ...role, requests }, request: requests };
-}
-
-/** Whether the work messages of a tab wait for its role: the states pending and unconfirmed hold them (core messaging hold role-pending). */
-export function holdsWork(state) {
-  return state === "pending" || state === "unconfirmed";
-}
-
 /** The fingerprint of an answer line `soksak role <fingerprint>` after the spaces at both ends are removed, or null (core docs/spec/messaging.md#role-confirmation). */
 export function confirmationLine(line) {
   if (typeof line !== "string") throw new TypeError(`confirmation line must be a string, got ${typeof line}`);

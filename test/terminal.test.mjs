@@ -7510,22 +7510,31 @@ for (const program of ["claude", "codex", "/usr/bin/aider"]) {
   });
 }
 
-test("reread requests are counted by the not-busy reports, and the third report marks the role unconfirmed", { timeout: 10000 }, async () => {
+test("a reread request follows each report at rest while the role is pending, and the confirmation ends them", { timeout: 10000 }, async () => {
   const t = await deliveryTerminal({ params: { program: "claude", args: [], role: "reviewer" } });
   t.emit({ event: "program.status.current", records: [], notice: false, sequence: 0 });
-  t.role(roleStatus({ generation: 2, seq: 2 }));
+  t.role(roleStatus({ generation: 1, seq: 1 }));
   await t.sidecar.until(() => t.injected().length === 2);
-  t.emit({ event: "program.status", records: [WORKING], notice: false, sequence: 1 });
-  assert.equal(t.injected().length, 2, "a report of a working program sends no request");
-  t.emit({ event: "program.status", records: [IDLE], notice: false, sequence: 2 });
-  await t.sidecar.until(() => t.injected().length === 4);
-  assert.equal(t.injected()[2], rereadRequest(ROLE_FILE_PATH, ROLE_FINGERPRINT), "the first request names the path and the fingerprint");
-  t.emit({ event: "program.status", records: [IDLE], notice: false, sequence: 3 });
-  await t.sidecar.until(() => t.injected().length === 6);
-  assert.equal(t.injected()[4], rereadRequest(ROLE_FILE_PATH, ROLE_FINGERPRINT), "the second request is the same text");
-  t.emit({ event: "program.status", records: [IDLE], notice: false, sequence: 4 });
-  assert.equal(t.injected().length, 6, "the third report sends no request");
-  assert.deepEqual(t.tabErrors(), [`unconfirmed role: tab test-session did not confirm the role file ${ROLE_FILE_PATH}`]);
+  // Four reports at rest, each without a confirmation: each sends one reread request and counts it.
+  for (let request = 1; request <= 4; request += 1) {
+    t.emit({ event: "program.status", records: [IDLE], notice: false, sequence: request });
+    await t.sidecar.until(() => t.injected().length === 2 + 2 * request);
+    assert.equal(t.injected()[2 * request], rereadRequest(ROLE_FILE_PATH, ROLE_FINGERPRINT), `request ${request} names the path and the fingerprint`);
+  }
+  // The confirmation of the fourth request: the state becomes ready, and a report at rest sends nothing.
+  t.role(roleStatus({ generation: 1, state: "ready", seq: 2 }));
+  t.emit({ event: "program.status", records: [IDLE], notice: false, sequence: 5 });
+  assert.equal(t.injected().length, 10, "a ready role sends no request");
+  // The record of the last injection is written when its reply arrives, which the fake sidecar delivers on a later task.
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(records(t.log, "messages.role.delivered").map(([fields]) => fields), [
+    { kind: "role-first" },
+    { kind: "role-reread", requests: 1 },
+    { kind: "role-reread", requests: 2 },
+    { kind: "role-reread", requests: 3 },
+    { kind: "role-reread", requests: 4 },
+  ], "each reread request is recorded with its count");
+  assert.deepEqual(t.tabErrors(), [], "a pending role without confirmation shows no error");
 });
 
 test("a file event of another registration and a removal inject nothing", { timeout: 10000 }, async () => {
