@@ -1,6 +1,6 @@
 # 변경 기록
 
-- P197: 페이지는 working 기간이 끝날 때마다 보낸 쪽별로 완료 notice 요청 `messages.notice`를 보내도록 등록했다. 요청은 core F1000-5.2와 F1000-5.5를 기다리며, 동작은 아직 바뀌지 않는다.
+- P197: 페이지는 terminal의 working 기간이 끝나면 그 기간에 주입한 message마다 `messages.notice`를 보낸다. 끝 상태(`blocked`, `error`, `done`, `idle`)와 보고 표시를 담는다. 받는 receipt file은 영수증으로 읽고 주입하지 않는다. 검증: `test/terminal.test.mjs`의 `working period`, `receipt`, `notice` test 네 개(Red 뒤 Green)와 전체 suite.
 - P196: plugin이 kit 0.0.16을 pin한다.
 - P191-7, P191-8, P191-9: 줄 맞춤 확인이 stale로 거부되면 거부된 fingerprint와 현재 fingerprint를 담아 `plugin.terminal.messages.role.stale`로 기록하며 error가 아니다. 다른 거부는 모두 error 표시로 간다. page의 reread 횟수는 record `plugin.terminal.messages.role.delivered`의 유일한 횟수다. page 규칙은 `docs/spec/agent-roles.md`에 있으며, page는 화면 watch를 추가하지 않는다.
 - P191-4, P191-6: page는 답변 줄 `soksak role <fingerprint>`을 가진 화면 row에서 role을 확인한다. 줄은 core `docs/spec/agent-roles.md#confirmation`의 row pattern으로 맞춘다. page는 view call `runtime.command.run`으로 tab surface에 `core.tab.role.confirm`을 보내며, fingerprint와 generation마다 한 번 보낸다. 거부된 확인은 그 text를 error 표시로 보여준다. page는 상태를 `pending`과 `ready`로, reread 횟수를 `requests`로 부르며, 이는 core F1006-1-1의 이름이다.

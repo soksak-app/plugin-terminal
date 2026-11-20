@@ -443,6 +443,18 @@ function terminalActivity({ state, exit }, { records, notice }) {
   if (state === "exited" && failed) return "failed";
   return null;
 }
+// The prefix of the token of a receipt file, and the end state of a notice that the records of the program at the end of a working
+// period give, the first of this order that a record holds; a period ends with no working record, so the order holds no working.
+const RECEIPT_PREFIX = "receipt-";
+const NOTICE_STATES = ["blocked", "error", "done", "idle"];
+function endStateOf(records) {
+  return NOTICE_STATES.find((state) => records.some((record) => record.state === state)) ?? "idle";
+}
+// The token of a message or a receipt file name `<from>.<token>.txt`: the text between its last dot and its extension.
+function tokenOf(path) {
+  const name = path.slice(path.lastIndexOf("/") + 1).replace(/\.txt$/, "");
+  return name.slice(name.lastIndexOf(".") + 1);
+}
 const PROGRAM_RECORD_KEYS = ["id", "state", "kind", "progress", "app", "title", "msg"];
 const PROGRAM_KINDS = new Set(["permission", "question", "auth"]);
 /** Returns why a program status value of a change event or a read reply breaks the contract, or null when it holds. */
@@ -592,6 +604,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     changed("program");
     // A report of the program counts toward the reread requests of a pending role (core docs/spec/agent-roles.md#requests).
     if (messagesDelivery !== null) messagesDelivery.programReport(next);
+    if (messagesDelivery !== null) messagesDelivery.programChanged(next);
     if (activity() !== before) changed("activity");
   };
   // The session whose state terminalState holds.
@@ -1953,6 +1966,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     let last = null;
     // The registration of the waiting messages and of the last decision.
     let attached = null;
+    // The messages that the page injected in the working period of the program, as {path, from, token}, or null outside a working
+    // period, and the tokens of the receipts that arrived (core docs/spec/messaging.md#completion-notice).
+    let periodMessages = null;
+    const receipts = new Set();
     // The hold of the injection. The role messages (forRole) are not held by role-pending: the change message and the requests are
     // what the agent needs to confirm its role (core docs/spec/messaging.md#hold-for-the-person).
     const holdOf = (forRole = false) => {
@@ -2007,6 +2024,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         return;
       }
       decide(event, "injected", null);
+      if (periodMessages !== null) periodMessages.push({ path: event.path, from: event.from, token: tokenOf(event.path) });
     };
     // Injects one role message: the text as it is, followed by Enter (core docs/spec/agent-roles.md#change-message).
     const deliverRole = async (entry) => {
@@ -2038,6 +2056,24 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         if (fingerprint === null || confirmations.has(fingerprint)) continue;
         confirmations.add(fingerprint);
         confirm(fingerprint);
+      }
+    };
+    // Sends one notice per message of the period to its sender through the sidecar (core docs/spec/messaging.md#completion-notice).
+    // The title is the text of the receiving tab, and the report flag is set when the receipt of the token arrived.
+    const sendNotices = (state, messages) => {
+      const self = (grid?.cards ?? []).flatMap((card) => card.tabs).find((item) => item.id === id);
+      if (self === undefined) {
+        setError("messages", `terminal.messages: notice: the tab ${id} is not in core.grid`);
+        return;
+      }
+      const title = senderName(self);
+      for (const message of messages) {
+        const reported = receipts.has(message.token);
+        messagesRequest("terminal.messages.notice", "messages.notice", { title, answers: message.token, from: message.from, state, reported },
+          (reply) => runtime.log.info("messages.notice", { path: reply.path, from: message.from, token: message.token, state, reported }),
+          (error) => {
+            if (error.name !== "AbortError") setError("messages", `terminal.messages: ${message.path}: ${error.message}`);
+          });
       }
     };
     const deliverNext = () => {
@@ -2138,6 +2174,13 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       fileChanged(body) {
         if (messagesStatus === null || body.registration !== messagesStatus.registration) return;
         if (body.kind !== "created" && body.kind !== "modified") return;
+        const token = tokenOf(body.path);
+        if (token.startsWith(RECEIPT_PREFIX)) {
+          // A receipt answers the report request of its token, so the page takes it and injects nothing (core docs/spec/messaging.md#report-request).
+          receipts.add(token.slice(RECEIPT_PREFIX.length));
+          runtime.log.info("messages.receipt", { seq: body.seq, path: body.path, from: body.from });
+          return;
+        }
         pending.push({ seq: body.seq, path: body.path, from: body.from });
         review();
       },
@@ -2146,6 +2189,16 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         review();
       },
       programReport,
+      // Opens a working period at the first working record and ends it at the first change to another state, when the notices of the
+      // messages injected in the period are sent (core docs/spec/messaging.md#completion-notice).
+      programChanged(next) {
+        const working = next.records.some((record) => record.state === "working");
+        if (working && periodMessages === null) periodMessages = [];
+        if (working || periodMessages === null) return;
+        const ended = periodMessages;
+        periodMessages = null;
+        sendNotices(endStateOf(next.records), ended);
+      },
       screenChanged: confirmVisibleLines,
     };
   };

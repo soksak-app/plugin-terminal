@@ -7639,3 +7639,70 @@ test("a file event of another registration and a removal inject nothing", { time
   assert.deepEqual(terminal.sent("messages.read"), [], "only a created or modified message of the registration is read");
   assert.deepEqual(terminal.status().last, null);
 });
+
+// The notice of a working period (core docs/spec/messaging.md#completion-notice): the tab of the terminal is the receiving tab, whose
+// label is its title in the notice.
+const RECEIVER_GRID = { cards: [{ tabs: [{ id: "test-session", plugin: "terminal", label: "build", title: "terminal" }, ...SENDER_GRID.cards[0].tabs] }] };
+const programWith = (records, sequence) => ({ event: "program.status", records, notice: false, sequence });
+const programState = (state) => ({ id: null, state, kind: null, progress: null, app: null, title: null, msg: null });
+const receiptArrives = (terminal, seq, token) => terminal.emit({ event: "file.changed", registration: "r1", path: `test-session.receipt-${token}.txt`,
+  from: "test-session", kind: "created", seq });
+// Answers the notice request that the page sent last with the reply of the sidecar, or with its refusal.
+const answerNotice = async (terminal, reply) => {
+  assert.equal(terminal.sent("messages.notice").length, 1, "a notice request was sent before its reply is answered");
+  const [body] = terminal.sidecar.getMessages().filter(({ body }) => body.operation === "messages.notice").map(({ body }) => body);
+  terminal.sidecar.triggerRaw("test-session", reply, terminal.sidecar.getCids(body));
+};
+
+test("a working period sends one notice to the sender of each message injected in it, with the end state and the report flag", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.grid(RECEIVER_GRID);
+  terminal.emit(programWith([programState("working")], 1));
+  terminal.arrive(1);
+  await terminal.answerRead(1);
+  await terminal.untilMessages((value) => value?.last?.seq === 1);
+  terminal.emit(programWith([programState("done")], 2));
+  const notices = terminal.sent("messages.notice");
+  assert.deepEqual(notices, [{ operation: "messages.notice", title: "build", answers: "t1", from: "s2", state: "done", reported: false }],
+    "the page sends the notice of the message that it injected in the period, once the period ends with the state done");
+  await answerNotice(terminal, { path: "s2.notice-t1.txt" });
+  assert.deepEqual(terminal.tabErrors(), []);
+});
+
+test("a receipt of the token is not injected and makes the notice of the period state reported", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.grid(RECEIVER_GRID);
+  terminal.emit(programWith([programState("working")], 1));
+  terminal.arrive(1);
+  await terminal.answerRead(1);
+  await terminal.untilMessages((value) => value?.last?.seq === 1);
+  receiptArrives(terminal, 2, "t1");
+  terminal.emit(programWith([programState("idle")], 2));
+  assert.deepEqual(terminal.sent("messages.notice").map(({ state, reported }) => ({ state, reported })),
+    [{ state: "idle", reported: true }], "the notice states the receipt that arrived in the period");
+  assert.deepEqual(terminal.injected(), [injectedLine("sender", "text 1"), "Enter"], "the receipt is taken and never injected");
+  await answerNotice(terminal, { path: "s2.notice-t1.txt" });
+});
+
+test("messages injected outside a working period send no notice", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.grid(RECEIVER_GRID);
+  terminal.arrive(1);
+  await terminal.answerRead(1);
+  await terminal.untilMessages((value) => value?.last?.seq === 1);
+  terminal.emit(programWith([programState("done")], 1));
+  assert.deepEqual(terminal.sent("messages.notice"), [], "no working period contains the message, so no notice is sent");
+});
+
+test("a refused notice is shown through the error display of terminal.messages", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.grid(RECEIVER_GRID);
+  terminal.emit(programWith([programState("working")], 1));
+  terminal.arrive(1);
+  await terminal.answerRead(1);
+  await terminal.untilMessages((value) => value?.last?.seq === 1);
+  terminal.emit(programWith([programState("error")], 2));
+  await answerNotice(terminal, { error: "folder-missing", reason: "/work/app/.soksak/messages/s2 does not exist" });
+  await terminal.sidecar.until(() => terminal.tabErrors().length > 0);
+  assert.match(terminal.tabErrors().join("\n"), /terminal\.messages\.notice: folder-missing: \/work\/app\/\.soksak\/messages\/s2/);
+});
