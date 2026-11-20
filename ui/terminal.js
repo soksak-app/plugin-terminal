@@ -1955,11 +1955,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     // The state of the role of the tab (core docs/spec/agent-roles.md#tab-role-state); null without a role.
     let roleState = null;
     // The role of the tab as its status holds it, the generation whose start message is queued, the role messages that wait in
-    // order as {kind, text}, and the reread requests sent in that generation (core docs/spec/agent-roles.md#requests).
+    // order as {kind, text} (core docs/spec/agent-roles.md#requests).
     let roleValue = null;
     let announced = null;
     let roleOutbox = [];
-    let requests = 0;
     // The fingerprints of the confirmation lines that the screen rows of this generation sent, so that a line that stays visible sends once.
     let confirmations = new Set();
     let lastState = terminalState.state;
@@ -2066,14 +2065,23 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       const token = tokenOf(event.path);
     };
     // Injects one role message: the text as it is, followed by Enter (core docs/spec/agent-roles.md#change-message).
+    // The kind of a role message in its delivery record (core docs/spec/messaging.md#delivery).
+    const ROLE_RECORD_KINDS = { "role-first": "first", "role-change": "role-change", "role-reread": "role-reread" };
     const deliverRole = async (entry) => {
+      const kind = ROLE_RECORD_KINDS[entry.kind];
       const refused = await submitLine("terminal.messages.inject", entry.text);
+      const decision = (state, reason) => {
+        last = { kind, seq: null, path: null, from: "soksak", state, reason };
+        runtime.log.info("messages.delivered", last);
+        publish();
+      };
       if (refused !== null) {
         const cause = typeof refused.reason === "string" ? `${refused.error}: ${refused.reason}` : String(refused.error);
-        setError("messages", `terminal.messages: ${entry.kind}: ${cause}`);
+        setError("messages", `terminal.messages: ${kind}: ${cause}`);
+        decision("refused", cause);
         return;
       }
-      runtime.log.info("messages.role.delivered", entry.fields);
+      decision("delivered", null);
     };
     // Sends the confirmation of a screen row that holds the line `soksak role <fingerprint>` (core docs/spec/agent-roles.md#confirmation).
     // The core judges the fingerprint. A stale refusal is an outcome of a change that raced the confirmation: it is recorded, and the
@@ -2202,7 +2210,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       if (value === null) {
         announced = null;
         roleOutbox = [];
-        requests = 0;
         confirmations = new Set();
         return;
       }
@@ -2212,19 +2219,16 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         return;
       }
       announced = value.generation;
-      requests = 0;
       confirmations = new Set();
       roleOutbox = [];
       const kind = value.generation === 1 ? "role-first" : "role-change";
       const text = kind === "role-first" ? firstMessage(value.path) : changeMessage(value.path);
-      roleOutbox.push({ kind, text, fields: { kind } });
+      roleOutbox.push({ kind, text });
     };
-    // Each report of the program that is at rest sends one reread request while the role is pending, and the count of the requests
-    // of the generation is recorded with it (core docs/spec/agent-roles.md#requests).
+    // Each report of the program that is at rest sends one reread request while the role is pending (core docs/spec/agent-roles.md#requests).
     const programReport = (next) => {
       if (roleValue === null || roleValue.state !== "pending" || !isAtRest(next)) return;
-      requests += 1;
-      roleOutbox.push({ kind: "role-reread", text: rereadRequest(roleValue.path, roleValue.fingerprint), fields: { kind: "role-reread", requests } });
+      roleOutbox.push({ kind: "role-reread", text: rereadRequest(roleValue.path, roleValue.fingerprint) });
       review();
     };
     const stopRole = runtime.status.watch("core.tab.role", (value) => {

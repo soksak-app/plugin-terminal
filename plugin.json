@@ -493,7 +493,7 @@
             "last": {
               "type": ["object", "null"],
               "properties": {
-                "kind": { "type": "string", "enum": ["message", "receipt", "report-request"] },
+                "kind": { "type": "string", "enum": ["message", "receipt", "report-request", "first", "role-change", "role-reread"] },
                 "seq": { "type": ["integer", "null"] },
                 "path": { "type": ["string", "null"] },
                 "from": { "type": "string" },

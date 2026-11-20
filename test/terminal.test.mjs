@@ -7551,14 +7551,14 @@ test("a reread request follows each report at rest while the role is pending, an
   t.emit({ event: "program.status", records: [IDLE], notice: false, sequence: 5 });
   assert.equal(t.injected().length, 10, "a ready role sends no request");
   // The record of the last injection is written when its reply arrives; the wait ends with that record.
-  await t.log.untilRecord("messages.role.delivered", (fields) => fields.requests === 4);
-  assert.deepEqual(records(t.log, "messages.role.delivered").map(([fields]) => fields), [
-    { kind: "role-first" },
-    { kind: "role-reread", requests: 1 },
-    { kind: "role-reread", requests: 2 },
-    { kind: "role-reread", requests: 3 },
-    { kind: "role-reread", requests: 4 },
-  ], "each reread request is recorded with its count");
+  await settleUntil(() => roleRecords(t.log).length === 5);
+  assert.deepEqual(roleRecords(t.log), [
+    roleRecord("first"),
+    roleRecord("role-reread"),
+    roleRecord("role-reread"),
+    roleRecord("role-reread"),
+    roleRecord("role-reread"),
+  ], "each role message is one delivery record of its kind, and each reread request is one record");
   assert.deepEqual(t.tabErrors(), [], "a pending role without confirmation shows no error");
 });
 
@@ -7624,12 +7624,8 @@ test("a wrong confirmation keeps the role pending, and the next report at rest s
   t.emit({ event: "program.status", records: [IDLE], notice: false, sequence: 2 });
   await t.sidecar.until(() => t.injected().length === 6);
   assert.equal(t.injected()[4], rereadRequest(ROLE_FILE_PATH, ROLE_FINGERPRINT), "the request names the fingerprint of the file");
-  await t.log.untilRecord("messages.role.delivered", (fields) => fields.requests === 2);
-  assert.deepEqual(records(t.log, "messages.role.delivered").map(([fields]) => fields), [
-    { kind: "role-first" },
-    { kind: "role-reread", requests: 1 },
-    { kind: "role-reread", requests: 2 },
-  ]);
+  await settleUntil(() => roleRecords(t.log).length === 3);
+  assert.deepEqual(roleRecords(t.log), [roleRecord("first"), roleRecord("role-reread"), roleRecord("role-reread")]);
   assert.deepEqual(t.tabErrors(), []);
 });
 
@@ -7884,4 +7880,24 @@ test("the notice of a period covers the messages that are still in decided", { t
   const tokens = terminal.sent("messages.notice").map(({ answers }) => answers);
   assert.equal(tokens.length, 64, "one notice for each entry that is still in decided");
   assert.ok(!tokens.includes("t1"), "the entry that left decided gets no notice");
+});
+
+// The delivery record of a role message is the record of messages.delivered with its kind (core docs/spec/messaging.md#delivery): a
+// role message has no file, so its seq and path are null and its sender is soksak.
+const roleRecord = (kind) => ({ kind, seq: null, path: null, from: "soksak", state: "delivered", reason: null });
+const roleRecords = (log) => records(log, "messages.delivered").map(([fields]) => fields).filter((fields) => fields.kind !== "message" && fields.kind !== "receipt" && fields.kind !== "report-request");
+
+test("a message held by a pending role keeps role-pending as the reason of its entry", { timeout: 10000 }, async () => {
+  const terminal = await deliveryTerminal();
+  terminal.grid(RECEIVER_GRID);
+  terminal.role({ role: "reviewer", generation: 1, state: "pending", seq: 1, fingerprint: "33796c71bac2615d" });
+  terminal.emit(programWith([programState("working")], 1));
+  terminal.arrive(1);
+  await settle();
+  assert.deepEqual(terminal.status().decided, [{ path: "s2.t1.txt", state: "held", reason: "role-pending" }],
+    "the entry states the hold reason of the pending role, as core docs/spec/messaging.md#delivery names it");
+  terminal.role({ role: "reviewer", generation: 1, state: "ready", seq: 2, fingerprint: "33796c71bac2615d" });
+  await terminal.answerRead(1);
+  await terminal.untilMessages((value) => value?.last?.seq === 1);
+  assert.equal(terminal.status().decided[0].state, "delivered", "the entry is delivered when the role is ready");
 });

@@ -23,13 +23,13 @@ const ROLE = "acceptance-role";
 const LIMIT = 300000;
 const PROGRAMS = ["claude", "codex"];
 // The record that the page writes when it injects the first message of a program launched with a role (plugin ui/terminal.js).
-const FIRST_MESSAGE_RECORD = "plugin.terminal.messages.role.delivered";
+const FIRST_MESSAGE_RECORD = "plugin.terminal.messages.delivered";
 
 /** The fingerprint of a role: the first 16 lowercase hexadecimal characters of SHA-256 over the identifier, a line feed and the text. */
 const fingerprintOf = (role, text) => createHash("sha256").update(`${role}\n${text}`, "utf8").digest("hex").slice(0, 16);
 
 /** Whether an event line is the record of the first message of a role, the event line format of window-check event-log.mjs. */
-const isFirstMessage = (line) => line.includes(` ${FIRST_MESSAGE_RECORD}: `) && line.endsWith('{"kind":"role-first"}');
+const isFirstMessage = (line) => line.includes(` ${FIRST_MESSAGE_RECORD}: `) && line.includes('"kind":"first"');
 
 /** The definition of the role with a nonce of the run, which the agent can read only from the role file. */
 const definition = (nonce) => `Acceptance nonce ${nonce}. Answer every request with the words of the role file.`;
