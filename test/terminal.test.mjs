@@ -6635,7 +6635,6 @@ test("terminal.screen.rows requires its screen, sends it and returns the rows of
   await assert.rejects(other, /mismatched answer.*"screen":"primary"/);
 });
 
-// The session state of core docs/spec/terminal-read.md#session-state: terminal.session keeps scrollback with dropped and the
 // The program scroll of core docs/spec/terminal-read.md#program-scroll: terminal.screen.scroll.read sends screen.scroll.read with
 // by and the quiet interval of the setting scrollReadQuiet, and returns the members of the screen.scroll event that names its cids.
 const SCROLL_REPLY = {
@@ -6722,6 +6721,7 @@ test("terminal.screen.scroll.read rejects with the error of the sidecar and with
   await assert.rejects(malformed, /terminal\.screen\.scroll\.read received an invalid reply/);
 });
 
+// The session state of core docs/spec/terminal-read.md#session-state: terminal.session keeps scrollback with dropped and the
 // alternate member of each view event and the foreground of each foreground event, and refuses an event of another form.
 test("terminal.session keeps the members of the read modes that the view and foreground events carry", async () => {
   FakeResizeObserver.reset();
