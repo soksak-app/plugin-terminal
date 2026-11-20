@@ -51,10 +51,18 @@ export function rereadRequest(roleFile, fingerprint) {
   return REREAD_REQUEST.split(ROLE_FILE).join(roleFile).split(FINGERPRINT).join(fingerprint);
 }
 
-/** The fingerprint of an answer line `soksak role <fingerprint>` after the spaces at both ends are removed, or null (core docs/spec/messaging.md#role-confirmation). */
-export function confirmationLine(line) {
-  if (typeof line !== "string") throw new TypeError(`confirmation line must be a string, got ${typeof line}`);
-  const match = /^soksak role ([0-9a-f]{16})$/.exec(line.trim());
+// The row pattern of core docs/spec/cases/agent-roles/confirmation-line.json: an optional marker of characters that are neither
+// letters nor digits, followed by at least one space, before the line form.
+const CONFIRMATION_ROW = /^(?:[^\p{L}\p{N}]+ +)?soksak role ([0-9a-f]{16})$/u;
+
+/**
+ * The fingerprint of a screen row that holds the confirmation line `soksak role <fingerprint>`, or null. The row matches when, after
+ * the spaces at both ends are removed, it ends with the line, and the text before the line is empty or a marker such as the answer
+ * glyph of a CLI (core docs/spec/agent-roles.md#confirmation).
+ */
+export function confirmationLine(row) {
+  if (typeof row !== "string") throw new TypeError(`confirmation row must be a string, got ${typeof row}`);
+  const match = CONFIRMATION_ROW.exec(row.trim());
   return match === null ? null : match[1];
 }
 

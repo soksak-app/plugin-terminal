@@ -86,6 +86,8 @@ export function createViewContext({ bridge, start, report, closing, diagnostics 
           },
         },
         links: { open: (url) => calls.request("runtime.links.open", url) },
+        // The view call of a command on a surface (core docs/spec/native-surfaces.md#view-surfaces).
+        command: { run: (name, params, surface) => calls.request("runtime.command.run", { name, params, surface }) },
         clipboard: runtime.clipboard,
         // The page follows core.grid through the status watch of the view runtime (core docs/spec/messaging.md#injected-message).
         status: runtime.status,

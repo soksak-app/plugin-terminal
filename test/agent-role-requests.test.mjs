@@ -19,6 +19,18 @@ test("the reread request names the role file and the fingerprint in both places 
     fill(CASES.texts.reread_request, { "<role file>": ROLE_FILE, "<fingerprint>": FINGERPRINT }));
 });
 
+// The shared case file of the confirmation line of core, which the page matcher runs against every case (core docs/spec/agent-roles.md#confirmation).
+const CONFIRMATION = JSON.parse(readFileSync(new URL("./fixtures/agent-roles-confirmation-line.json", import.meta.url), "utf8"));
+
+test("the confirmation line matcher gives the verdict of each shared case of the confirmation line", () => {
+  assert.equal(CONFIRMATION.cases.length, 15);
+  for (const { row, match } of CONFIRMATION.cases) {
+    const fingerprint = confirmationLine(row);
+    assert.equal(fingerprint !== null, match, `row ${JSON.stringify(row)}`);
+    if (match) assert.equal(fingerprint, row.trim().slice(-16), `row ${JSON.stringify(row)} carries its fingerprint`);
+  }
+});
+
 test("a confirmation line matches only the exact line form with 16 lowercase hexadecimal characters", () => {
   assert.equal(confirmationLine(`soksak role ${FINGERPRINT}`), FINGERPRINT);
   assert.equal(confirmationLine(`   soksak role ${FINGERPRINT}  `), FINGERPRINT);

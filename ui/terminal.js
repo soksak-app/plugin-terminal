@@ -1,5 +1,5 @@
 import { shellQuotePath } from "@soksak/plugin-api";
-import { changeMessage, firstMessage, isAtRest, launchOf, rereadRequest } from "./agent-role.js";
+import { changeMessage, confirmationLine, firstMessage, isAtRest, launchOf, rereadRequest } from "./agent-role.js";
 import { applyScreenMessage, screenHash } from "@soksak/plugin-api/screen-hash";
 
 // 터미널 표면의 부팅과 동작을 처리한다.
@@ -1943,6 +1943,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     let announced = null;
     let roleOutbox = [];
     let requests = 0;
+    // The fingerprints of the confirmation lines that the screen rows of this generation sent, so that a line that stays visible sends once.
+    let confirmations = new Set();
     let lastState = terminalState.state;
     // The file events {seq, path, from} whose messages wait, in increasing seq.
     let pending = [];
@@ -2016,6 +2018,23 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
       runtime.log.info("messages.role.delivered", entry.fields);
     };
+    // Sends the confirmation of a screen row that holds the line `soksak role <fingerprint>` (core docs/spec/agent-roles.md#confirmation).
+    // The core judges the fingerprint, so a line that belongs to an earlier file is refused there and the next report asks again.
+    const confirm = (fingerprint) => {
+      runtime.command.run("core.tab.role.confirm", { fingerprint }, id).catch((error) => {
+        setError("messages", `terminal.messages: confirm: ${error.message}`);
+      });
+    };
+    const confirmVisibleLines = () => {
+      if (roleValue === null || roleValue.state !== "pending") return;
+      for (const row of screen) {
+        const text = row.map((cell) => cell.ch ?? " ").join("");
+        const fingerprint = confirmationLine(text);
+        if (fingerprint === null || confirmations.has(fingerprint)) continue;
+        confirmations.add(fingerprint);
+        confirm(fingerprint);
+      }
+    };
     const deliverNext = () => {
       if (delivering || messagesStatus === null) return;
       // The program reported its first state (the read of program.status) before a role message is injected.
@@ -2063,6 +2082,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         announced = null;
         roleOutbox = [];
         requests = 0;
+        confirmations = new Set();
         return;
       }
       if (value.state !== "pending" || value.generation === announced || launch.program === null) return;
@@ -2072,6 +2092,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
       announced = value.generation;
       requests = 0;
+      confirmations = new Set();
       roleOutbox = [];
       const kind = value.generation === 1 ? "role-first" : "role-change";
       const text = kind === "role-first" ? firstMessage(value.path) : changeMessage(value.path);
@@ -2093,6 +2114,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       roleValue = value;
       roleState = value === null ? null : value.state;
       announceRole(value);
+      confirmVisibleLines();
       review();
     });
     closing.addEventListener("abort", stopRole, { once: true });
@@ -2119,6 +2141,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         review();
       },
       programReport,
+      screenChanged: confirmVisibleLines,
     };
   };
   if (messagesFolder !== null) messagesDelivery = createMessagesDelivery();
@@ -2463,6 +2486,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
       screenFrame = body.frame;
       changed("screen");
+      // The visible rows changed: a confirmation line among them is sent to the core (core docs/spec/agent-roles.md#confirmation).
+      if (messagesDelivery !== null) messagesDelivery.screenChanged();
       if (body.scrollback !== undefined) {
         const { offset, history } = body.scrollback;
         if (!Number.isInteger(offset) || !Number.isInteger(history) || offset < 0 || history < 0) {

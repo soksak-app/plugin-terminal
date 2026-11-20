@@ -92,3 +92,11 @@ test("view error reports use runtime.error and report a rejected error route", {
   assert.deepEqual(errors, [{ where: "view", text: "view terminal: page failed" }]);
   assert.deepEqual(lines, ["runtime.error view error route refused"]);
 });
+
+test("the view context runs a core command on a surface with the view call runtime.command.run", async () => {
+  const { bridge, requests } = bridgeWith({ log() {}, error: () => Promise.resolve() });
+  const { context } = contextFor(bridge);
+  await context.runtime.command.run("core.tab.role.confirm", { fingerprint: "33796c71bac2615d" }, "terminal-1");
+  assert.deepEqual(requests, [{ command: "runtime.command.run", params: {
+    name: "core.tab.role.confirm", params: { fingerprint: "33796c71bac2615d" }, surface: "terminal-1" } }]);
+});

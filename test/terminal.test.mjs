@@ -7189,9 +7189,16 @@ async function messagesTerminal({ project = MESSAGES_PROJECT, closing = new Abor
     watches.add(listener);
     return () => watches.delete(listener);
   };
+  // The view calls runtime.command.run of the page are recorded; refuseCommands makes each refuse with the text.
+  const commands = [];
+  let refusal = null;
+  const viewCommand = { run: (name, params, surface) => {
+    commands.push({ name, params, surface });
+    return refusal === null ? Promise.resolve(null) : Promise.reject(new Error(refusal));
+  } };
   await startTerminal({
     id, view: createFakeView(), detachRegions: async () => {}, attachImage: attachImage.function,
-    sidecar, expose, tab, project, closing, runtime: { ...log.runtime, status: { watch: statusWatch } }, window: { TextEncoder },
+    sidecar, expose, tab, project, closing, runtime: { ...log.runtime, status: { watch: statusWatch }, command: viewCommand }, window: { TextEncoder },
   });
   const sent = (operation) => sidecar.getMessages().filter(({ body }) => body.operation === operation).map(({ body }) => body);
   const status = () => {
@@ -7205,7 +7212,7 @@ async function messagesTerminal({ project = MESSAGES_PROJECT, closing = new Abor
     return handler;
   };
   const tabErrors = () => tab.calls.filter(([kind, text]) => kind === "error" && text !== null).map(([, text]) => text);
-  return { sidecar, expose, tab, log, sent, status, command, tabErrors, attachImage, grid, gridWatches, role };
+  return { sidecar, expose, tab, log, sent, status, command, commands, refuseCommands: (text) => { refusal = text; }, tabErrors, attachImage, grid, gridWatches, role };
 }
 
 test("a terminal of a project registers its folder when its sidecar port connects and after each reconnection", { timeout: 10000 }, async () => {
@@ -7552,6 +7559,45 @@ test("a reread request follows each report at rest while the role is pending, an
     { kind: "role-reread", requests: 4 },
   ], "each reread request is recorded with its count");
   assert.deepEqual(t.tabErrors(), [], "a pending role without confirmation shows no error");
+});
+
+// The screen rows of the page carry the confirmation line of the agent (core docs/spec/agent-roles.md#confirmation).
+const SCREEN_LINE_FINGERPRINT = "0123456789abcdef";
+
+test("a screen row with the confirmation line sends the confirm command with its fingerprint on the tab surface", { timeout: 10000 }, async () => {
+  const t = await deliveryTerminal({ params: { program: "claude", args: [], role: "reviewer" } });
+  t.role(roleStatus({ generation: 1, seq: 1 }));
+  t.sidecar.triggerEvent("test-session", { event: "screen", lines: [`⏺ soksak role ${ROLE_FINGERPRINT}`] });
+  assert.deepEqual(t.commands, [{ name: "core.tab.role.confirm", params: { fingerprint: ROLE_FINGERPRINT }, surface: "test-session" }]);
+});
+
+test("a confirmation line that stays visible sends its command once, and a new fingerprint sends another", { timeout: 10000 }, async () => {
+  const t = await deliveryTerminal({ params: { program: "claude", args: [], role: "reviewer" } });
+  t.role(roleStatus({ generation: 1, seq: 1 }));
+  t.sidecar.triggerEvent("test-session", { event: "screen", lines: [`⏺ soksak role ${ROLE_FINGERPRINT}`] });
+  t.sidecar.triggerEvent("test-session", { event: "screen", lines: [`⏺ soksak role ${ROLE_FINGERPRINT}`, "next"] });
+  t.sidecar.triggerEvent("test-session", { event: "screen", lines: [`• soksak role ${SCREEN_LINE_FINGERPRINT}`] });
+  assert.deepEqual(t.commands.map(({ params }) => params.fingerprint), [ROLE_FINGERPRINT, SCREEN_LINE_FINGERPRINT]);
+});
+
+test("a row with a letter before the confirmation line sends no command, and a ready role sends none", { timeout: 10000 }, async () => {
+  const t = await deliveryTerminal({ params: { program: "claude", args: [], role: "reviewer" } });
+  t.role(roleStatus({ generation: 1, seq: 1 }));
+  t.sidecar.triggerEvent("test-session", { event: "screen", lines: [`Done: soksak role ${ROLE_FINGERPRINT}`] });
+  assert.deepEqual(t.commands, []);
+  t.role(roleStatus({ generation: 1, state: "ready", seq: 2 }));
+  t.sidecar.triggerEvent("test-session", { event: "screen", lines: [`• soksak role ${SCREEN_LINE_FINGERPRINT}`] });
+  assert.deepEqual(t.commands, []);
+});
+
+test("a refused confirmation shows its text through the error display and the log", { timeout: 10000 }, async () => {
+  const t = await deliveryTerminal({ params: { program: "claude", args: [], role: "reviewer" } });
+  t.role(roleStatus({ generation: 1, seq: 1 }));
+  const text = `stale fingerprint: read the role file again at ${ROLE_FILE_PATH}`;
+  t.refuseCommands(text);
+  t.sidecar.triggerEvent("test-session", { event: "screen", lines: [`• soksak role ${SCREEN_LINE_FINGERPRINT}`] });
+  await t.log.untilRecord("error", (fields) => fields.message === `terminal.messages: confirm: ${text}`);
+  assert.deepEqual(t.tabErrors(), [`terminal.messages: confirm: ${text}`]);
 });
 
 test("a wrong confirmation keeps the role pending, and the next report at rest sends a reread request", { timeout: 10000 }, async () => {
