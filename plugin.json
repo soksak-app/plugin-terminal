@@ -115,6 +115,14 @@
       "default": "#8f98a080",
       "maxLength": 9
     },
+    "scrollReadQuiet": {
+      "label": "스크롤 읽기 조용한 간격(frame)",
+      "description": "terminal.screen.scroll.read 가 프로그램의 출력 없이 이만큼의 display frame 이 지나면 그 단계의 그리기가 끝났다고 본다. 동기 update 로 그리는 프로그램은 그 끝에서 곧바로 끝난다.",
+      "type": "integer",
+      "default": 6,
+      "minimum": 1,
+      "maximum": 120
+    },
     "scrollbar.width": {
       "label": "스크롤바 폭(pt)",
       "type": "integer",
@@ -508,7 +516,7 @@
       },
       {
         "name": "terminal.screen.rows",
-        "description": "Returns count rows (1 to 200) from row from of the rows that the terminal keeps for screen, with their cell rows and the plain text of each row, without moving the viewport. Read mode Kept rows: screen is primary or alternate, screen is required, and no input reaches the program. screen primary reads the primary screen and its history: the history of a shell and of a program that draws inline, where row 0 is the first row that entered the history, the oldest kept row is scrollback.dropped of terminal.session, and the viewport at offset 0 starts scrollback.history rows after it. screen alternate reads the rows that a full-screen program scrolled off the alternate screen followed by the rows of that screen, where row 0 is the first row kept since the program entered the alternate screen and the oldest kept row is alternate.dropped; use it while alternate.active is true and after the program left, until it enters the alternate screen again. A range outside the kept rows is refused with the kept range. It cannot see the rows that the program never drew.",
+        "description": "Returns count rows (1 to 200) from row from of the rows that the terminal keeps for screen, with their cell rows and the plain text of each row, without moving the viewport. Read mode Kept rows: screen is primary or alternate, screen is required, and no input reaches the program. screen primary reads the primary screen and its history: the history of a shell and of a program that draws inline, where row 0 is the first row that entered the history, the oldest kept row is scrollback.dropped of terminal.session, and the viewport at offset 0 starts scrollback.history rows after it. screen alternate reads the rows that a full-screen program scrolled off the alternate screen followed by the rows of that screen, where row 0 is the first row kept since the program entered the alternate screen and the oldest kept row is alternate.dropped; use it while alternate.active is true and after the program left, until it enters the alternate screen again. A range outside the kept rows is refused with the kept range. It cannot see the rows that the program never drew, which terminal.screen.scroll.read reads.",
         "params": {
           "type": "object",
           "properties": {
@@ -525,6 +533,41 @@
             "count": { "type": "integer" },
             "rows": { "type": "array", "items": { "type": "array", "items": { "type": "object" } } },
             "text": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      {
+        "name": "terminal.screen.scroll.read",
+        "description": "Scrolls the program by by lines (positive toward older content), reads the screen after the program has drawn it, scrolls back by -by and reads the screen again. Read mode Program scroll: use it only for text that the program never drew, which terminal.screen.read and terminal.screen.rows cannot see; input reaches the program, by the wheel route of the terminal without Shift: a mouse report when the program enabled mouse tracking, the cursor keys of the alternate scroll on the alternate screen, and the viewport of the primary screen otherwise. by is required, an integer from -1000 to 1000 other than 0, relative to the position of the program when the read starts. The result holds route (program, alternate_scroll or viewport), changed (false when the screen after the scroll equals the first read, the end of the content), text (the plain text of each row after the scroll), restored (whether the last read equals the first read), settledBy {scroll, restore} (sync, quiet or viewport, the event that ended the wait of each step), quiet (the setting scrollReadQuiet in display frames) and refreshRate (null when the read received no display frame); when restored is false it also holds first {before, after}, the first row of the first and of the last read, and the session shows the error, because the program is not where it was. Input of the person during the read ends it with the error scrollReadInterrupted, and the input runs.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "by": { "type": "integer" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "route": { "type": "string", "enum": ["program", "alternate_scroll", "viewport"] },
+            "changed": { "type": "boolean" },
+            "text": { "type": "array", "items": { "type": "string" } },
+            "restored": { "type": "boolean" },
+            "settledBy": {
+              "type": "object",
+              "properties": {
+                "scroll": { "type": "string", "enum": ["sync", "quiet", "viewport"] },
+                "restore": { "type": "string", "enum": ["sync", "quiet", "viewport"] }
+              }
+            },
+            "quiet": { "type": "integer" },
+            "refreshRate": { "type": ["number", "null"] },
+            "first": {
+              "type": "object",
+              "properties": {
+                "before": { "type": ["string", "null"] },
+                "after": { "type": ["string", "null"] }
+              }
+            }
           }
         }
       },

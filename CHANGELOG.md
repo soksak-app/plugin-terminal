@@ -1,5 +1,6 @@
 # Changelog
 
+- P171-2: `terminal.screen.scroll.read {by}` reads text that a full-screen program never drew: it sends `screen.scroll.read {by, quiet}` with the new setting `scrollReadQuiet` (display frames, default 6) and returns the reply of the sidecar (core `docs/spec/terminal-read.md#program-scroll`); a read that did not restore the screen shows the session error until a read restores it.
 - P171-1: `terminal.screen.rows` requires `screen` (`primary` or `alternate`), refuses a read without it before any request and sends it to the sidecar; `terminal.session` keeps `scrollback.dropped`, `alternate {active, history, dropped}` and `foreground {pid, command, cwd}` from the sidecar; the descriptions of `terminal.screen.read` and `terminal.screen.rows` state their read mode of core `docs/spec/terminal-read.md`, its use and what it cannot see.
 - P169: The descriptions of `terminal.screen.read`, `terminal.screen.rows` and `terminal.scrollback.set` state that the screen read follows the viewport and the alternate screen, what row `from` counts and that the range read does not move the viewport, and that the viewport offset does not scroll a program on the alternate screen.
 - P168: The copy of the shared terminal state cases of core equals core `docs/spec/cases/terminal-state/osc133.json` again, with the mark `P` and its two cases; the page passes them unchanged.

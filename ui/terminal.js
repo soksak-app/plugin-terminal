@@ -386,6 +386,22 @@ function foregroundError(foreground) {
   if (error !== undefined && (typeof error !== "string" || error.length === 0 || command !== null || cwd !== null)) return JSON.stringify(foreground);
   return null;
 }
+// The routes and the ends of the waits of a scroll read (core docs/spec/terminal-read.md#program-scroll).
+const SCROLL_ROUTES = new Set(["program", "alternate_scroll", "viewport"]);
+const SCROLL_SETTLED = new Set(["sync", "quiet", "viewport"]);
+const SCROLL_READ_BY = 1000;
+const SCROLL_READ_QUIET = 120;
+// The reason that a screen.scroll event of the sidecar is invalid, or null.
+function scrollReplyError(body) {
+  const { event, route, changed, text, restored, settledBy, quiet, refreshRate, first, ...other } = body;
+  const row = (value) => value === null || typeof value === "string";
+  const valid = event === "screen.scroll" && Object.keys(other).length === 0 && SCROLL_ROUTES.has(route) &&
+    typeof changed === "boolean" && Array.isArray(text) && text.every((value) => typeof value === "string") &&
+    typeof restored === "boolean" && SCROLL_SETTLED.has(settledBy?.scroll) && SCROLL_SETTLED.has(settledBy?.restore) &&
+    Object.keys(settledBy).length === 2 && Number.isInteger(quiet) && (refreshRate === null || (typeof refreshRate === "number" && refreshRate > 0)) &&
+    (restored ? first === undefined : row(first?.before) && row(first?.after) && Object.keys(first).length === 2);
+  return valid ? null : JSON.stringify(body);
+}
 const TERMINAL_STATE_SOURCES = new Set(["osc133"]);
 /**
  * Returns the core activity level of a terminal state, or null for no activity (core docs/spec/terminal-state.md#activity):
@@ -1623,6 +1639,43 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     }
     return true;
   };
+  // The scroll reads of terminal.screen.scroll.read (core docs/spec/terminal-read.md#program-scroll). Each read sends one
+  // correlation identifier, and the sidecar names it in its answer: the screen.scroll event or the error that ended the read.
+  const scrollReads = new Set();
+  let scrollReadSequence = 0;
+  const scrollRead = (by, quiet) => new Promise((resolve, reject) => {
+    const entry = { cid: `${unansweredPrefix}-screen-scroll-${++scrollReadSequence}`, resolve, reject };
+    scrollReads.add(entry);
+    terminal.send(id, { operation: "screen.scroll.read", by, quiet }, [entry.cid]).catch((error) => {
+      scrollReads.delete(entry);
+      reject(error);
+    });
+  });
+  // Ends the scroll read that the answer names, and returns whether one did.
+  const answerScrollRead = (body, cids) => {
+    const entry = [...scrollReads].find((read) => cids.includes(read.cid));
+    if (entry === undefined) return false;
+    scrollReads.delete(entry);
+    if (body.error) {
+      entry.reject(new Error(`terminal.screen.scroll.read: ${body.error}: ${body.reason ?? "screen.scroll.read failed"}`));
+      return true;
+    }
+    const failure = scrollReplyError(body);
+    if (failure !== null) {
+      entry.reject(new Error(`terminal.screen.scroll.read received an invalid reply: ${failure}`));
+      return true;
+    }
+    const { event, ...reply } = body;
+    // A read that did not restore the screen leaves the program elsewhere, which the session shows until a read restores it.
+    if (reply.restored) {
+      if (resolveError("scroll")) changed("session");
+    } else {
+      setError("scroll", `terminal scroll read did not restore the screen: the first row was ${JSON.stringify(reply.first.before)} and is ${JSON.stringify(reply.first.after)}`);
+      changed("session");
+    }
+    entry.resolve(reply);
+    return true;
+  };
   let screenWatchEnabled = false;
   let screenWatchRegistered = false;
   let screenWatchConnected = true;
@@ -1758,6 +1811,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     // The regions detach at the removal; an event after it would operate on a detached region.
     if (closing.aborted) return;
     if (answerRangeRead(body, cids ?? [])) return;
+    if (answerScrollRead(body, cids ?? [])) return;
     if (body.event === "exit") {
       screenWatchConnected = false;
       screenWatchEnabled = false;
@@ -2385,6 +2439,18 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         const rows = await rangeRead(screen, from, count);
         const text = rows.map((row) => row.filter((cell) => cell.width !== 0).map((cell) => cell.ch ?? "").join(""));
         return { screen, from, count, rows, text };
+      }),
+      expose.command("terminal.screen.scroll.read", async (params) => {
+        if (region === null) throw new Error("Terminal not initialized");
+        const { by } = params ?? {};
+        if (!Number.isInteger(by) || by === 0 || Math.abs(by) > SCROLL_READ_BY) {
+          throw new Error(`terminal.screen.scroll.read requires by (an integer from -${SCROLL_READ_BY} to ${SCROLL_READ_BY} other than 0)`);
+        }
+        const quiet = settings.read().scrollReadQuiet;
+        if (!Number.isInteger(quiet) || quiet < 1 || quiet > SCROLL_READ_QUIET) {
+          throw new Error(`scrollReadQuiet setting is invalid: ${String(quiet)}`);
+        }
+        return scrollRead(by, quiet);
       }),
       expose.command("terminal.close", async () => {
         await endSession();
