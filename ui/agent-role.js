@@ -30,29 +30,9 @@ export function identityText(roleFile) {
   return IDENTITY.replace(ROLE_FILE, roleFile);
 }
 
-// A TOML basic string: the backslash and the quote are escaped. A launch path holds no quote (assertLaunchPath), so the escape
-// of the quote does not apply to a path, but it keeps the value a valid TOML string.
-const tomlString = (text) => `"${text.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-
-/** Claude Code: the identity file of the tab goes to the system prompt by flag (core docs/spec/agent-roles.md#launch-adapters). */
-export function claudeLaunch(identityFile) {
-  assertLaunchPath(identityFile);
-  return ["--append-system-prompt-file", identityFile];
-}
-
-/** Codex: the identity goes inline as developer instructions, started with --no-daemon (core docs/spec/agent-roles.md#launch-adapters). */
-export function codexLaunch(roleFile) {
-  return ["--no-daemon", "-c", `developer_instructions=${tomlString(identityText(roleFile))}`];
-}
-
-const ADAPTERS = Object.freeze({
-  claude: { launch: ({ identityFile }) => claudeLaunch(identityFile) },
-  codex: { launch: ({ roleFile }) => codexLaunch(roleFile) },
-});
-
-/** The launch adapter of a CLI, or null for a CLI without an adapter, which receives the first message instead. */
-export function adapterFor(cli) {
-  return Object.hasOwn(ADAPTERS, cli) ? ADAPTERS[cli] : null;
+/** Whether the CLI has a launch adapter, which core composes into the argument list of a tab with a role (core docs/spec/agent-roles.md#launch-adapters). */
+export function hasLaunchAdapter(cli) {
+  return cli === "claude" || cli === "codex";
 }
 
 /** The first message of a CLI without an adapter: the identity, then the first-message suffix on its own line. */
@@ -124,4 +104,13 @@ export function launchOf(params) {
   }
   if (program === null && rawRole !== null) throw new Error("role requires program");
   return { program, args, role: rawRole };
+}
+
+/**
+ * Whether a report of a program is at rest: it has an idle or done record and no working, blocked or error record, so the program
+ * waits at its own prompt (core docs/spec/terminal-state.md#program-status). Only a report at rest is a not-busy report.
+ */
+export function isAtRest({ records }) {
+  const states = new Set(records.map((record) => record.state));
+  return (states.has("idle") || states.has("done")) && !states.has("working") && !states.has("blocked") && !states.has("error");
 }

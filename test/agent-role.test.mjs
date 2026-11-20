@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { adapterFor, assertLaunchPath, claudeLaunch, codexLaunch, firstMessage, identityText } from "../ui/agent-role.js";
+import { assertLaunchPath, firstMessage, hasLaunchAdapter, identityText, isAtRest } from "../ui/agent-role.js";
 
 // The shared case file of core docs/spec/cases/agent-roles/fingerprint.json, copied to test/fixtures/agent-roles-fingerprint.json.
 // Its texts are the English texts that soksak gives an agent; the tests compare the module output with them after the placeholders
@@ -16,24 +16,9 @@ test("the identity text names the role file and equals the pinned text", () => {
   assert.equal(identityText(ROLE_FILE), fill(CASES.texts.identity, { "<role file>": ROLE_FILE }));
 });
 
-test("the Claude Code launch adds the identity file to the system prompt by flag", () => {
-  assert.deepEqual(claudeLaunch(IDENTITY_FILE), ["--append-system-prompt-file", IDENTITY_FILE]);
-});
-
-test("the Codex launch passes the identity inline as a TOML string after --no-daemon", () => {
-  const identity = fill(CASES.texts.identity, { "<role file>": ROLE_FILE });
-  assert.deepEqual(codexLaunch(ROLE_FILE), ["--no-daemon", "-c", `developer_instructions="${identity}"`]);
-});
-
 test("the first message of a CLI without an adapter is the identity and the first-message suffix", () => {
   const identity = fill(CASES.texts.identity, { "<role file>": ROLE_FILE });
   assert.equal(firstMessage(ROLE_FILE), `${identity}\n${CASES.texts.first_message_suffix}`);
-});
-
-test("the adapter table holds Claude Code and Codex and no other CLI", () => {
-  assert.deepEqual(adapterFor("claude").launch({ roleFile: ROLE_FILE, identityFile: IDENTITY_FILE }), ["--append-system-prompt-file", IDENTITY_FILE]);
-  assert.deepEqual(adapterFor("codex").launch({ roleFile: ROLE_FILE, identityFile: IDENTITY_FILE }), codexLaunch(ROLE_FILE));
-  assert.equal(adapterFor("aider"), null);
 });
 
 test("a role file path with a quote or a control character refuses the launch and names the path", () => {
@@ -42,4 +27,21 @@ test("a role file path with a quote or a control character refuses the launch an
       error.message.includes(JSON.stringify(path)), `path ${JSON.stringify(path)} must refuse the launch`);
   }
   assert.equal(assertLaunchPath(ROLE_FILE), undefined);
+});
+
+test("the launch adapters are Claude Code and Codex, and no other CLI has one", () => {
+  assert.equal(hasLaunchAdapter("claude"), true);
+  assert.equal(hasLaunchAdapter("codex"), true);
+  assert.equal(hasLaunchAdapter("aider"), false);
+  assert.equal(hasLaunchAdapter("/usr/local/bin/claude"), false, "the name of the CLI, not its path, is compared");
+});
+
+test("a report is at rest with an idle or done record, and not with a working, blocked or error record", () => {
+  const record = (state) => ({ id: null, state, kind: null, progress: null, app: "agent", title: null, msg: null });
+  assert.equal(isAtRest({ records: [record("idle")] }), true);
+  assert.equal(isAtRest({ records: [record("done")] }), true);
+  assert.equal(isAtRest({ records: [record("idle"), record("working")] }), false);
+  assert.equal(isAtRest({ records: [record("idle"), record("blocked")] }), false);
+  assert.equal(isAtRest({ records: [record("done"), record("error")] }), false);
+  assert.equal(isAtRest({ records: [] }), false, "a report without records is not at rest");
 });
