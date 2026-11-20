@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P191-7, P191-8, P191-9: 줄 맞춤 확인이 stale로 거부되면 거부된 fingerprint와 현재 fingerprint를 담아 `plugin.terminal.messages.role.stale`로 기록하며 error가 아니다. 다른 거부는 모두 error 표시로 간다. page의 reread 횟수는 record `plugin.terminal.messages.role.delivered`의 유일한 횟수다. page 규칙은 `docs/spec/agent-roles.md`에 있으며, page는 화면 watch를 추가하지 않는다.
 - P191-4, P191-6: page는 답변 줄 `soksak role <fingerprint>`을 가진 화면 row에서 role을 확인한다. 줄은 core `docs/spec/agent-roles.md#confirmation`의 row pattern으로 맞춘다. page는 view call `runtime.command.run`으로 tab surface에 `core.tab.role.confirm`을 보내며, fingerprint와 generation마다 한 번 보낸다. 거부된 확인은 그 text를 error 표시로 보여준다. page는 상태를 `pending`과 `ready`로, reread 횟수를 `requests`로 부르며, 이는 core F1006-1-1의 이름이다.
 - P191-5: page는 role이 pending인 동안 답이 없는 상태 보고마다 상한 없이 reread request를 보내고, 각 request의 횟수를 `plugin.terminal.messages.role.delivered`에 기록한다. 상태 `unconfirmed`와 그 error 표시를 제거했으므로, 확인되지 않은 role은 error를 표시하지 않고 page는 `pending`과 `ready` 상태만 가진다.
 - P189, P190-2, P193: terminal plugin에는 launch adapter가 없다. role을 가진 모든 program은 첫 message로 identity를 받으며, page는 주입할 때 `role-first` kind의 record `plugin.terminal.messages.role.delivered`를 쓰고, acceptance target은 Claude Code와 Codex에 대해 이 record를 기다린다. generation 1에는 더 이상 change message를 보내지 않으며, Claude Code와 Codex의 첫 role은 첫 message를 받는다. `hasLaunchAdapter`와 adapter 분기를 제거했다.
