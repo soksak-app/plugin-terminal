@@ -129,6 +129,13 @@ test("the messages commands declare the cursor parameters and terminal.messages 
   assert.deepEqual(status.schema.properties.decided.items.properties.state.enum, ["held", "delivered", "reported", "refused", "skipped"]);
 });
 
+// Core reads the activity of a tab from the status entries that declare activity: true (core docs/spec/activity.md#declaration);
+// terminal.activity is the only status of the terminal whose value is an activity (P167-1).
+test("the status terminal.activity declares activity for core and no other status does", { timeout: 1000 }, () => {
+  const marked = manifest.exposes.status.filter((entry) => entry.activity !== undefined).map((entry) => [entry.name, entry.activity]);
+  assert.deepEqual(marked, [["terminal.activity", true]]);
+});
+
 test("the context menu of the surface copies and pastes", () => {
   assert.deepEqual(manifest.surface.menu, [
     { command: "terminal.copy", title: "복사" },
