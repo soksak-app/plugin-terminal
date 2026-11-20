@@ -1,0 +1,9 @@
+#!/bin/sh
+# The program of the hold check of the window checks: it reports a blocked record of the kind permission with OSC 7501 while
+# its prompt waits for a line of the person, prints the line that it read and then reports done, so the screen shows
+# whether any other byte reached the prompt.
+printf '\033]7501;state=blocked:kind=permission\007'
+printf 'Proceed? [y/N] '
+read -r answer
+printf 'answer=%s\n' "$answer"
+printf '\033]7501;state=done\007'

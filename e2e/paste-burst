@@ -1,0 +1,40 @@
+#!/usr/bin/env node
+// The program of the submit check of the window checks. It reads its terminal in raw mode with bracketed paste mode on and applies
+// the rule of an agent that takes fast typed text as a paste: a carriage return that follows a typed character within BURST_MS
+// milliseconds continues the input as a new line and prints `newline-in-input`, a carriage return inside a bracketed paste is a new
+// line of the paste, and any other carriage return submits the input and prints `submitted: <input>`.
+const BURST_MS = 100;
+const START = "\x1b[200~";
+const END = "\x1b[201~";
+process.stdin.setRawMode(true);
+process.stdout.write("\x1b[?2004hready>\r\n");
+let pending = "";
+let input = "";
+let pasting = false;
+let typedAt = -Infinity;
+const end = (line) => {
+  process.stdout.write(`\x1b[?2004l\r\n${line}\r\n`);
+  process.exit(0);
+};
+process.stdin.on("data", (chunk) => {
+  const now = performance.now();
+  pending += chunk.toString("utf8");
+  while (pending.length > 0) {
+    if (pending.startsWith(START)) { pasting = true; pending = pending.slice(START.length); continue; }
+    if (pending.startsWith(END)) { pasting = false; pending = pending.slice(END.length); continue; }
+    // A part of a paste marker waits for the rest of it.
+    if (pending.startsWith("\x1b") && (START.startsWith(pending) || END.startsWith(pending))) return;
+    const character = pending[0];
+    pending = pending.slice(1);
+    if (character !== "\r") {
+      input += character;
+      if (!pasting) typedAt = now;
+    } else if (pasting) {
+      input += "\n";
+    } else if (now - typedAt < BURST_MS) {
+      end(`newline-in-input: ${input}`);
+    } else {
+      end(`submitted: ${input}`);
+    }
+  }
+});

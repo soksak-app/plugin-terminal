@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P182: `make test-app`은 `e2e/`의 window check를 실행한다. 빠르게 입력된 text를 paste로 받는 program으로의 `terminal.submit`, 그리고 command를 실행하는 terminal로의 주입, blocked program의 보류, message의 보고.
 - P185: 주입 message는 보낸 쪽을 주입할 때 보내는 tab이 보이는 text, 즉 label이나 이름으로 한 줄에 40자까지 부른다.
 - P184: 주입 message는 보낸 쪽을 보내는 tab의 tab name, 즉 `core.grid`의 `title`로 부르며, 그 program이 정한 제목으로 결코 부르지 않는다.
 - P183: `terminal.submit`은 text를 program이 bracketed paste mode를 켰을 때 bracket되는 paste로, Enter를 paste의 reply 뒤에, message를 주입하는 함수로 보내므로, 빠르게 입력된 text를 paste로 받는 program이 줄을 제출한다(`docs/spec/submit.md`).
