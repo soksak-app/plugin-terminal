@@ -485,8 +485,7 @@
                   "path": { "type": "string" },
                   "state": { "type": "string", "enum": ["held", "delivered", "reported", "refused", "skipped"] },
                   "reason": { "type": ["string", "null"] }
-                },
-                "required": ["path", "state", "reason"]
+                }
               }
             },
             "dropped": { "type": "integer" },
