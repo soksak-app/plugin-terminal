@@ -432,8 +432,8 @@
       },
       {
         "name": "terminal.activity",
-        "description": "The core activity level of the terminal, derived from terminal.program and terminal.state (core docs/spec/terminal-state.md#activity): the highest level of the program status records (`attention` for blocked, `failed` for error, `running` for working, `idle` for idle and done); else `attention` for a notice; else `idle` for idle, `running` for running, `failed` for an exited command with a nonzero exit code and for the idle state after it until the next command runs, and null for no activity, before the first mark and for an exited command with exit 0 or no exit code. It notifies only when the level changes.",
-        "schema": { "type": ["string", "null"], "enum": ["attention", "failed", "running", "idle", null] }
+        "description": "The core activity level of the terminal, derived from terminal.program and terminal.state (core docs/spec/terminal-state.md#activity): the highest level of the program status records (`attention` for blocked, `failed` for error, `running` for working, `idle` for idle and done); else `attention` for a notice; else `idle` for idle, `running` for running, `failed` for an exited command with a nonzero exit code and for the idle state after it until the next command runs, and null for no activity, before the first mark and for an exited command with exit 0 or no exit code. It notifies only when the level changes.",        "schema": { "type": ["string", "null"], "enum": ["attention", "failed", "running", "idle", null] },
+        "activity": true
       },
       {
         "name": "terminal.program",
