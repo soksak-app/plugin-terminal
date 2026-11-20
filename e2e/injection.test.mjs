@@ -22,7 +22,7 @@ const PROMPT = "sh-3.2$";
 const CHECK_SHELL = fileURLToPath(new URL("./check-shell", import.meta.url));
 const BLOCKED_PROMPT = fileURLToPath(new URL("./blocked-prompt", import.meta.url));
 const LIMIT = 180000;
-// The line of the shell for the injected line `[메시지 from <title> (<folder>): <framing>] <text>`: the folder of the sender stands in
+// The line of the shell for the injected line `[soksak message from <title> (<folder>): <framing>] <text>`: the folder of the sender stands in
 // parentheses, so the shell gives the syntax error of the parenthesis for a message and for a report.
 const NOT_FOUND = /syntax error near unexpected token `\('/;
 
@@ -124,7 +124,7 @@ for (const app of Object.values(APPS)) {
       `${PLUGIN} tab ${receiver} did not hold the message`, { surface: receiver });
     assert.deepEqual(held.held, { reason: "blocked", kind: "permission", pending: 1 });
     assert.equal(held.last, null, "a held message has no decision");
-    assert.ok(!(await screen()).some((line) => line.includes("메시지")), "a byte of the held message reached the prompt");
+    assert.ok(!(await screen()).some((line) => line.includes("soksak message")), "a byte of the held message reached the prompt");
 
     // The answer of the person ends the prompt; the program read only that line, and the page then injects the message.
     await p.run(`${PLUGIN}.input`, { bytes: "y\r" }, receiver);
