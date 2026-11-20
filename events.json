@@ -654,6 +654,33 @@
       },
       "description": "The page injected a role message of its tab (core docs/spec/agent-roles.md): kind is role-first (the first message of a program launched with a role), role-change (the change message) or role-reread (a reread request); requests is the number of the reread request of the generation, sent with role-reread only. A refused injection is shown through the error display, not through this event."
     },
+    "plugin.terminal.messages.role.stale": {
+      "layer": "plugin",
+      "class": "io",
+      "level": "info",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{16}$"
+          },
+          "current": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[0-9a-f]{16}$"
+          }
+        },
+        "required": [
+          "fingerprint",
+          "current"
+        ]
+      },
+      "description": "The core refused a confirmation of a screen line as stale, because the role changed after the line was written (core docs/spec/agent-roles.md#confirmation): fingerprint is the refused fingerprint of the line, and current is the fingerprint of the status when the refusal arrived, or null. The next not-busy report sends the reread request again; the refusal is not an error."
+    },
     "plugin.terminal.messages.held": {
       "layer": "plugin",
       "class": "io",

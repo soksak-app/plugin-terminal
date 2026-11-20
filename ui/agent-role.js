@@ -55,6 +55,11 @@ export function rereadRequest(roleFile, fingerprint) {
 // letters nor digits, followed by at least one space, before the line form.
 const CONFIRMATION_ROW = /^(?:[^\p{L}\p{N}]+ +)?soksak role ([0-9a-f]{16})$/u;
 
+/** Whether a refusal of core.tab.role.confirm is the stale refusal: the confirmation belongs to an earlier file (core docs/spec/agent-roles.md#confirmation). */
+export function isStaleConfirmation(text) {
+  return /^stale fingerprint: read the role file again at /.test(text);
+}
+
 /**
  * The fingerprint of a screen row that holds the confirmation line `soksak role <fingerprint>`, or null. The row matches when, after
  * the spaces at both ends are removed, it ends with the line, and the text before the line is empty or a marker such as the answer

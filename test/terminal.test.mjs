@@ -7590,14 +7590,25 @@ test("a row with a letter before the confirmation line sends no command, and a r
   assert.deepEqual(t.commands, []);
 });
 
-test("a refused confirmation shows its text through the error display and the log", { timeout: 10000 }, async () => {
+test("a refused confirmation with a command error shows its text through the error display and the log", { timeout: 10000 }, async () => {
   const t = await deliveryTerminal({ params: { program: "claude", args: [], role: "reviewer" } });
   t.role(roleStatus({ generation: 1, seq: 1 }));
-  const text = `stale fingerprint: read the role file again at ${ROLE_FILE_PATH}`;
+  const text = "unknown tab: test-session";
   t.refuseCommands(text);
   t.sidecar.triggerEvent("test-session", { event: "screen", lines: [`• soksak role ${SCREEN_LINE_FINGERPRINT}`] });
   await t.log.untilRecord("error", (fields) => fields.message === `terminal.messages: confirm: ${text}`);
   assert.deepEqual(t.tabErrors(), [`terminal.messages: confirm: ${text}`]);
+});
+
+test("a stale refusal of a confirmation is recorded with its fingerprint and the current one, and shows no error", { timeout: 10000 }, async () => {
+  const t = await deliveryTerminal({ params: { program: "claude", args: [], role: "reviewer" } });
+  t.role(roleStatus({ generation: 1, seq: 1 }));
+  t.refuseCommands(`stale fingerprint: read the role file again at ${ROLE_FILE_PATH}`);
+  t.sidecar.triggerEvent("test-session", { event: "screen", lines: [`• soksak role ${SCREEN_LINE_FINGERPRINT}`] });
+  await t.log.untilRecord("messages.role.stale", (fields) => fields.fingerprint === SCREEN_LINE_FINGERPRINT);
+  assert.deepEqual(records(t.log, "messages.role.stale").map(([fields]) => fields),
+    [{ fingerprint: SCREEN_LINE_FINGERPRINT, current: ROLE_FINGERPRINT }], "the record names the refused and the current fingerprint");
+  assert.deepEqual(t.tabErrors(), [], "a stale refusal is an outcome of the protocol, not an error");
 });
 
 test("a wrong confirmation keeps the role pending, and the next report at rest sends a reread request", { timeout: 10000 }, async () => {

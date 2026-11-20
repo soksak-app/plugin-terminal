@@ -1,5 +1,5 @@
 import { shellQuotePath } from "@soksak/plugin-api";
-import { changeMessage, confirmationLine, firstMessage, isAtRest, launchOf, rereadRequest } from "./agent-role.js";
+import { changeMessage, confirmationLine, firstMessage, isAtRest, isStaleConfirmation, launchOf, rereadRequest } from "./agent-role.js";
 import { applyScreenMessage, screenHash } from "@soksak/plugin-api/screen-hash";
 
 // 터미널 표면의 부팅과 동작을 처리한다.
@@ -2019,9 +2019,14 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       runtime.log.info("messages.role.delivered", entry.fields);
     };
     // Sends the confirmation of a screen row that holds the line `soksak role <fingerprint>` (core docs/spec/agent-roles.md#confirmation).
-    // The core judges the fingerprint, so a line that belongs to an earlier file is refused there and the next report asks again.
+    // The core judges the fingerprint. A stale refusal is an outcome of a change that raced the confirmation: it is recorded, and the
+    // next not-busy report sends the reread request again. Any other refusal is an error.
     const confirm = (fingerprint) => {
       runtime.command.run("core.tab.role.confirm", { fingerprint }, id).catch((error) => {
+        if (isStaleConfirmation(error.message)) {
+          runtime.log.info("messages.role.stale", { fingerprint, current: roleValue?.fingerprint ?? null });
+          return;
+        }
         setError("messages", `terminal.messages: confirm: ${error.message}`);
       });
     };
