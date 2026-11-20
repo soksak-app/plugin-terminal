@@ -22,9 +22,9 @@ const PROMPT = "sh-3.2$";
 const CHECK_SHELL = fileURLToPath(new URL("./check-shell", import.meta.url));
 const BLOCKED_PROMPT = fileURLToPath(new URL("./blocked-prompt", import.meta.url));
 const LIMIT = 180000;
-// The line of the shell for the injected line `[메시지 from <title>] <text>`: a report, whose first word names no command, gives
-// `[메시지: not found`, and a message, whose report request holds a parenthesis, gives the syntax error of that parenthesis.
-const NOT_FOUND = /\[메시지: (command )?not found|syntax error near unexpected token `\('/;
+// The line of the shell for the injected line `[메시지 from <title> (<folder>): <framing>] <text>`: the folder of the sender stands in
+// parentheses, so the shell gives the syntax error of the parenthesis for a message and for a report.
+const NOT_FOUND = /syntax error near unexpected token `\('/;
 
 /** The text of the rows that the screen status reports, one line for each row without its trailing spaces. */
 const screenLines = (rows) => rows.map((row) => row.map((cell) => (cell.ch === undefined ? " ".repeat(cell.width) : cell.ch)).join("").trimEnd());

@@ -1,5 +1,6 @@
 # Changelog
 
+- P186: An injected message is the paste of `[메시지 from <title> (<folder>): <framing>] <text>`, which names the folder of the sender and states that the message is from another agent, is handled after the current task, and grants no approval or permission and answers no pending question.
 - P182: `make test-app` runs the window checks of `e2e/`: the submit of `terminal.submit` to a program that takes fast typed text as a paste, and the injection into a terminal that runs a command, the hold of a blocked program and the report of a message.
 - P185: An injected message names its sender by the text that the sending tab shows at the injection, its label or its name, on one line and cut to 40 characters.
 - P184: An injected message names its sender by the tab name of the sending tab, its `title` in `core.grid`, and never by the title that its program set.
