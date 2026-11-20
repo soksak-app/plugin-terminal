@@ -567,6 +567,24 @@
       },
       "description": "A screen.rows reply of the sidecar arrived for a range that no terminal.screen.rows read waits for, such as a read that a connection change already ended; from and count are the range of the reply."
     },
+    "plugin.terminal.messages.unmatched": {
+      "layer": "plugin",
+      "class": "io",
+      "level": "debug",
+      "fields": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "refused": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "refused"
+        ]
+      },
+      "description": "A reply of the sidecar arrived for a messages request that no longer waits, such as a request that the end of the sidecar connection or the close of the view already ended; refused is whether the reply is a refusal {error, reason}."
+    },
     "plugin.terminal.clipboard.refused": {
       "layer": "plugin",
       "class": "io",

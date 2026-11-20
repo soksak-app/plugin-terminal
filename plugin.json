@@ -436,6 +436,17 @@
         "schema": { "type": ["string", "null"], "enum": ["attention", "failed", "running", "idle", null] }
       },
       {
+        "name": "terminal.messages",
+        "description": "The messages folder that the terminal registered with its sidecar (core docs/spec/messaging.md#folder-of-a-terminal): folder is <root>/.soksak/messages/<surface> of the project of the window, which the sidecar creates, and registration is the identifier of the registration, the epoch of the cursor of terminal.messages.read and terminal.messages.wait. It is null before the reply, in a window without a project, while the sidecar connection is down and after the registration closes. A refused or closed registration is shown as the error terminal.messages: <error>: <reason>.",
+        "schema": {
+          "type": ["object", "null"],
+          "properties": {
+            "folder": { "type": "string" },
+            "registration": { "type": "string" }
+          }
+        }
+      },
+      {
         "name": "terminal.state",
         "description": "The terminal state of the session from the OSC 133 marks of its shell: `state` is `idle`, `running`, `exited` or null before the first mark, `source` is `osc133` or null, `sequence` is the number of the last change from 1 (0 before the first), and `exit` is the exit code of `exited`, from 0 to 255, or null. The page reads it after the session opens or attaches and follows each change event of the sidecar.",
         "schema": {
@@ -552,6 +563,48 @@
             "count": { "type": "integer" },
             "rows": { "type": "array", "items": { "type": "array", "items": { "type": "object" } } },
             "text": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      {
+        "name": "terminal.messages.read",
+        "description": "Returns the messages of the registered folder of the terminal whose seq is above after (core docs/spec/messaging.md#mcp-tools). after is an integer of at least 0 and defaults to 0; registration is the registration of terminal.messages and is required when after is above 0; the command takes no other member. The reply is {registration, messages: [{seq, path, text, from}], last}: pass last as the next after with that registration. A registration that is not current fails with epoch-changed, and the read starts again from after 0 with the current registration; a terminal without a registered folder fails with unknown-terminal.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "after": { "type": "integer" },
+            "registration": { "type": "string" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "registration": { "type": "string" },
+            "messages": { "type": "array", "items": { "type": "object", "properties": {
+              "seq": { "type": "integer" }, "path": { "type": "string" }, "text": { "type": "string" }, "from": { "type": "string" }
+            } } },
+            "last": { "type": "integer" }
+          }
+        }
+      },
+      {
+        "name": "terminal.messages.wait",
+        "description": "Waits until the registered folder of the terminal holds a message whose seq is above after and returns the messages as terminal.messages.read does (core docs/spec/messaging.md#mcp-tools); it has no time limit and ends on arrival, with registration-closed when the registration closes, or when the sidecar connection ends. after is an integer of at least 0 and defaults to 0; registration is the registration of terminal.messages and is required when after is above 0; the command takes no other member. The reply is {registration, messages: [{seq, path, text, from}], last}: pass last as the next after with that registration. A registration that is not current fails with epoch-changed, and the read starts again from after 0 with the current registration; a terminal without a registered folder fails with unknown-terminal.",
+        "params": {
+          "type": "object",
+          "properties": {
+            "after": { "type": "integer" },
+            "registration": { "type": "string" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "properties": {
+            "registration": { "type": "string" },
+            "messages": { "type": "array", "items": { "type": "object", "properties": {
+              "seq": { "type": "integer" }, "path": { "type": "string" }, "text": { "type": "string" }, "from": { "type": "string" }
+            } } },
+            "last": { "type": "integer" }
           }
         }
       },
