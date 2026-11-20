@@ -1882,6 +1882,27 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // each after the reply of the input before it, and holds the injection by the reasons of the hold in their order. terminal.messages
   // is {folder, registration, held, last}, and each decision and each change of the hold is a record of the event log.
   const ENTER = Object.freeze({ type: "key", key: "Enter", shift: false, alt: false, ctrl: false });
+  // Sends one input through the input queue and resolves with its reply, an acknowledgement or an error. The reply is matched
+  // by the correlation identifier of the request as the replies of the messages requests are.
+  const answeredInput = (name, entry) => new Promise((resolve, reject) => {
+    const cid = `${messagesPrefix}${++messagesSequence}`;
+    messagesRequests.set(cid, { name, resolve, reject, input: true });
+    enqueueInput(entry, [cid], true).catch((error) => {
+      messagesRequests.delete(cid);
+      reject(error);
+    });
+  });
+  // Submits a line as a program receives a pasted line and its submit key (docs/spec/submit.md, core
+  // docs/spec/messaging.md#injected-message): the text through the paste operation, which the sidecar brackets when the program
+  // enabled bracketed paste mode, and Enter as a separate input after the reply of the paste, so a program that takes fast typed
+  // text as a paste does not take the Enter as a new line of its input. Resolves with the reply that refused an input, or null
+  // when the sidecar acknowledged both; a refused paste sends no Enter.
+  const submitLine = async (name, text) => {
+    const pasted = await answeredInput(name, { type: "paste", text });
+    if (pasted.error !== undefined) return pasted;
+    const entered = await answeredInput(name, { type: "input", actions: [ENTER], preedit: compose });
+    return entered.error !== undefined ? entered : null;
+  };
   const createMessagesDelivery = () => {
     // The last value of core.grid, whose tabs give the shown title of a sender.
     let grid = null;
@@ -1914,15 +1935,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       runtime.log.info("messages.delivered", last);
       publish();
     };
-    // Sends one input of the injection through the input queue and resolves with its reply, an acknowledgement or an error.
-    const inject = (entry) => new Promise((resolve, reject) => {
-      const cid = `${messagesPrefix}${++messagesSequence}`;
-      messagesRequests.set(cid, { name: "terminal.messages.inject", resolve, reject, input: true });
-      enqueueInput(entry, [cid], true).catch((error) => {
-        messagesRequests.delete(cid);
-        reject(error);
-      });
-    });
     // Decides the delivery of a refused input; an error other than the guard is shown through the error display.
     const refusedBy = (event, reply) => {
       if (reply.error === "guardRefused") {
@@ -1950,14 +1962,9 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         pending.unshift(event);
         return;
       }
-      const pasted = await inject({ type: "paste", text: `[메시지 from ${tab.label ?? tab.title}] ${message.text}` });
-      if (pasted.error !== undefined) {
-        refusedBy(event, pasted);
-        return;
-      }
-      const entered = await inject({ type: "input", actions: [ENTER], preedit: compose });
-      if (entered.error !== undefined) {
-        refusedBy(event, entered);
+      const refused = await submitLine("terminal.messages.inject", `[메시지 from ${tab.label ?? tab.title}] ${message.text}`);
+      if (refused !== null) {
+        refusedBy(event, refused);
         return;
       }
       decide(event, "injected", null);
@@ -2812,16 +2819,21 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         }
         return null;
       }),
-      // The text and Enter are two inputs in order, so the program receives the text as typed and then the submit key.
-      // The result means both inputs were sent; the caller confirms the submit from status.
+      // The text is a paste and Enter a separate input after the reply of the paste, as an injected message is submitted. The
+      // result means that the sidecar answered both inputs; the caller confirms the submit from status.
       expose.command("terminal.submit", async ({ text }) => {
         if (typeof text !== "string" || text.length === 0) throw new Error("terminal.submit requires text, a non-empty string");
         if (/[\r\n]/.test(text)) throw new Error("terminal.submit text must not contain CR (U+000D) or LF (U+000A)");
+        let refused;
         try {
-          await callerInput({ type: "input", actions: [{ type: "insert", text, replacementRange: null, attributed: false }], preedit: compose });
-          await callerInput({ type: "input", actions: [{ type: "key", key: "Enter", shift: false, alt: false, ctrl: false }], preedit: compose });
+          refused = await submitLine("terminal.submit", text);
         } catch (error) {
           if (!(error instanceof SessionFailure)) reportInputError(error);
+          throw error;
+        }
+        if (refused !== null) {
+          const error = new Error(`terminal.submit: ${refused.error}${typeof refused.reason === "string" ? `: ${refused.reason}` : ""}`);
+          reportInputError(error);
           throw error;
         }
         return null;

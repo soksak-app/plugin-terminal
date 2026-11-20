@@ -736,31 +736,54 @@ test("terminal.input command sends an insert action with current preedit", async
   assert.deepEqual(inputMessage.body.preedit, { text: "", markedRange: null, selectedRange: null, replacementRange: null, attributed: false });
 });
 
-// terminal.submit sends the text as one insert input and Enter as a separate key input, in that order.
-async function startSubmitTerminal() {
+// terminal.submit sends the text as one paste and Enter as a separate input after the reply of the paste (docs/spec/submit.md).
+async function startSubmitTerminal({ answers = true } = {}) {
   FakeResizeObserver.reset();
-  const fakeSidecar = createFakeSidecar();
+  const fakeSidecar = createFakeSidecar({ answers });
   const fakeExpose = createFakeExpose();
   await startTerminal({
     view: createFakeView(),
     detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
     sidecar: fakeSidecar,
     expose: fakeExpose,
-    scale: 1,
+    scale: 1, runtime: capturedLog().runtime,
     window: { ResizeObserver: FakeResizeObserver, TextEncoder, devicePixelRatio: 1 },
   });
   openSession(fakeSidecar);
   const submit = fakeExpose.getCommand("terminal.submit");
   assert(submit, "terminal.submit command registered");
-  fakeSidecar.reset();
+  // The submit waits for the replies of its inputs, so the listeners of the page stay; the tests read only the inputs of the submit.
   return { fakeSidecar, submit };
 }
 
-test("terminal.submit sends the text as one insert input and Enter as a separate key input", async () => {
-  const { fakeSidecar, submit } = await startSubmitTerminal();
-  await submit({ text: "hello" });
-  const inputs = fakeSidecar.getMessages().filter((m) => m.body.operation === "input");
-  assert.deepEqual(inputs.map(({ body }) => body.actions), [[inputInsert("hello")], [inputKey("Enter")]]);
+// A program that takes fast typed text as a paste takes an Enter that follows it as a new line, so the text is a paste, which the
+// sidecar brackets when the program enabled bracketed paste mode, and the Enter follows the reply of the paste.
+const submitInputs = (fakeSidecar) => fakeSidecar.getMessages().map(({ body }) => body)
+  .filter((body) => body.operation === "paste" || (body.operation === "input" && body.actions.some(({ type }) => type !== "focus")));
+
+test("terminal.submit sends the text as one paste and Enter as a separate input after the reply of the paste", { timeout: 10000 }, async () => {
+  const { fakeSidecar, submit } = await startSubmitTerminal({ answers: false });
+  const submitting = submit({ text: "hello" });
+  await fakeSidecar.untilMessage((body) => body.operation === "paste");
+  const [paste] = submitInputs(fakeSidecar);
+  assert.deepEqual(paste, { operation: "paste", text: "hello" }, "the text is one paste");
+  assert.equal(submitInputs(fakeSidecar).length, 1, "Enter waits for the reply of the paste");
+  fakeSidecar.triggerRaw("test-session", { ack: true, event: "paste" }, fakeSidecar.getCids(paste));
+  await fakeSidecar.untilMessage((body) => body.operation === "input" && body.actions.some(({ key }) => key === "Enter"));
+  const enter = submitInputs(fakeSidecar)[1];
+  assert.deepEqual(enter.actions, [inputKey("Enter")], "Enter is a separate input");
+  fakeSidecar.triggerRaw("test-session", { ack: true }, fakeSidecar.getCids(enter));
+  assert.equal(await submitting, null, "the submit resolves after the reply of the Enter");
+});
+
+test("a refused paste of terminal.submit sends no Enter and fails the submit with the refusal", { timeout: 10000 }, async () => {
+  const { fakeSidecar, submit } = await startSubmitTerminal({ answers: false });
+  const submitting = submit({ text: "rm -rf /" });
+  await fakeSidecar.untilMessage((body) => body.operation === "paste");
+  const [paste] = submitInputs(fakeSidecar);
+  fakeSidecar.triggerRaw("test-session", { error: "guardRefused", rule: "rm-root", reason: "removes the root" }, fakeSidecar.getCids(paste));
+  await assert.rejects(submitting, { message: "terminal.submit: guardRefused: removes the root" });
+  assert.equal(submitInputs(fakeSidecar).length, 1, "a refused paste sends no Enter");
 });
 
 test("terminal.submit refuses text with CR or LF before sending any input", async () => {
@@ -779,7 +802,7 @@ test("terminal.submit refuses an empty or non-string text before sending any inp
   assert.deepEqual(fakeSidecar.getMessages().filter((m) => m.body.operation === "input"), []);
 });
 
-test("terminal.submit resolves to null once both inputs are sent", async () => {
+test("terminal.submit resolves to null once the sidecar answered both inputs", async () => {
   const { submit } = await startSubmitTerminal();
   assert.equal(await submit({ text: "hello" }), null);
 });

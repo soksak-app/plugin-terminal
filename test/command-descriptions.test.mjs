@@ -4,7 +4,7 @@ import test from "node:test";
 
 // The submit guidance sentence is copied from core, because this plugin cannot read core. Core checks the same sentence
 // in its usage texts; the command name replaces the leading phrase here.
-const SUBMIT_GUIDANCE = "terminal.submit sends its text as one input and Enter as a separate key input, refuses text that contains CR or LF, and returns only that the input was sent; confirm acceptance from the status of the input line and of the agent busy state, never by waiting with a timer.";
+const SUBMIT_GUIDANCE = "terminal.submit sends its text as one paste, which the sidecar brackets when the program enabled bracketed paste mode, and Enter as a separate input after the reply of the paste, refuses text that contains CR or LF, and returns only that the sidecar answered both inputs; confirm acceptance from the status of the input line and of the agent busy state, never by waiting with a timer.";
 
 const manifest = JSON.parse(readFileSync(new URL("../plugin.json", import.meta.url), "utf8"));
 const command = (name) => manifest.exposes.commands.find((entry) => entry.name === name);
