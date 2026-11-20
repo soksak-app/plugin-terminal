@@ -7162,10 +7162,14 @@ async function messagesTerminal({ project = MESSAGES_PROJECT, closing = new Abor
   // The status watch of the runtime holds the watches of core.grid, and grid(value) delivers a value of core.grid to them.
   const gridWatches = new Set();
   const grid = (value) => { for (const listener of gridWatches) listener(value); };
+  // The status watch also holds the watches of core.tab.role, and role(value) delivers a value of it (core docs/spec/agent-roles.md).
+  const roleWatches = new Set();
+  const role = (value) => { for (const listener of roleWatches) listener(value); };
   const statusWatch = (name, listener) => {
-    assert.equal(name, "core.grid", "the page follows only core.grid");
-    gridWatches.add(listener);
-    return () => gridWatches.delete(listener);
+    assert.ok(name === "core.grid" || name === "core.tab.role", `the page follows core.grid and core.tab.role, not ${name}`);
+    const watches = name === "core.grid" ? gridWatches : roleWatches;
+    watches.add(listener);
+    return () => watches.delete(listener);
   };
   await startTerminal({
     view: createFakeView(), detachRegions: async () => {}, attachImage: attachImage.function,
@@ -7183,7 +7187,7 @@ async function messagesTerminal({ project = MESSAGES_PROJECT, closing = new Abor
     return handler;
   };
   const tabErrors = () => tab.calls.filter(([kind, text]) => kind === "error" && text !== null).map(([, text]) => text);
-  return { sidecar, expose, tab, log, sent, status, command, tabErrors, attachImage, grid, gridWatches };
+  return { sidecar, expose, tab, log, sent, status, command, tabErrors, attachImage, grid, gridWatches, role };
 }
 
 test("a terminal of a project registers its folder when its sidecar port connects and after each reconnection", { timeout: 10000 }, async () => {
@@ -7446,6 +7450,9 @@ const HOLD_CASES = [
   ["input-held", { reason: "input-held", kind: null },
     (t) => t.emit({ event: "input_held", queued: 3, held: true }),
     (t) => t.emit({ event: "input_held", queued: 0, held: false })],
+  ["role-pending", { reason: "role-pending", kind: null },
+    (t) => t.role({ role: "reviewer", generation: 1, state: "pending", seq: 1, fingerprint: "33796c71bac2615d" }),
+    (t) => t.role({ role: "reviewer", generation: 1, state: "ready", seq: 2, fingerprint: "33796c71bac2615d" })],
 ];
 
 for (const [name, hold, start, end] of HOLD_CASES) {
