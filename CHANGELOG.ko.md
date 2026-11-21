@@ -113,6 +113,7 @@
 ## 미배포
 
 - P207: 버전이 0.0.50이다. `engines.soksak` `^0.0.45`, core release v0.0.45의 plugin API와 window-check, sidecar 범위 `^0.0.31`.
+- P208: 버전은 0.0.51이다. `engines.soksak` `^0.0.46`, core release v0.0.46의 plugin API와 window-check, sidecar 범위 `^0.0.32`.
 - F460-terminal: `.gitignore`가 local 출력 폴더 `/build/`를 지정한다.
 - F472-terminal: 명령 이름이 하는 일을 말하고, `sok-check commands`가 이를 강제한다.
 - F468-terminal: 저장소가 `event-sources.json`과 함께 kit의 `soksak-check docs`와 `soksak-check events`를 실행한다.

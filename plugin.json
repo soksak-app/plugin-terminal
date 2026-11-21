@@ -211,7 +211,7 @@
     }
   },
   "dependencies": {
-    "@soksak/sidecar-vt-alacritty": "^0.0.31"
+    "@soksak/sidecar-vt-alacritty": "^0.0.32"
   },
   "background": {
     "sidecar": "@soksak/sidecar-vt-alacritty",
