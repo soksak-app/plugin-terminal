@@ -153,8 +153,8 @@ test("the image region declares the copy presentation mode", { timeout: 1000 }, 
 });
 
 // A range ^0.0.z admits the sidecar 0.0.z and every later 0.0 release (core docs/spec/installation.md#versions-and-ranges).
-// @soksak/sidecar-vt-alacritty 0.0.29 is the first release whose view event carries background (sidecars/vt S185), which the
+// @soksak/sidecar-vt-alacritty 0.0.31 is the release whose view event carries background (sidecars/vt S185), which the
 // view requires of each view event, so the plugin admits no release before it (P151).
 test("the plugin requires the VT sidecar release whose view event carries background (P151)", { timeout: 1000 }, () => {
-  assert.deepEqual(manifest.dependencies, { "@soksak/sidecar-vt-alacritty": "^0.0.29" });
+  assert.deepEqual(manifest.dependencies, { "@soksak/sidecar-vt-alacritty": "^0.0.31" });
 });

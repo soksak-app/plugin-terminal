@@ -112,6 +112,7 @@
 - F355-4-terminal: `make pack OUT=<folder>` writes the release with `pnpm pack`, and release.yml no longer downloads a core release, because core 0.0.25 installs the `pnpm pack` file of a plugin and has no `sok plugin pack`. The release holds `diagnostics.json` and its module, which only a diagnostic build reads, and `@soksak/plugin-api` is pinned to the core release `v0.0.25`.
 ## Unreleased
 
+- P207: The version is 0.0.50: `engines.soksak` `^0.0.45`, the plugin API and window-check of core release v0.0.45, and the sidecar range `^0.0.31`.
 - P131: The core compatibility documents state `^0.0.39`, the range that `package.json` declares.
 - F460-terminal: `.gitignore` names the local output folder `/build/`.
 - F472-terminal: The names of the commands state what they do, and `sok-check commands` holds them.

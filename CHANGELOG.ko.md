@@ -112,6 +112,7 @@
 - F355-4-terminal: `make pack OUT=<folder>`는 `pnpm pack`으로 release를 쓰고, release.yml은 더 이상 core release를 내려받지 않는다. core 0.0.25는 plugin의 `pnpm pack` 파일을 설치하고 `sok plugin pack`이 없기 때문이다. release는 진단 build만 읽는 `diagnostics.json`과 그 module을 담고, `@soksak/plugin-api`는 core release `v0.0.25`에 pin된다.
 ## 미배포
 
+- P207: 버전이 0.0.50이다. `engines.soksak` `^0.0.45`, core release v0.0.45의 plugin API와 window-check, sidecar 범위 `^0.0.31`.
 - F460-terminal: `.gitignore`가 local 출력 폴더 `/build/`를 지정한다.
 - F472-terminal: 명령 이름이 하는 일을 말하고, `sok-check commands`가 이를 강제한다.
 - F468-terminal: 저장소가 `event-sources.json`과 함께 kit의 `soksak-check docs`와 `soksak-check events`를 실행한다.
