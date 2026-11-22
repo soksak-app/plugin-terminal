@@ -423,13 +423,13 @@ function scrollReplyError(body) {
 const TERMINAL_STATE_SOURCES = new Set(["osc133"]);
 // The core levels in their order, and the level of each state of a program status record
 // (core docs/spec/terminal-state.md#activity).
-const ACTIVITY_ORDER = ["idle", "running", "failed", "attention"];
+const ACTIVITY_ORDER = ["idle", "failed", "running", "attention"];
 const RECORD_LEVELS = { blocked: "attention", error: "failed", working: "running", idle: "idle", done: "idle" };
 /**
  * Returns the core activity level of a terminal, or null for no activity (core docs/spec/terminal-state.md#activity): the
  * highest level of the records of its program, else attention for a notice, else the level of its state, where a nonzero
- * exit code of `exited` and of the `idle` after it is the failure of the last command, which lasts until the next command
- * starts.
+ * exit code of `exited` is the failure of the last command, which lasts until the shell shows its prompt again: an `idle`
+ * state gives idle whatever exit code it keeps.
  */
 function terminalActivity({ state, exit }, { records, notice }) {
   if (records.length > 0) {
@@ -438,7 +438,7 @@ function terminalActivity({ state, exit }, { records, notice }) {
   }
   if (notice) return "attention";
   const failed = exit !== null && exit !== 0;
-  if (state === "idle") return failed ? "failed" : "idle";
+  if (state === "idle") return "idle";
   if (state === "running") return "running";
   if (state === "exited" && failed) return "failed";
   return null;

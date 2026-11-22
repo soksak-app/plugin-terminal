@@ -1,5 +1,6 @@
 # 기능
 
+- [o] P209 — P1, core F1040-2에 연결: 실패한 command 뒤 shell이 prompt를 보이는 terminal은 activity `idle`을 보고하고, `error` record 옆의 `working` record는 `running`을 준다. core가 `running`을 `failed`보다 높게 두기 때문이다(core `docs/spec/terminal-state.md#activity`). Red: 복사한 core case `a failed command gives idle at the next prompt and keeps its exit code in the state`가 `failed`로 실패했다. Green: `test/terminal.test.mjs`는 바뀌지 않은 plugin에서도 실패하는 test 7개를 빼고 통과한다.
 - [o] P196 — P1, kit KR38에 연결: kit 0.0.16을 pin한다. 입력: `package.json`은 kit 0.0.14를 pin하고, kit 0.0.16은 sidecar vt 0.0.30과 alacritty 0.0.8을 release한 검사를 담은 최신 release다. 기대: `package.json`과 `pnpm-lock.yaml`이 release asset integrity와 함께 `soksak-kit-0.0.16.tgz`를 가리키고, `make check`와 `make test`가 그것으로 통과한다. `plugin.json`의 sidecar range는 새 sidecar release를 이미 허용하므로 바뀌지 않는다.
 - [o] P191 — P1, core F1006-5에 연결: role 변경의 plugin 쪽: change message, reread request, work message의 보류, confirmation 줄, 상태 이름. 모든 하위 항목이 완료되었다.
   - [o] P191-1 — P1, core F1006-5에 연결: change message와 reread request의 문구, not-busy 보고의 request 횟수(`notBusyReport`), work message의 보류 이유(`holdsWork`), `soksak role <fingerprint>` 줄의 일치(`confirmationLine`). Red: `test/agent-role-requests.test.mjs`는 `ui/agent-role.js`의 stub에 대해 6개 case 중 6개가 실패했다. 각 stub은 null을 돌려주었다. Green: 같은 파일과 `test/agent-role.test.mjs`가 12개 중 12개를 통과하며, 두 문구는 placeholder를 채우면 고정된 문구와 같다.

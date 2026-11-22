@@ -6977,11 +6977,11 @@ for (const [name, event] of INVALID_STATE_EVENTS) {
 }
 
 // The activity of a terminal (core docs/spec/terminal-state.md#activity): the core level that the plugin derives from
-// its state and exit code. The idle state after a finished command keeps the exit code of that command until the next
-// command starts, so the prompt start that a shell sends right after the finished mark keeps the failure.
+// its state and exit code. A finished command with a nonzero exit code fails until the shell shows its prompt again: the idle
+// state after it keeps the exit code of that command and gives idle.
 function expectedActivity({ state, exit }) {
   const failed = exit !== null && exit !== 0;
-  if (state === "idle") return failed ? "failed" : "idle";
+  if (state === "idle") return "idle";
   if (state === "running") return "running";
   if (state === "exited" && failed) return "failed";
   return null;
@@ -7034,7 +7034,7 @@ test("a page that attaches to a session after a failed command reads it and show
   sidecar.triggerEvent("test-session", { event: "session", sessionId: "retained-session" });
   await sidecar.until(() => reads().length === 2);
   assert.deepEqual(reads(), ["shell.state.read", "program.status.read"], "the attached page reads the state and the program status");
-  sidecar.triggerEvent("test-session", { event: "shell.state.current", state: "idle", source: "osc133", sequence: 3, exit: 1 });
+  sidecar.triggerEvent("test-session", { event: "shell.state.current", state: "exited", source: "osc133", sequence: 3, exit: 1 });
   sidecar.triggerEvent("test-session", { event: "program.status.current", records: [], notice: false, sequence: 0 });
   assert.equal(expose.getStatus("terminal.activity").readFn(), "failed", "the activity of the attached page");
   assert.equal(expose.getStatus("terminal.session").readFn().error, undefined, "the read replies reported an error");
@@ -7053,7 +7053,7 @@ test("a page whose sidecar connection is made again reads the state and the prog
   terminal.emit({ event: "session", sessionId: "s1" });
   await terminal.sidecar.until(() => reads().length === 4);
   assert.deepEqual(reads().slice(2), ["shell.state.read", "program.status.read"], "the reads after the connection is made again");
-  terminal.emit({ event: "shell.state.current", state: "idle", source: "osc133", sequence: 3, exit: 2 });
+  terminal.emit({ event: "shell.state.current", state: "exited", source: "osc133", sequence: 3, exit: 2 });
   terminal.emit({ event: "program.status.current", records: [], notice: false, sequence: 0 });
   assert.equal(terminal.activity(), "failed", "the activity after the read of the session");
   assert.equal(terminal.error(), undefined, "the read replies reported an error");
@@ -7070,7 +7070,7 @@ test("terminal.activity notifies its watchers only when the level changes", { ti
   terminal.emit({ event: "shell.state", from: "idle", to: "running", source: "osc133", sequence: 5, exit: null });
   terminal.emit({ event: "shell.state", from: "running", to: "exited", source: "osc133", sequence: 6, exit: 0 });
   terminal.emit({ event: "shell.state.current", state: "exited", source: "osc133", sequence: 6, exit: 0 });
-  assert.deepEqual(seen, ["idle", "running", "failed", "running", null]);
+  assert.deepEqual(seen, ["idle", "running", "failed", "idle", "running", null]);
 });
 
 // The program status of a terminal (core docs/spec/terminal-state.md#plugin-program-status).

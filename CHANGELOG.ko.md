@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P209: 실패한 command 뒤 prompt의 terminal은 activity `idle`을 보고하고, record는 core F1040-1처럼 `running`을 `failed`보다 높게 둔다. 검증: 복사한 core case의 Red, 이어서 바뀌지 않은 plugin에서도 실패하는 test 7개를 뺀 `test/terminal.test.mjs`의 Green.
 - P206: 인수 target이 한국어 번역 `ko`를 담은 형식 2로 `roles.json`을 쓰고, 지문 fixture가 다시 core case 파일과 같다. 검증: `make test` 512/512. 인수 target은 실행하지 않았다.
 - P205: 역할 문구 fixture에 core가 case 파일에서 지운 paste form 문구가 더는 없고, test가 fixture가 그 파일의 문구 다섯 개만 고정하는지 확인한다. 검증: 두 key가 더 있어 새 test가 실패한 Red, 그다음 역할 test 9/9의 Green.
 - P200: 역할 message는 종류(`first`, `role-change`, `role-reread`)와 함께 record `plugin.terminal.messages.delivered`를 쓰며 횟수는 쓰지 않는다. record `plugin.terminal.messages.role.delivered`는 제거한다. 검증: `test/terminal.test.mjs`의 역할 test(Red 뒤 Green).

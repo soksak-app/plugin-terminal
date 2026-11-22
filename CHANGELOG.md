@@ -1,5 +1,6 @@
 # Changelog
 
+- P209: A terminal at its prompt after a failed command reports the activity `idle`, and the records rank `running` above `failed`, as core F1040-1 states. Verification: Red of the copied core case, then Green of `test/terminal.test.mjs` apart from seven tests that also fail on the unchanged plugin.
 - P206: The acceptance target writes `roles.json` in format 2 with the Korean translation `ko`, and the fingerprint fixture equals the core case file again. Verification: `make test` 512 of 512; the acceptance target has not run.
 - P205: The role text fixture no longer holds the paste-form texts that core removed from its case file, and a test requires that it pins exactly the five texts of that file. Verification: Red of the new test with the two extra keys, then Green of the role tests, 9 of 9.
 - P200: The role messages write the record `plugin.terminal.messages.delivered` with their kind (`first`, `role-change` or `role-reread`) and no count, and the record `plugin.terminal.messages.role.delivered` is removed. Verification: the role tests of `test/terminal.test.mjs` (Red then Green).
