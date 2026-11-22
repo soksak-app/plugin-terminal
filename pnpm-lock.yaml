@@ -15,8 +15,8 @@ importers:
         specifier: https://github.com/soksak-app/core/releases/download/v0.0.47/soksak-plugin-api-0.0.47.tgz
         version: https://github.com/soksak-app/core/releases/download/v0.0.47/soksak-plugin-api-0.0.47.tgz(jsdom@30.1.3)
       '@soksak/window-check':
-        specifier: https://github.com/soksak-app/core/releases/download/v0.0.47/soksak-window-check-0.0.47.tgz
-        version: https://github.com/soksak-app/core/releases/download/v0.0.47/soksak-window-check-0.0.47.tgz
+        specifier: https://github.com/soksak-app/core/releases/download/v0.0.48/soksak-window-check-0.0.48.tgz
+        version: https://github.com/soksak-app/core/releases/download/v0.0.48/soksak-window-check-0.0.48.tgz
       acorn:
         specifier: ^8.19.0
         version: 8.19.0
@@ -182,9 +182,9 @@ packages:
       jsdom:
         optional: true
 
-  '@soksak/window-check@https://github.com/soksak-app/core/releases/download/v0.0.47/soksak-window-check-0.0.47.tgz':
-    resolution: {integrity: sha512-n+NsuCHTN5E4PWcYlCXjRGF4vdsyxs8X4P+IqNHGFKesv6P0dFeOuyEuTgdbDEty3oLNejlzhyzr24dhKoJkvA==, tarball: https://github.com/soksak-app/core/releases/download/v0.0.47/soksak-window-check-0.0.47.tgz}
-    version: 0.0.47
+  '@soksak/window-check@https://github.com/soksak-app/core/releases/download/v0.0.48/soksak-window-check-0.0.48.tgz':
+    resolution: {integrity: sha512-0bTGrXcEP0pPZT0Rf8SStus/5PMWduRRS2ITwmhw9MYPNVWPkyOYPPPJ9MMiGHX3AhujpDWCHwY8SYDx9z3pMQ==, tarball: https://github.com/soksak-app/core/releases/download/v0.0.48/soksak-window-check-0.0.48.tgz}
+    version: 0.0.48
     hasBin: true
     bundledDependencies:
       - '@soksak/client'
@@ -450,7 +450,7 @@ snapshots:
     optionalDependencies:
       jsdom: 30.1.3
 
-  '@soksak/window-check@https://github.com/soksak-app/core/releases/download/v0.0.47/soksak-window-check-0.0.47.tgz':
+  '@soksak/window-check@https://github.com/soksak-app/core/releases/download/v0.0.48/soksak-window-check-0.0.48.tgz':
     dependencies:
       '@parcel/watcher': 2.6.0
       ajv: 8.20.0

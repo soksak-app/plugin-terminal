@@ -25,6 +25,8 @@ A tab shows an owned session with `core.layout.open {card, plugin, params: {sess
 
 The sidecar's rules and replies are in its own specification (`docs/spec/vt-core.md`, section Owned session operations).
 
+The view of the owner surface also receives the owner event `session.program` through its sidecar subscription. Core reads that event for `core.sessions`; the view handles it by an explicit branch that changes no state, because the program state of a tab comes from OSC 7501 records only (core `docs/spec/terminal-state.md`), and it does not list the event in `unsupported` of `terminal.session`.
+
 ## Open decisions
 
 - None in this specification. The attach request carries no font; the font of the view reaches the session through the configure.

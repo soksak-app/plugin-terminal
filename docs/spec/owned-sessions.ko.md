@@ -25,6 +25,8 @@ tab은 `core.layout.open {card, plugin, params: {session}}`로 owned session을 
 
 sidecar의 규칙과 응답은 sidecar 명세(`docs/spec/vt-core.ko.md`, 절 Owned session 동작)에 있다.
 
+owner surface의 view도 sidecar subscription으로 owner event `session.program`을 받는다. core는 그 event를 `core.sessions`에 읽는다. view는 상태를 바꾸지 않는 명시적 branch로 그것을 처리한다. tab의 program state는 OSC 7501 record에서만 오기 때문이다(core `docs/spec/terminal-state.md`). view는 그 event를 `terminal.session`의 `unsupported`에 나열하지 않는다.
+
 ## 미결 결정
 
 - 이 명세에는 없다. attach 요청에는 font가 없으며, view의 font는 configure로 session에 전달된다.

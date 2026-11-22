@@ -1,5 +1,6 @@
 # Changelog
 
+- P212: The window check runs against core 0.0.48 (`@soksak/window-check` v0.0.48), and the page handles the owner event `session.program` by an explicit branch, so no view lists it as unsupported. Verification: Red then Green of the P212 page test, `pnpm test` 526 of 526; the window check fails on core errors on each application (P212).
 - P219: The version is 0.0.53, with the tab parameter `title` (P218).
 - P212: The window check `e2e/owned-session.test.mjs` attaches a tab to an owned session whose program reports `working` and `idle`, and requires that no view lists `session.program` as unsupported. Verification: not run to its assertions; the applications of core 0.0.47 do not start or register the terminal tabs (P212).
 - P218: A terminal tab takes the tab parameter `title`: `surface.params` declares it, the tab shows it in place of the program title and its name, and a title that is not a text of 1 to 256 characters without control characters refuses the start. Verification: Red 7 of 7 P218 tests, then Green 7 of 7 and `pnpm test` 525 of 525.
