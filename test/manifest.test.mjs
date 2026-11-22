@@ -166,3 +166,10 @@ test("the tabs name the status terminal.program-state as their program state (P2
 test("the plugin declares owned sessions, which its tabs attach to (P210-2)", { timeout: 1000 }, () => {
   assert.equal(manifest.sessions, true);
 });
+
+test("the surface declares the tab parameter session, which attaches a tab to an owned session (P215)", () => {
+  assert.deepEqual(manifest.surface.params, {
+    type: "object",
+    properties: { session: { type: "string" } },
+  });
+});

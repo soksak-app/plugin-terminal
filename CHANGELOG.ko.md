@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P215: `plugin.json`이 string member `session`을 가진 `surface.params`를 선언하므로, core가 params로 owned session을 가리키는 tab을 받아들인다. 검증: `surface.params`가 없는 manifest에서 `test/manifest.test.mjs`의 P215 test Red, 그 뒤 19개 모두 Green.
 - P216: page는 `core.grid`의 tab을 member `tab`으로 찾으므로, group card 안에서도 완료 notice가 받는 tab을 찾고 주입 message가 `sender <id> has no tab in the window`로 거절되지 않는다. 검증: 바뀌지 않은 page에서 `test/terminal.test.mjs`의 test 24개 Red, 그 뒤 394개 모두 Green.
 - P213: plugin은 owned session의 attach를 담은 sidecar version `^0.0.33`에 의존한다(S241-3). 검증: 의존 test가 `^0.0.32`에서 Red였고, `pnpm test`와 `make check`로 Green이다. 범위는 vt 소유자가 배포하면 배포된 vt 버전에 맞춘다.
 - P211: tab이 `surface.program`으로 status `terminal.program-state`를 선언한다. 값은 program status의 record와 foreground process에서 얻은 `{state, pid}`이며, record가 상태를 주지 않거나 session이 끝나면 `null`이다. records status `terminal.program`은 바뀌지 않았다. 검증: `terminal.program-state reports the record state with the foreground pid, and null when no record gives a state (P211)`의 Red, 이어서 `pnpm test` 518/518과 `make check`의 Green.

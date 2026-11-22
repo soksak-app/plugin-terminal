@@ -7,6 +7,14 @@
   "surface": {
     "drop": "terminal.drop",
     "program": "terminal.program-state",
+    "params": {
+      "type": "object",
+      "properties": {
+        "session": {
+          "type": "string"
+        }
+      }
+    },
     "menu": [
       {
         "command": "terminal.copy",
