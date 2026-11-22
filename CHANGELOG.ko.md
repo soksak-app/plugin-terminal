@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P210-2: manifest가 `sessions: true`를 선언해 plugin이 core의 owned session에 참여한다. 검증: `test/manifest.test.mjs`의 `the plugin declares owned sessions` Red(`manifest.sessions` 검사), 이어서 `make test` 514/514와 `make check`의 Green. 이 검사를 위해 `node_modules`에 core checkout의 plugin API를 연결했고, 고정 release 0.0.46은 core release가 그 항목을 담기 전까지 거부한다.
 - P210-1: plugin의 owned session 계약을 명세에 적었다(`docs/spec/owned-sessions.ko.md`): `sessions` 선언, sidecar 동작, 크기 변환, tab 연결, 미결 결정 두 개. 검증: 문서 검토만 했고, 이 변경에 `make check-docs`를 실행했다.
 - P209: 실패한 command 뒤 prompt의 terminal은 activity `idle`을 보고하고, record는 core F1040-1처럼 `running`을 `failed`보다 높게 둔다. 검증: 복사한 core case의 Red, 이어서 바뀌지 않은 plugin에서도 실패하는 test 7개를 뺀 `test/terminal.test.mjs`의 Green.
 - P206: 인수 target이 한국어 번역 `ko`를 담은 형식 2로 `roles.json`을 쓰고, 지문 fixture가 다시 core case 파일과 같다. 검증: `make test` 512/512. 인수 target은 실행하지 않았다.

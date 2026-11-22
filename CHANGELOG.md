@@ -1,5 +1,6 @@
 # Changelog
 
+- P210-2: The manifest declares `sessions: true`, so the plugin takes part in owned sessions of core. Verification: the Red of `the plugin declares owned sessions` in `test/manifest.test.mjs` (assertion on `manifest.sessions`), then Green with `make test` 514 of 514 and `make check`; the plugin API of the core checkout is linked in `node_modules` for this check, and the pinned release 0.0.46 refuses the member until a core release carries it.
 - P210-1: The specification states the owned-session contract of the plugin (`docs/spec/owned-sessions.md`): the `sessions` declaration, the sidecar operations, the size conversion, the tab attachment and two open decisions. Verification: document review only; `make check-docs` on this change.
 - P209: A terminal at its prompt after a failed command reports the activity `idle`, and the records rank `running` above `failed`, as core F1040-1 states. Verification: Red of the copied core case, then Green of `test/terminal.test.mjs` apart from seven tests that also fail on the unchanged plugin.
 - P206: The acceptance target writes `roles.json` in format 2 with the Korean translation `ko`, and the fingerprint fixture equals the core case file again. Verification: `make test` 512 of 512; the acceptance target has not run.

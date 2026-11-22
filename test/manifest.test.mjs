@@ -158,3 +158,7 @@ test("the image region declares the copy presentation mode", { timeout: 1000 }, 
 test("the plugin requires the VT sidecar release beside core 0.0.46, whose view event carries background (P151, P208)", { timeout: 1000 }, () => {
   assert.deepEqual(manifest.dependencies, { "@soksak/sidecar-vt-alacritty": "^0.0.32" });
 });
+
+test("the plugin declares owned sessions, which its tabs attach to (P210-2)", { timeout: 1000 }, () => {
+  assert.equal(manifest.sessions, true);
+});
