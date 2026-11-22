@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P219: version은 0.0.53이며 tab parameter `title`(P218)을 담는다.
 - P212: window check `e2e/owned-session.test.mjs`가 program이 `working`과 `idle`을 알리는 owned session에 tab을 attach하고, 어느 view도 `session.program`을 unsupported로 나열하지 않기를 요구한다. 검증: assertion까지 실행되지 않았다. core 0.0.47의 application이 시작하지 않거나 terminal tab을 등록하지 않는다(P212).
 - P218: terminal tab이 tab parameter `title`을 받는다: `surface.params`가 그것을 선언하고, tab은 program title과 이름 대신 그것을 보이며, 제어 문자 없는 1~256자 text가 아닌 title은 시작을 거절한다. 검증: P218 test 7개 Red, 이후 Green 7개와 `pnpm test` 525개 중 525개.
 - P212: 보류 기록이 원인을 말한다: view로 가는 `session.program` 전달은 session을 소유한 vt sidecar가 실행 중일 때만 관찰된다. release gate는 보류 항목의 원인을 요구한다.
