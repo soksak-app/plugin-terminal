@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P214: plugin이 core `^0.0.47`을 요구하고 plugin API와 window-check release v0.0.47 및 그 lockfile 항목을 쓴다. version은 0.0.52이다. 검증: `pnpm test` 519개 모두 통과.
 - P215: `plugin.json`이 string member `session`을 가진 `surface.params`를 선언하므로, core가 params로 owned session을 가리키는 tab을 받아들인다. 검증: `surface.params`가 없는 manifest에서 `test/manifest.test.mjs`의 P215 test Red, 그 뒤 19개 모두 Green.
 - P216: page는 `core.grid`의 tab을 member `tab`으로 찾으므로, group card 안에서도 완료 notice가 받는 tab을 찾고 주입 message가 `sender <id> has no tab in the window`로 거절되지 않는다. 검증: 바뀌지 않은 page에서 `test/terminal.test.mjs`의 test 24개 Red, 그 뒤 394개 모두 Green.
 - P213: plugin은 owned session의 attach를 담은 sidecar version `^0.0.33`에 의존한다(S241-3). 검증: 의존 test가 `^0.0.32`에서 Red였고, `pnpm test`와 `make check`로 Green이다. 범위는 vt 소유자가 배포하면 배포된 vt 버전에 맞춘다.
