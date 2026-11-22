@@ -1,0 +1,9 @@
+#!/bin/sh
+# The program of the owned-session check of the window checks: it reports a working record with OSC 7501, waits for a line, then
+# reports an idle record and waits for a second line, so the owner of the session receives the program states working and idle.
+printf '\033]7501;state=working\007'
+printf 'state working\n'
+read -r first
+printf '\033]7501;state=idle\007'
+printf 'state idle\n'
+read -r second

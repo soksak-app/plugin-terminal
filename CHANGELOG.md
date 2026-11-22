@@ -1,5 +1,6 @@
 # Changelog
 
+- P212: The window check `e2e/owned-session.test.mjs` attaches a tab to an owned session whose program reports `working` and `idle`, and requires that no view lists `session.program` as unsupported. Verification: not run to its assertions; the applications of core 0.0.47 do not start or register the terminal tabs (P212).
 - P218: A terminal tab takes the tab parameter `title`: `surface.params` declares it, the tab shows it in place of the program title and its name, and a title that is not a text of 1 to 256 characters without control characters refuses the start. Verification: Red 7 of 7 P218 tests, then Green 7 of 7 and `pnpm test` 525 of 525.
 - P212: The held record states its cause: the delivery of `session.program` to the view is observable only with a running vt sidecar that owns a session; the release gate requires the cause of a held item.
 - P217: The plugin requires `@soksak/sidecar-vt-alacritty` `^0.0.41`, whose owned sessions carry S249 to S253 for the members of an agent room. Verification: Red of the dependency test on `^0.0.33`, then `pnpm test` 519 of 519.
