@@ -1,5 +1,6 @@
 # Changelog
 
+- P210-1: The specification states the owned-session contract of the plugin (`docs/spec/owned-sessions.md`): the `sessions` declaration, the sidecar operations, the size conversion, the tab attachment and two open decisions. Verification: document review only; `make check-docs` on this change.
 - P209: A terminal at its prompt after a failed command reports the activity `idle`, and the records rank `running` above `failed`, as core F1040-1 states. Verification: Red of the copied core case, then Green of `test/terminal.test.mjs` apart from seven tests that also fail on the unchanged plugin.
 - P206: The acceptance target writes `roles.json` in format 2 with the Korean translation `ko`, and the fingerprint fixture equals the core case file again. Verification: `make test` 512 of 512; the acceptance target has not run.
 - P205: The role text fixture no longer holds the paste-form texts that core removed from its case file, and a test requires that it pins exactly the five texts of that file. Verification: Red of the new test with the two extra keys, then Green of the role tests, 9 of 9.
