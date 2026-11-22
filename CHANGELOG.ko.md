@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P218: terminal tab이 tab parameter `title`을 받는다: `surface.params`가 그것을 선언하고, tab은 program title과 이름 대신 그것을 보이며, 제어 문자 없는 1~256자 text가 아닌 title은 시작을 거절한다. 검증: P218 test 7개 Red, 이후 Green 7개와 `pnpm test` 525개 중 525개.
 - P212: 보류 기록이 원인을 말한다: view로 가는 `session.program` 전달은 session을 소유한 vt sidecar가 실행 중일 때만 관찰된다. release gate는 보류 항목의 원인을 요구한다.
 - P217: plugin이 `@soksak/sidecar-vt-alacritty` `^0.0.41`을 요구한다. 그 owned session이 agent room member에 필요한 S249~S253을 담는다. 검증: `^0.0.33`에서 dependency test Red, 그 뒤 `pnpm test` 519개 모두 Green.
 - P214: plugin이 core `^0.0.47`을 요구하고 plugin API와 window-check release v0.0.47 및 그 lockfile 항목을 쓴다. version은 0.0.52이다. 검증: `pnpm test` 519개 모두 통과.

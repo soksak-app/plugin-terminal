@@ -5448,6 +5448,38 @@ test("the name setting removes the program title and program shows the last titl
   assert.deepEqual(tab.calls.filter(([kind]) => kind === "title").at(-1), ["title", null]);
 });
 
+test("a tab whose parameters carry a title shows that title and reports no program title to the tab (P218)", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const tab = createFakeTab();
+  const settings = titleSettings({});
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: createFakeExpose(), tab: { ...tab, params: { title: "planner" } }, settings,
+    window: { TextEncoder },
+  });
+  fakeSidecar.triggerEvent("test-session", { event: "title", title: "vim README.md" });
+  fakeSidecar.triggerEvent("test-session", { event: "title.reset" });
+  settings.change({ title: "name" });
+  settings.change({ title: "program" });
+  const titles = tab.calls.filter(([kind]) => kind === "title");
+  assert.ok(titles.length > 0, "the tab reported no title");
+  assert.deepEqual(titles.filter(([, text]) => text !== "planner"), [], `the tab reported another title: ${JSON.stringify(titles)}`);
+});
+
+for (const title of [7, "", "a\u0007b", "x".repeat(257), ["planner"]]) {
+  test(`a tab title ${JSON.stringify(title)} that is not a text of 1 to 256 characters without control characters refuses the start (P218)`, async () => {
+    FakeResizeObserver.reset();
+    const fakeSidecar = createFakeSidecar();
+    await assert.rejects(startTerminal({
+      view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+      sidecar: fakeSidecar, expose: createFakeExpose(), tab: { ...createFakeTab(), params: { title } }, settings: titleSettings({}),
+      window: { TextEncoder },
+    }), /tab title must be a text of 1 to 256 characters without control characters/);
+    assert.equal(fakeSidecar.getMessages().some((message) => message.body.operation === "open" || message.body.operation === "attach"), false);
+  });
+}
+
 test("a title that the tab rejects is a session error", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();

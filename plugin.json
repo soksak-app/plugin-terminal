@@ -12,6 +12,9 @@
       "properties": {
         "session": {
           "type": "string"
+        },
+        "title": {
+          "type": "string"
         }
       }
     },

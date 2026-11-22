@@ -890,8 +890,14 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 프로그램이 정한 마지막 제목(OSC 0/2). 설정 title 이 program 이면 탭에 보이고, name 이면 지운다.
   // 탭이 거부한 제목은 세션 오류이며 다음에 받아들여진 제목이 그 오류를 해소한다.
   let programTitle = null;
+  // The tab parameter title names the tab in place of the program title and the setting title (docs/spec/tab-title.md).
+  const paramTitle = tab.params?.title ?? null;
+  if (paramTitle !== null && (typeof paramTitle !== "string" || paramTitle.length === 0 || paramTitle.length > 256
+    || /[\u0000-\u001f\u007f-\u009f]/.test(paramTitle))) {
+    throw new Error("tab title must be a text of 1 to 256 characters without control characters");
+  }
   const applyTitle = () => {
-    const shown = settings.read().title === "program" ? programTitle : null;
+    const shown = paramTitle ?? (settings.read().title === "program" ? programTitle : null);
     try {
       tab.title(shown);
       if (resolveError("title")) changed("session");

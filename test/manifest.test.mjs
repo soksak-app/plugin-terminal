@@ -167,9 +167,9 @@ test("the plugin declares owned sessions, which its tabs attach to (P210-2)", { 
   assert.equal(manifest.sessions, true);
 });
 
-test("the surface declares the tab parameter session, which attaches a tab to an owned session (P215)", () => {
+test("the surface declares the tab parameters session, which attaches a tab to an owned session (P215), and title, which names the tab (P218)", () => {
   assert.deepEqual(manifest.surface.params, {
     type: "object",
-    properties: { session: { type: "string" } },
+    properties: { session: { type: "string" }, title: { type: "string" } },
   });
 });
