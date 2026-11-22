@@ -104,7 +104,7 @@ test("the diagnostic entries inject preedit and record the IME trace", () => {
 
 test("the terminal exposes its session, state, input, preedit, paste, file drop, process list, screen.read, close commands, and view", () => {
   const names = (kind) => manifest.exposes[kind].map((entry) => entry.name).sort();
-  assert.deepEqual(names("status"), ["terminal.activity", "terminal.compose", "terminal.cursor", "terminal.messages", "terminal.program", "terminal.screen", "terminal.session", "terminal.state"]);
+  assert.deepEqual(names("status"), ["terminal.activity", "terminal.compose", "terminal.cursor", "terminal.messages", "terminal.program", "terminal.program-state", "terminal.screen", "terminal.session", "terminal.state"]);
   assert.deepEqual(names("commands"), ["terminal.close", "terminal.copy", "terminal.cursor.set", "terminal.drop", "terminal.focus", "terminal.image.inline.delete", "terminal.input", "terminal.link.open", "terminal.messages.read", "terminal.messages.wait", "terminal.paste", "terminal.process.list", "terminal.screen.read", "terminal.screen.rows", "terminal.screen.scroll.read", "terminal.scrollback.set", "terminal.submit"]);
   assert.deepEqual(names("element"), ["terminal.scrollbar", "terminal.scrollbar.thumb", "terminal.view"]);
 });
@@ -157,6 +157,10 @@ test("the image region declares the copy presentation mode", { timeout: 1000 }, 
 // plugin requires 0.0.32, the sidecar release beside core 0.0.46 (P208).
 test("the plugin requires the VT sidecar release beside core 0.0.46, whose view event carries background (P151, P208)", { timeout: 1000 }, () => {
   assert.deepEqual(manifest.dependencies, { "@soksak/sidecar-vt-alacritty": "^0.0.32" });
+});
+
+test("the tabs name the status terminal.program-state as their program state (P211)", { timeout: 1000 }, () => {
+  assert.equal(manifest.surface.program, "terminal.program-state");
 });
 
 test("the plugin declares owned sessions, which its tabs attach to (P210-2)", { timeout: 1000 }, () => {

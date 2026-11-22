@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P211: tab이 `surface.program`으로 status `terminal.program-state`를 선언한다. 값은 program status의 record와 foreground process에서 얻은 `{state, pid}`이며, record가 상태를 주지 않거나 session이 끝나면 `null`이다. records status `terminal.program`은 바뀌지 않았다. 검증: `terminal.program-state reports the record state with the foreground pid, and null when no record gives a state (P211)`의 Red, 이어서 `pnpm test` 518/518과 `make check`의 Green.
 - P210-3: `session`을 가진 tab의 start parameter는 그 owned session에 `open` 대신 `attach`를 보내며, attach 답은 평소의 bootstrap으로 view를 연다. 거부된 attach는 sidecar의 문구로 terminal을 실패시킨다. 검증: `a tab whose start parameters name an owned session attaches to it and opens no session of its own`의 Red(open이 보내졌다), 이어서 `pnpm test` 515/515와 `make check`의 Green. 거부 test는 Green 뒤에 추가했고 Red는 보지 않았다. attach는 가짜 sidecar로 검증했으며, 의존은 배포된 `^0.0.32`로 남는다(P213).
 - P210-2: manifest가 `sessions: true`를 선언해 plugin이 core의 owned session에 참여한다. 검증: `test/manifest.test.mjs`의 `the plugin declares owned sessions` Red(`manifest.sessions` 검사), 이어서 `make test` 514/514와 `make check`의 Green. 이 검사를 위해 `node_modules`에 core checkout의 plugin API를 연결했고, 고정 release 0.0.46은 core release가 그 항목을 담기 전까지 거부한다.
 - P210-1: plugin의 owned session 계약을 명세에 적었다(`docs/spec/owned-sessions.ko.md`): `sessions` 선언, sidecar 동작, 크기 변환, tab 연결, 미결 결정 두 개. 검증: 문서 검토만 했고, 이 변경에 `make check-docs`를 실행했다.

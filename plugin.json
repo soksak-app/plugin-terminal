@@ -6,6 +6,7 @@
   "icon": "<rect x=\"2\" y=\"3\" width=\"12\" height=\"10\" rx=\"2\"/><circle cx=\"5\" cy=\"7\" r=\"1.5\"/><path d=\"M8 9l2-2m-2 0l2 2\"/>",
   "surface": {
     "drop": "terminal.drop",
+    "program": "terminal.program-state",
     "menu": [
       {
         "command": "terminal.copy",
@@ -1071,6 +1072,35 @@
             },
             "sequence": {
               "type": "integer"
+            }
+          }
+        }
+      },
+      {
+        "name": "terminal.program-state",
+        "description": "The program state of the tab (core docs/spec/program-state.md#value): {state, pid} with state idle, working or blocked, from the records of terminal.program (OSC 7501 and the shell marks), and pid the foreground program of the process list (terminal.session foreground pid), or null when the records give no state. The session end gives null.",
+        "schema": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "state"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "idle",
+                "working",
+                "blocked"
+              ]
+            },
+            "pid": {
+              "type": [
+                "integer",
+                "null"
+              ]
             }
           }
         }

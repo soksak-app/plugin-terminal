@@ -477,6 +477,17 @@ function programStatusProblem({ records, notice, sequence }, change) {
   }
   return null;
 }
+/**
+ * The program state of a tab (core docs/spec/program-state.md#value) from the records of its program status: blocked when a record
+ * is blocked, else working when a record works, else idle when a record rests (idle, done or error), and null when no record gives a
+ * state (docs/spec/terminal-state.md, states of a running terminal). The pid is the foreground program of the process list, or null.
+ */
+export function programStateValue({ records }, foreground) {
+  const states = new Set(records.map(({ state }) => state));
+  const state = states.has("blocked") ? "blocked" : states.has("working") ? "working" : ["idle", "done", "error"].some((rest) => states.has(rest)) ? "idle" : null;
+  if (state === null) return null;
+  return { state, pid: foreground?.pid ?? null };
+}
 /** Returns why a terminal state value of a change event or a read reply breaks the contract, or null when it holds. */
 function terminalStateProblem({ state, source, sequence, exit }, change) {
   if (!Number.isSafeInteger(sequence) || sequence < (change ? 1 : 0)) return "sequence";
@@ -532,7 +543,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     throw new TypeError(`startTerminal requires origin {directory} with a path or null, found ${JSON.stringify(origin)}`);
   }
   // 공개 status 마다 값이 바뀔 때 호출할 함수
-  const watchers = { session: new Set(), screen: new Set(), compose: new Set(), cursor: new Set(), state: new Set(), program: new Set(), activity: new Set(),
+  const watchers = { session: new Set(), screen: new Set(), compose: new Set(), cursor: new Set(), state: new Set(), program: new Set(), programState: new Set(), activity: new Set(),
     messages: new Set() };
   // The delivery of the messages of the registration, which a page with a project creates below with the messages; it reviews its
   // hold at each change of a status that the hold reads (core docs/spec/messaging.md#hold-for-the-person).
@@ -540,6 +551,8 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   const HOLD_STATUSES = new Set(["session", "compose", "state", "program"]);
   const changed = (name) => {
     for (const fn of watchers[name]) fn(read[name]());
+    // The program state follows the records and the foreground process, which the program status and the session carry.
+    if (name === "program" || name === "session") for (const fn of watchers.programState) fn(read.programState());
     if (messagesDelivery !== null && HOLD_STATUSES.has(name)) messagesDelivery.review();
   };
   const watch = (name) => (fn) => {
@@ -659,6 +672,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     cursor: () => cursor,
     state: () => terminalState,
     program: () => programStatus,
+    programState: () => (session.exited ? null : programStateValue(programStatus, session.foreground)),
     activity,
     messages: () => messagesStatus,
   };
@@ -3146,6 +3160,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       expose.status("terminal.state", read.state, watch("state")),
       expose.status("terminal.activity", read.activity, watch("activity")),
       expose.status("terminal.program", read.program, watch("program")),
+      expose.status("terminal.program-state", read.programState, watch("programState")),
       expose.status("terminal.messages", read.messages, watch("messages")),
       expose.command("terminal.messages.read", async (params) => readMessages("read", params)),
       expose.command("terminal.messages.wait", async (params) => readMessages("wait", params)),
