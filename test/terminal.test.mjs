@@ -7383,7 +7383,7 @@ test("file events are known events, and the close of the registration resets ter
 // reasons of the hold in their order, and reports the delivery in terminal.messages with the records of the event log.
 // A title that a program of the sending tab set (OSC 0/2), such as the first prompt of an agent, which the injection cuts to 40 characters.
 const LONG_PROGRAM_TITLE = "너는 작업자 codex 이다. 현재 폴더에서 지휘자와 함께 브라우저 게임을 만든다 | demo-game";
-const SENDER_GRID = { cards: [{ tabs: [{ id: "s2", plugin: "terminal", label: null, title: "sender" }, { id: "s3", plugin: "terminal", label: LONG_PROGRAM_TITLE, title: "탭 2" }] }] };
+const SENDER_GRID = { cards: [{ tabs: [{ tab: "s2", plugin: "terminal", label: null, title: "sender" }, { tab: "s3", plugin: "terminal", label: LONG_PROGRAM_TITLE, title: "탭 2" }] }] };
 const BLOCKED = { id: null, state: "blocked", kind: "permission", progress: null, app: "agent", title: null, msg: "Run the tests?" };
 async function deliveryTerminal(options) {
   const terminal = await messagesTerminal(options);
@@ -7424,7 +7424,7 @@ async function deliveryTerminal(options) {
 // on one line, or its name (core docs/spec/messaging.md#injected-message).
 test("a sender whose tab shows a label is injected with the label on one line, and a renamed label at the next injection", { timeout: 10000 }, async () => {
   const terminal = await deliveryTerminal();
-  const labelled = (label) => ({ cards: [{ tabs: [{ id: "s2", plugin: "terminal", label, title: "탭 1" }] }] });
+  const labelled = (label) => ({ cards: [{ tabs: [{ tab: "s2", plugin: "terminal", label, title: "탭 1" }] }] });
   terminal.grid(labelled("빌드\u0007 작업\n중"));
   terminal.arrive(1);
   await terminal.answerRead(1);
@@ -7688,8 +7688,15 @@ test("a file event of another registration and a removal inject nothing", { time
 });
 
 // The notice of a working period (core docs/spec/messaging.md#completion-notice): the tab of the terminal is the receiving tab, whose
-// label is its title in the notice.
-const RECEIVER_GRID = { cards: [{ tabs: [{ id: "test-session", plugin: "terminal", label: "build", title: "terminal" }, ...SENDER_GRID.cards[0].tabs] }] };
+// label is its title in the notice. Each tab of core.grid names itself by tab, and the receiving card is a member of a group card, as
+// the cards of a room are (core docs/spec/groups.md#status-and-queries).
+const RECEIVER_GRID = {
+  cards: [
+    { id: "card-1", parent: null, leader: true, tabs: SENDER_GRID.cards[0].tabs },
+    { id: "card-3", parent: "card-2", leader: true, tabs: [{ tab: "test-session", plugin: "terminal", label: "build", title: "terminal" }] },
+  ],
+  groups: [{ id: "card-2", parent: null, leader: false, group: { name: "Room", level: 1, leader: "card-3" } }],
+};
 const programWith = (records, sequence) => ({ event: "program.status", records, notice: false, sequence });
 const programState = (state) => ({ id: null, state, kind: null, progress: null, app: null, title: null, msg: null });
 const receiptArrives = (terminal, seq, token) => terminal.emit({ event: "file.changed", registration: "r1", path: `test-session.receipt-${token}.txt`,

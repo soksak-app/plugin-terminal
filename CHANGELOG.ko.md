@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P216: page는 `core.grid`의 tab을 member `tab`으로 찾으므로, group card 안에서도 완료 notice가 받는 tab을 찾고 주입 message가 `sender <id> has no tab in the window`로 거절되지 않는다. 검증: 바뀌지 않은 page에서 `test/terminal.test.mjs`의 test 24개 Red, 그 뒤 394개 모두 Green.
 - P213: plugin은 owned session의 attach를 담은 sidecar version `^0.0.33`에 의존한다(S241-3). 검증: 의존 test가 `^0.0.32`에서 Red였고, `pnpm test`와 `make check`로 Green이다. 범위는 vt 소유자가 배포하면 배포된 vt 버전에 맞춘다.
 - P211: tab이 `surface.program`으로 status `terminal.program-state`를 선언한다. 값은 program status의 record와 foreground process에서 얻은 `{state, pid}`이며, record가 상태를 주지 않거나 session이 끝나면 `null`이다. records status `terminal.program`은 바뀌지 않았다. 검증: `terminal.program-state reports the record state with the foreground pid, and null when no record gives a state (P211)`의 Red, 이어서 `pnpm test` 518/518과 `make check`의 Green.
 - P210-3: `session`을 가진 tab의 start parameter는 그 owned session에 `open` 대신 `attach`를 보내며, attach 답은 평소의 bootstrap으로 view를 연다. 거부된 attach는 sidecar의 문구로 terminal을 실패시킨다. 검증: `a tab whose start parameters name an owned session attaches to it and opens no session of its own`의 Red(open이 보내졌다), 이어서 `pnpm test` 515/515와 `make check`의 Green. 거부 test는 Green 뒤에 추가했고 Red는 보지 않았다. attach는 가짜 sidecar로 검증했으며, 의존은 배포된 `^0.0.32`로 남는다(P213).

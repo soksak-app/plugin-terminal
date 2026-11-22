@@ -2097,7 +2097,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
         decide(event, "skipped", `message ${event.seq} is not in the folder`);
         return;
       }
-      const tab = (grid?.cards ?? []).flatMap((card) => card.tabs).find((item) => item.id === message.from);
+      const tab = (grid?.cards ?? []).flatMap((card) => card.tabs).find((item) => item.tab === message.from);
       if (tab === undefined) {
         decide(event, "refused", `sender ${message.from} has no tab in the window`);
         return;
@@ -2191,7 +2191,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     // Sends one notice per message of the period to its sender through the sidecar (core docs/spec/messaging.md#completion-notice).
     // The title is the text of the receiving tab, and the report flag is set when the receipt of the token arrived.
     const sendNotices = (state, entries) => {
-      const self = (grid?.cards ?? []).flatMap((card) => card.tabs).find((item) => item.id === id);
+      const self = (grid?.cards ?? []).flatMap((card) => card.tabs).find((item) => item.tab === id);
       if (self === undefined) {
         setError("messages", `terminal.messages: notice: the tab ${id} is not in core.grid`);
         return;
