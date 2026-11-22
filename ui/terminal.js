@@ -1651,8 +1651,18 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // The start parameters of the tab name the program of the session (core docs/spec/agent-roles.md#start-parameters). Without a
   // program the session opens the shell of the shell setting, and with a program the shell setting is not read.
   const launch = launchOf(tab.params);
-  const shell = launch.program === null ? settings.read().shell : null;
-  if (launch.program === null && (typeof shell !== "string" || shell.length === 0)) throw new Error("terminal shell setting is missing");
+  // A tab whose start parameters name an owned session shows that session and opens none of its own (docs/spec/owned-sessions.md#tab-attachment).
+  const ownedSession = tab.params?.session ?? null;
+  if (ownedSession !== null && (typeof ownedSession !== "string" || ownedSession.length === 0)) {
+    throw new Error("tab session must be a non-empty text");
+  }
+  if (ownedSession !== null && (launch.program !== null || launch.role !== null)) {
+    throw new Error("tab session excludes program and role");
+  }
+  const shell = launch.program === null && ownedSession === null ? settings.read().shell : null;
+  if (launch.program === null && ownedSession === null && (typeof shell !== "string" || shell.length === 0)) {
+    throw new Error("terminal shell setting is missing");
+  }
   const target = launch.program === null ? { shell } : { program: launch.program, args: launch.args };
   // 터미널에서 쪼갠 터미널은 그 터미널이 마지막으로 알린 디렉터리에서, 아니면 프로젝트 루트에서 시작한다.
   // 프로젝트가 없는 창에서는 홈 디렉터리에서 시작한다(docs/spec/terminal-runtime.md).
@@ -1663,7 +1673,37 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // 서비스가 교체되어 새 셸을 열 때는 셸이 마지막으로 알린 디렉터리에서 시작해 사람이 이어서 쓴다. 다른 컴퓨터의
   // 디렉터리(path null)는 기록을 지우므로 탭이 시작한 디렉터리로 돌아간다.
   let working = directory;
+  // The attach of an owned session sends {operation: "attach", session} with one correlation identifier. Its answer
+  // {session, attached: true} names the session that this view now shows; it opens the session in place of the open reply.
+  let attachRequest = null;
+  let attachSequence = 0;
+  const attachOwnedSession = (name) => new Promise((resolve, reject) => {
+    const entry = { session: name, cid: `${unansweredPrefix}-attach-${++attachSequence}`, resolve, reject };
+    attachRequest = entry;
+    terminal.send(id, { operation: "attach", session: name }, [entry.cid]).catch((error) => {
+      if (attachRequest === entry) attachRequest = null;
+      reject(error);
+    });
+  }).then(() => {
+    session = { ...session, sessionId: ownedSession, exited: false };
+    openSessionGate("attach");
+  });
+  // Ends the attach request that the answer names, and returns whether one did.
+  const answerAttach = (body, cids) => {
+    if (attachRequest === null || !cids.includes(attachRequest.cid)) return false;
+    const entry = attachRequest;
+    attachRequest = null;
+    if (body.error) {
+      entry.reject(new Error(`attach ${entry.session}: ${body.error}`));
+    } else if (body.attached !== true || body.session !== entry.session) {
+      entry.reject(new Error(`attach ${entry.session} received a mismatched answer: ${JSON.stringify({ session: body.session, attached: body.attached })}`));
+    } else {
+      entry.resolve();
+    }
+    return true;
+  };
   const openSession = () => {
+    if (ownedSession !== null) return attachOwnedSession(ownedSession);
     runtime.log.info("session.open", { ...target, directory: working });
     return terminal.send(id, { operation: "open", image: "view", ...target,
       ...(working === null ? {} : { directory: working }) });
@@ -2459,6 +2499,7 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     }
     // The regions detach at the removal; an event after it would operate on a detached region.
     if (closing.aborted) return;
+    if (answerAttach(body, cids ?? [])) return;
     if (answerRangeRead(body, cids ?? [])) return;
     if (answerScrollRead(body, cids ?? [])) return;
     if (answerProcessRead(body, cids ?? [])) return;

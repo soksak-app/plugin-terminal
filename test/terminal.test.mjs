@@ -268,7 +268,7 @@ function recorder(lines) {
 const onlyFocus = (actions) => actions.length > 0 && actions.every(({ type }) => type === "focus");
 const carriesInput = (body) => body.operation === "input" && !onlyFocus(body.actions);
 
-function createFakeSidecar({ delay = () => null, answers = true, watchAnswers = true } = {}) {
+function createFakeSidecar({ delay = () => null, answers = true, watchAnswers = true, attach = null } = {}) {
   const messages = [];
   // The cids of each sent body. A service names them in the answer of the body (core docs/spec/sidecars.md#protocol).
   const sentCids = new Map();
@@ -296,7 +296,9 @@ function createFakeSidecar({ delay = () => null, answers = true, watchAnswers = 
       if (body.operation === "input" && body.actions.some(({ type }) => type === "focus")) focusBodies.push(body);
       if (body.operation !== "input" || !onlyFocus(body.actions)) messages.push({ id, body });
       for (const waiter of waiters.splice(0)) waiter();
-      if (answers && cids.length > 0) for (const handler of listeners.get(id) ?? []) {
+      if (answers && cids.length > 0 && body.operation === "attach" && attach !== null) for (const handler of listeners.get(id) ?? []) {
+        handler(attach(body), cids);
+      } else if (answers && cids.length > 0) for (const handler of listeners.get(id) ?? []) {
         if (body.operation === "screen.watch") {
           if (watchAnswers) handler({ event: "screen.watching", enabled: body.enabled }, cids);
         } else if (!(body.operation === "screen.read" && body.from !== undefined) && body.operation !== "screen.scroll.read"
@@ -846,6 +848,34 @@ test("a session opens the shell that the shell setting names", async () => {
   });
   const open = fakeSidecar.getMessages().find((message) => message.body.operation === "open");
   assert.deepEqual(open.body, { operation: "open", image: "view", shell: "login" });
+});
+
+test("a tab whose start parameters name an owned session attaches to it and opens no session of its own", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar({ attach: (body) => ({ session: body.session, attached: true }) });
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: createFakeExpose(),
+    tab: { title() {}, footer() {}, directory() {}, notify() {}, error() {}, params: { session: "owned-1" } },
+    settings: { read: () => ({ ...SHELL_SETTINGS.read(), shell: "login" }), on: () => () => {} },
+    window: { TextEncoder },
+  });
+  const operations = fakeSidecar.getMessages().map(({ body }) => body.operation);
+  assert.equal(operations.includes("open"), false, "an owned session attach sends no open");
+  const attach = fakeSidecar.getMessages().find((message) => message.body.operation === "attach");
+  assert.deepEqual(attach.body, { operation: "attach", session: "owned-1" });
+});
+
+test("a refused attach of an owned session fails the terminal with the sidecar refusal", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar({ attach: () => ({ error: "session owned-1 is shown by surface other" }) });
+  await assert.rejects(startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: createFakeExpose(),
+    tab: { title() {}, footer() {}, directory() {}, notify() {}, error() {}, params: { session: "owned-1" } },
+    settings: { read: () => ({ ...SHELL_SETTINGS.read(), shell: "login" }), on: () => () => {} },
+    window: { TextEncoder },
+  }), /attach owned-1: session owned-1 is shown by surface other/);
 });
 
 test("a tab whose start parameters name a program opens that program with its arguments and no shell", async () => {
