@@ -503,6 +503,11 @@ function terminalStateProblem({ state, source, sequence, exit }, change) {
   return exit === null || (Number.isInteger(exit) && exit >= 0 && exit <= 255) ? null : "exit";
 }
 
+// An absolute path by the one string rule of core docs/spec/native-surfaces.md (start values, origin refusal): it starts with `/`, not with
+// `//` or `/<letter>:`, and holds no NUL byte. The rule has no platform path API, so every host and the page judge a path the same way.
+const isAbsolutePath = (value) => typeof value === "string" && value.startsWith("/") && !value.startsWith("//") &&
+  !/^\/[A-Za-z]:/.test(value) && !value.includes("\u0000");
+
 export async function startTerminal({ id, view, attachImage, detachRegions, sidecar, expose, theme,
   // Aborts when the removal of the surface starts, before its regions are detached (context.closing). Required.
   closing,
@@ -1684,10 +1689,16 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     throw new Error("terminal shell setting is missing");
   }
   const target = launch.program === null ? { shell } : { program: launch.program, args: launch.args };
+  // The tab parameter `directory` names the directory that the session starts in (docs/spec/tab-directory.md). It is refused, with no session,
+  // when it is not an absolute path, and without it the start follows the origin rule below.
+  const paramDirectory = tab.params?.directory ?? null;
+  if (paramDirectory !== null && !isAbsolutePath(paramDirectory)) {
+    throw new Error(`tab directory must be an absolute path: ${paramDirectory}`);
+  }
   // 터미널에서 쪼갠 터미널은 그 터미널이 마지막으로 알린 디렉터리에서, 아니면 프로젝트 루트에서 시작한다.
   // 프로젝트가 없는 창에서는 홈 디렉터리에서 시작한다(docs/spec/terminal-runtime.md).
   // default: 분할 출처에 디렉터리가 없으면 프로젝트 루트, 프로젝트도 없으면 홈 디렉터리에서 연다.
-  const directory = origin.directory ?? project?.root ?? null;
+  const directory = paramDirectory ?? origin.directory ?? project?.root ?? null;
   // 카드 발은 작업 디렉터리를 보인다. 홈 디렉터리에서 시작하면 셸이 알릴 때까지 경로를 모른다.
   if (directory !== null) tab.footer(directory);
   // 서비스가 교체되어 새 셸을 열 때는 셸이 마지막으로 알린 디렉터리에서 시작해 사람이 이어서 쓴다. 다른 컴퓨터의

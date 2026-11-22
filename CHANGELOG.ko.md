@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P223: tab parameter `directory`가 origin 디렉터리보다 먼저 session과 footer를 그 디렉터리에서 시작하며, 절대 경로가 아닌 값은 시작을 거절한다(`docs/spec/tab-directory.ko.md`). 검증: P223 test 두 개의 Red 후 P215·P218·P223 test 9개 중 9개와 `pnpm test` 530개 중 530개.
 - P222: version은 0.0.54이며 P212, P220, P221을 담는다.
 - P221: page가 자기 surface로 `core.tab.role`을 watch하고, role이 없는 tab의 state `null` 값은 role 없음이다. 검증: surface 없는 watch를 거부하는 runtime에 대한 56개 test와 P221 test의 Red 후 `pnpm test` 528개 중 528개.
 - P220: page가 sidecar event `cursor.blinking`을 명시적 branch로 처리하므로 view가 더 이상 그것을 unsupported로 나열하지 않는다. 검증: P220 page test의 Red 후 Green, `pnpm test` 527개 중 527개.

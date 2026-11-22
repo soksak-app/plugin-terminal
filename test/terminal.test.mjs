@@ -5577,6 +5577,32 @@ test("a session opens in the origin directory of its tab", async () => {
   assert.deepEqual(open.body, { operation: "open", image: "view", shell: "login", directory: "/tmp/origin" });
 });
 
+test("a tab parameter directory starts its session and its footer in that directory, before the origin directory (P223)", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  const tab = { ...createFakeTab(), params: { directory: "/tmp/param" } };
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: createFakeExpose(), tab, origin: { directory: "/tmp/origin" },
+    settings: titleSettings({}), window: { TextEncoder },
+  });
+  const open = fakeSidecar.getMessages().find((message) => message.body.operation === "open");
+  assert.deepEqual(open.body, { operation: "open", image: "view", shell: "login", directory: "/tmp/param" });
+  assert.deepEqual(tab.calls.filter(([kind]) => kind === "footer"), [["footer", "/tmp/param"]]);
+});
+
+test("a tab parameter directory that is not an absolute path refuses the start and opens no session (P223)", async () => {
+  FakeResizeObserver.reset();
+  const fakeSidecar = createFakeSidecar();
+  await assert.rejects(startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: createFakeExpose(),
+    tab: { ...createFakeTab(), params: { directory: "relative/dir" } }, origin: { directory: "/tmp/origin" },
+    settings: titleSettings({}), window: { TextEncoder },
+  }), /tab directory must be an absolute path: relative\/dir/);
+  assert.equal(fakeSidecar.getMessages().some((message) => message.body.operation === "open"), false);
+});
+
 test("an OSC 9 notification becomes a tab notice and a rejected one is a session error", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();

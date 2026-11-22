@@ -1,5 +1,6 @@
 # Changelog
 
+- P223: The tab parameter `directory` starts the session and its footer in that directory before the origin directory, and a value that is not an absolute path refuses the start (`docs/spec/tab-directory.md`). Verification: Red of the two P223 tests, then Green with the P215, P218 and P223 tests 9 of 9 and `pnpm test` 530 of 530.
 - P222: The version is 0.0.54, with P212, P220 and P221.
 - P221: The page watches `core.tab.role` on its own surface, and the value with the state `null` of a tab without a role is no role. Verification: Red of 56 tests against a runtime that refuses the watch without a surface and of the P221 test, then `pnpm test` 528 of 528.
 - P220: The page handles the sidecar event `cursor.blinking` by an explicit branch, so a view no longer lists it as unsupported. Verification: Red then Green of the P220 page test, `pnpm test` 527 of 527.
