@@ -4235,6 +4235,45 @@ test("the event cursor.blinking is no unsupported sidecar event, because the nex
     "cursor.blinking is not listed as unsupported");
 });
 
+test("the owner event session.program is no unsupported sidecar event, and the page takes the program state from OSC 7501 records only (P212)", async () => {
+  FakeResizeObserver.reset();
+  const log = capturedLog();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose,
+    window: { TextEncoder }, runtime: log.runtime,
+  });
+  openSession(fakeSidecar);
+  const before = fakeExpose.getStatus("terminal.program-state").readFn();
+  fakeSidecar.triggerEvent("test-session", { event: "session.program", state: "working" });
+  assert.deepEqual(log.records.filter(([event]) => event === "sidecar.unknown"), [],
+    "session.program writes no unknown-event record");
+  assert.deepEqual(fakeExpose.getStatus("terminal.session").readFn().unsupported, [],
+    "session.program is not listed as unsupported");
+  assert.deepEqual(fakeExpose.getStatus("terminal.program-state").readFn(), before,
+    "session.program does not change the program state of the tab");
+});
+
+test("the event cursor.blinking is no unsupported sidecar event, because the next render frame carries the blink state of the cursor (P220)", async () => {
+  FakeResizeObserver.reset();
+  const log = capturedLog();
+  const fakeSidecar = createFakeSidecar();
+  const fakeExpose = createFakeExpose();
+  await startTerminal({
+    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar: fakeSidecar, expose: fakeExpose,
+    window: { TextEncoder }, runtime: log.runtime,
+  });
+  openSession(fakeSidecar);
+  fakeSidecar.triggerEvent("test-session", { event: "cursor.blinking" });
+  assert.deepEqual(log.records.filter(([event]) => event === "sidecar.unknown"), [],
+    "cursor.blinking writes no unknown-event record");
+  assert.deepEqual(fakeExpose.getStatus("terminal.session").readFn().unsupported, [],
+    "cursor.blinking is not listed as unsupported");
+});
+
 test("a sequence the engine rejected is recorded in the session without a surface error", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();

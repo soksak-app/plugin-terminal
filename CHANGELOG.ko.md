@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P220: page가 sidecar event `cursor.blinking`을 명시적 branch로 처리하므로 view가 더 이상 그것을 unsupported로 나열하지 않는다. 검증: P220 page test의 Red 후 Green, `pnpm test` 527개 중 527개.
 - P212: window check가 core 0.0.48(`@soksak/window-check` v0.0.48)에 대해 실행되고, page가 owner event `session.program`을 명시적 branch로 처리하므로 어느 view도 그것을 unsupported로 나열하지 않는다. 검증: P212 page test의 Red 후 Green, `pnpm test` 526개 중 526개. window check는 각 application에서 core 오류로 실패한다(P212).
 - P219: version은 0.0.53이며 tab parameter `title`(P218)을 담는다.
 - P212: window check `e2e/owned-session.test.mjs`가 program이 `working`과 `idle`을 알리는 owned session에 tab을 attach하고, 어느 view도 `session.program`을 unsupported로 나열하지 않기를 요구한다. 검증: assertion까지 실행되지 않았다. core 0.0.47의 application이 시작하지 않거나 terminal tab을 등록하지 않는다(P212).

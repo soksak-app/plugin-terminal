@@ -3053,6 +3053,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     } else if (body.event === "session.program") {
       // The owner event of an owned session is read by core; the page takes the program state from OSC 7501 records only
       // (core docs/spec/terminal-state.md).
+    } else if (body.event === "cursor.blinking") {
+      // The program changed the blink mode of the cursor; the next render frame carries it as render.cursor.blinking.
+    } else if (body.event === "session.program") {
+      // The owner event of an owned session is read by core; the page takes the program state from OSC 7501 records only
+      // (core docs/spec/terminal-state.md).
     } else if (body.event === "exit") {
       // The child ended: the last frame stays on screen, and no input is held in an ended session.
       discardUnanswered("session-ended");

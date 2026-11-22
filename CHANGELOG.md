@@ -1,5 +1,6 @@
 # Changelog
 
+- P220: The page handles the sidecar event `cursor.blinking` by an explicit branch, so a view no longer lists it as unsupported. Verification: Red then Green of the P220 page test, `pnpm test` 527 of 527.
 - P212: The window check runs against core 0.0.48 (`@soksak/window-check` v0.0.48), and the page handles the owner event `session.program` by an explicit branch, so no view lists it as unsupported. Verification: Red then Green of the P212 page test, `pnpm test` 526 of 526; the window check fails on core errors on each application (P212).
 - P219: The version is 0.0.53, with the tab parameter `title` (P218).
 - P212: The window check `e2e/owned-session.test.mjs` attaches a tab to an owned session whose program reports `working` and `idle`, and requires that no view lists `session.program` as unsupported. Verification: not run to its assertions; the applications of core 0.0.47 do not start or register the terminal tabs (P212).
