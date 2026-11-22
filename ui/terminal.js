@@ -2291,17 +2291,20 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       roleOutbox.push({ kind: "role-reread", text: rereadRequest(roleValue.path, roleValue.fingerprint) });
       review();
     };
+    // core.tab.role is a status of the tab surface, so the page watches it on its own surface (core docs/spec/native-surfaces.md).
     const stopRole = runtime.status.watch("core.tab.role", (value) => {
-      if (value !== null && (typeof value !== "object" || !ROLE_STATES.has(value.state))) {
-        setError("messages", `terminal.messages: invalid core.tab.role state: ${JSON.stringify(value?.state)}`);
+      if (value !== null && (typeof value !== "object" || (value.state !== null && !ROLE_STATES.has(value.state)))) {
+        setError("messages", `terminal.messages: invalid core.tab.role value: ${JSON.stringify(value) ?? String(value)}`);
         return;
       }
+      // A tab without a role reports the state null (core docs/spec/agent-roles.md#tab-role-state).
+      if (value !== null && value.state === null) value = null;
       roleValue = value;
       roleState = value === null ? null : value.state;
       announceRole(value);
       confirmVisibleLines();
       review();
-    });
+    }, { surface: id });
     closing.addEventListener("abort", stopRole, { once: true });
     return {
       review,
@@ -3050,9 +3053,6 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
       }
       session = { ...session, inputHeld: body.held ? { queued: body.queued, held: true } : null };
       changed("session");
-    } else if (body.event === "session.program") {
-      // The owner event of an owned session is read by core; the page takes the program state from OSC 7501 records only
-      // (core docs/spec/terminal-state.md).
     } else if (body.event === "cursor.blinking") {
       // The program changed the blink mode of the cursor; the next render frame carries it as render.cursor.blinking.
     } else if (body.event === "session.program") {

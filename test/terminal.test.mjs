@@ -4235,45 +4235,6 @@ test("the event cursor.blinking is no unsupported sidecar event, because the nex
     "cursor.blinking is not listed as unsupported");
 });
 
-test("the owner event session.program is no unsupported sidecar event, and the page takes the program state from OSC 7501 records only (P212)", async () => {
-  FakeResizeObserver.reset();
-  const log = capturedLog();
-  const fakeSidecar = createFakeSidecar();
-  const fakeExpose = createFakeExpose();
-  await startTerminal({
-    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
-    sidecar: fakeSidecar, expose: fakeExpose,
-    window: { TextEncoder }, runtime: log.runtime,
-  });
-  openSession(fakeSidecar);
-  const before = fakeExpose.getStatus("terminal.program-state").readFn();
-  fakeSidecar.triggerEvent("test-session", { event: "session.program", state: "working" });
-  assert.deepEqual(log.records.filter(([event]) => event === "sidecar.unknown"), [],
-    "session.program writes no unknown-event record");
-  assert.deepEqual(fakeExpose.getStatus("terminal.session").readFn().unsupported, [],
-    "session.program is not listed as unsupported");
-  assert.deepEqual(fakeExpose.getStatus("terminal.program-state").readFn(), before,
-    "session.program does not change the program state of the tab");
-});
-
-test("the event cursor.blinking is no unsupported sidecar event, because the next render frame carries the blink state of the cursor (P220)", async () => {
-  FakeResizeObserver.reset();
-  const log = capturedLog();
-  const fakeSidecar = createFakeSidecar();
-  const fakeExpose = createFakeExpose();
-  await startTerminal({
-    view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
-    sidecar: fakeSidecar, expose: fakeExpose,
-    window: { TextEncoder }, runtime: log.runtime,
-  });
-  openSession(fakeSidecar);
-  fakeSidecar.triggerEvent("test-session", { event: "cursor.blinking" });
-  assert.deepEqual(log.records.filter(([event]) => event === "sidecar.unknown"), [],
-    "cursor.blinking writes no unknown-event record");
-  assert.deepEqual(fakeExpose.getStatus("terminal.session").readFn().unsupported, [],
-    "cursor.blinking is not listed as unsupported");
-});
-
 test("a sequence the engine rejected is recorded in the session without a surface error", async () => {
   FakeResizeObserver.reset();
   const fakeSidecar = createFakeSidecar();
@@ -7343,8 +7304,10 @@ async function messagesTerminal({ project = MESSAGES_PROJECT, closing = new Abor
   // The status watch also holds the watches of core.tab.role, and role(value) delivers a value of it (core docs/spec/agent-roles.md).
   const roleWatches = new Set();
   const role = (value) => { for (const listener of roleWatches) listener(value); };
-  const statusWatch = (name, listener) => {
+  // A surface status is watched on the surface of the tab, and the watch without it is refused as core refuses it (P221).
+  const statusWatch = (name, listener, options) => {
     assert.ok(name === "core.grid" || name === "core.tab.role", `the page follows core.grid and core.tab.role, not ${name}`);
+    if (name === "core.tab.role" && options?.surface !== id) throw new Error("status.watch for core.tab.role requires a surface");
     const watches = name === "core.grid" ? gridWatches : roleWatches;
     watches.add(listener);
     return () => watches.delete(listener);
@@ -7682,6 +7645,14 @@ test("a role change of an agent CLI sends the change message that names the path
   t.role(roleStatus({ generation: 2, seq: 2 }));
   await t.sidecar.until(() => t.injected().length === 2);
   assert.deepEqual(t.injected(), [changeMessage(ROLE_FILE_PATH), "Enter"], "the change message names the path of the role file");
+});
+
+test("the status of a tab without a role, with the state null, is no role and shows no error (P221)", { timeout: 10000 }, async () => {
+  const t = await deliveryTerminal({ params: { program: "claude", args: [] } });
+  t.emit({ event: "program.status.current", records: [], notice: false, sequence: 0 });
+  t.role({ role: null, generation: 0, state: null, seq: 1, fingerprint: null, path: null });
+  assert.deepEqual(t.tabErrors(), [], "the value of a tab without a role is valid");
+  assert.deepEqual(t.injected(), [], "a tab without a role sends no role message");
 });
 
 // Every program launched with a role gets the identity as its first message (core docs/spec/agent-roles.md#first-message).
