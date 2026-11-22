@@ -156,7 +156,7 @@ test("the image region declares the copy presentation mode", { timeout: 1000 }, 
 // The view requires background of each view event, which the VT sidecar carries since 0.0.31 (sidecars/vt S185, P151); the
 // plugin requires 0.0.32, the sidecar release beside core 0.0.46 (P208).
 test("the plugin requires the VT sidecar release beside core 0.0.46, whose view event carries background (P151, P208)", { timeout: 1000 }, () => {
-  assert.deepEqual(manifest.dependencies, { "@soksak/sidecar-vt-alacritty": "^0.0.32" });
+  assert.deepEqual(manifest.dependencies, { "@soksak/sidecar-vt-alacritty": "^0.0.33" });
 });
 
 test("the tabs name the status terminal.program-state as their program state (P211)", { timeout: 1000 }, () => {
