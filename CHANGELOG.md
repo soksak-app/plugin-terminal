@@ -1,5 +1,6 @@
 # Changelog
 
+- P222: The version is 0.0.54, with P212, P220 and P221.
 - P221: The page watches `core.tab.role` on its own surface, and the value with the state `null` of a tab without a role is no role. Verification: Red of 56 tests against a runtime that refuses the watch without a surface and of the P221 test, then `pnpm test` 528 of 528.
 - P220: The page handles the sidecar event `cursor.blinking` by an explicit branch, so a view no longer lists it as unsupported. Verification: Red then Green of the P220 page test, `pnpm test` 527 of 527.
 - P212: The window check runs against core 0.0.48 (`@soksak/window-check` v0.0.48), and the page handles the owner event `session.program` by an explicit branch, so no view lists it as unsupported. Verification: Red then Green of the P212 page test, `pnpm test` 526 of 526; the window check fails on core errors on each application (P212).
