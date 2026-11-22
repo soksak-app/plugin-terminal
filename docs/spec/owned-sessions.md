@@ -21,9 +21,10 @@ The terminal sidecar answers the owned-session messages of core with the bodies 
 
 ## Tab attachment
 
-A tab shows an owned session with `core.layout.open {card, plugin, params: {session}}`. Core then sends the frame size of the card with `core.session.resize`. The attach request from the tab to the sidecar is not defined yet, so a tab currently starts its own session as before. This part is open: see `docs/features.md`.
+A tab shows an owned session with `core.layout.open {card, plugin, params: {session}}`. The view of the tab does not start a session of its own. It sends the sidecar `{operation: "attach", session}` on its surface. From then on the view gets that session's output, sends its input to it, and sends its settings (font among them) through its configure exactly as it does for a session of its own; the configure recomputes the grid of the session and resizes its PTY. Core sends `core.session.resize` with the frame size of the card when the tab is shown and when the frame changes, and the sidecar applies it to the attached session. Ending the view detaches it and leaves the session open. A session has at most one attached view; the sidecar refuses a second attach.
+
+The sidecar's rules and replies are in its own specification (`docs/spec/vt-core.md`, section Owned session operations).
 
 ## Open decisions
 
-- The font of an owned session before a tab attaches: the sidecar uses the default font at its default size (13 points, the size of an unconfigured surface). A tab that shows the session with a configured font gets a different cell grid, so the font for the metrics of an owned session needs a decision.
-- The wire of the attach request from a tab to an open session. The core contract names only `core.layout.open` with `params.session`.
+- None in this specification. The attach request carries no font; the font of the view reaches the session through the configure.

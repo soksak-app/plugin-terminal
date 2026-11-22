@@ -21,9 +21,10 @@ terminal sidecar는 core의 owned session 메시지에 sidecar 자체 명세(sid
 
 ## Tab 연결
 
-tab은 `core.layout.open {card, plugin, params: {session}}`로 owned session을 보인다. 그러면 core가 `core.session.resize`로 card의 frame 크기를 보낸다. tab에서 sidecar로 가는 연결 요청은 아직 정의되어 있지 않다. 그래서 tab은 지금도 자체 session을 시작한다. 이 부분은 열려 있다(`docs/features.md`).
+tab은 `core.layout.open {card, plugin, params: {session}}`로 owned session을 보인다. tab의 view는 자체 session을 시작하지 않는다. sidecar에 surface로 `{operation: "attach", session}`을 보낸다. 그 뒤 view는 그 session의 출력을 받고, 입력을 session으로 보내며, 설정(그중 font)을 자체 session과 똑같이 configure로 보낸다. configure가 session의 격자를 다시 계산하고 PTY 크기를 바꾼다. tab이 보일 때와 frame이 바뀔 때 core는 card의 frame 크기로 `core.session.resize`를 보내고, sidecar는 이를 연결된 session에 적용한다. view가 끝나면 연결이 끊기고 session은 열린 채로 남는다. session에 연결된 view는 하나뿐이며, sidecar는 두 번째 attach를 거부한다.
+
+sidecar의 규칙과 응답은 sidecar 명세(`docs/spec/vt-core.ko.md`, 절 Owned session 동작)에 있다.
 
 ## 미결 결정
 
-- tab 연결 전 owned session의 font: sidecar는 기본 font를 기본 크기(13 point, 설정하지 않은 surface의 크기)로 쓴다. 설정한 font로 session을 보이는 tab은 다른 cell 격자를 얻으므로, owned session의 metrics에 쓸 font를 정해야 한다.
-- tab에서 열린 session으로 가는 연결 요청의 wire. core 계약은 `params.session`을 가진 `core.layout.open`만 이름을 준다.
+- 이 명세에는 없다. attach 요청에는 font가 없으며, view의 font는 configure로 session에 전달된다.
