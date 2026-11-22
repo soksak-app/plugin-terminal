@@ -1,5 +1,6 @@
 # Changelog
 
+- P217: The plugin requires `@soksak/sidecar-vt-alacritty` `^0.0.41`, whose owned sessions carry S249 to S253 for the members of an agent room. Verification: Red of the dependency test on `^0.0.33`, then `pnpm test` 519 of 519.
 - P214: The plugin requires core `^0.0.47` with the plugin API and window-check releases v0.0.47 and their lockfile entries; the version is 0.0.52. Verification: `pnpm test` 519 of 519.
 - P215: `plugin.json` declares `surface.params` with the string member `session`, so core accepts a tab whose params name an owned session. Verification: Red of the P215 test of `test/manifest.test.mjs` on the manifest without `surface.params`, then Green 19 of 19.
 - P216: The page finds the tabs of `core.grid` by their member `tab`, so a completion notice finds its receiving tab and an injected message is no longer refused with `sender <id> has no tab in the window`, in a group card too. Verification: Red of 24 tests of `test/terminal.test.mjs` on the unchanged page, then Green 394 of 394.
