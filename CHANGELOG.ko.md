@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P226: window check `e2e/reload.test.mjs`는 main page reload 뒤 각 terminal 탭이 자기 session을 읽고 input을 받는지 확인한다. 검증: core 0.0.49에서 3개 중 3개.
 - P225: version은 0.0.55이며 P223, P224를 담는다.
 - P224: `surface.params`가 `core.layout.open`이 role이 있는 agent를 시작하는 tab parameter `program`(string), `args`(string 배열), `role`(string 또는 null)을 선언하므로, core가 선언되지 않은 tab parameter를 거부할 때(core F1106)도 이를 받는다. 검증: 바뀌지 않은 manifest에서 `test/manifest.test.mjs`의 P224 test Red 후 Green 19개 중 19개와 `pnpm test` 530개 중 530개.
 - P223: tab parameter `directory`가 origin 디렉터리보다 먼저 session과 footer를 그 디렉터리에서 시작하며, 절대 경로가 아닌 값은 시작을 거절한다(`docs/spec/tab-directory.ko.md`). 검증: P223 test 두 개의 Red 후 P215·P218·P223 test 9개 중 9개와 `pnpm test` 530개 중 530개.
