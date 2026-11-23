@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P229: version은 0.0.56이며 P228을 담는다.
 - P228: 미응답 mouse input은 sidecar 연결 위의 surface에 속하므로, 다른 view를 대신하는 view가 그 input의 결과를 짝짓고, 닫힌 view는 대기 중인 pointer input을 보내지 않는다. 검증: `unexpected mouse inputId`로 P228 test Red 후 `test/terminal.test.mjs`의 모든 mouse test Green.
 - P226: window check `e2e/reload.test.mjs`는 main page reload 뒤 각 terminal 탭이 자기 session을 읽고 input을 받는지 확인한다. 검증: core 0.0.49에서 3개 중 3개.
 - P225: version은 0.0.55이며 P223, P224를 담는다.
