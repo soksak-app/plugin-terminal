@@ -1,5 +1,6 @@
 # Changelog
 
+- P232: The background session declares the start directory and the program parameters of the tab (core F1134).
 - P231: `terminal.program-state` carries `app`, the name of the program from the records of `terminal.program`.
 - P229: The version is 0.0.56, with P228.
 - P228: The unanswered mouse inputs belong to the surface on its sidecar connection, so a view that replaces another view pairs the results of its inputs, and a closed view sends no queued pointer input. Verification: Red of the P228 test with `unexpected mouse inputId`, then Green with every mouse test of `test/terminal.test.mjs`.

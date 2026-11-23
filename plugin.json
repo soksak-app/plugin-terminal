@@ -249,6 +249,12 @@
     "operation": "open",
     "settings": {
       "shell": "shell"
+    },
+    "directory": "directory",
+    "params": {
+      "program": "program",
+      "args": "args",
+      "directory": "directory"
     }
   },
   "exposes": {

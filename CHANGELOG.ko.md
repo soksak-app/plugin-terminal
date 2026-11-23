@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P232: background 세션은 탭의 시작 디렉터리와 program 매개변수를 선언한다(core F1134).
 - P231: `terminal.program-state`는 `terminal.program`의 record에서 얻은 프로그램 이름 `app`을 담는다.
 - P229: version은 0.0.56이며 P228을 담는다.
 - P228: 미응답 mouse input은 sidecar 연결 위의 surface에 속하므로, 다른 view를 대신하는 view가 그 input의 결과를 짝짓고, 닫힌 view는 대기 중인 pointer input을 보내지 않는다. 검증: `unexpected mouse inputId`로 P228 test Red 후 `test/terminal.test.mjs`의 모든 mouse test Green.

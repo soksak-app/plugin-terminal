@@ -180,3 +180,16 @@ test("the surface declares the tab parameters session, which attaches a tab to a
     },
   });
 });
+
+// A background session starts as the surface of the tab would start it, because the surface that becomes visible attaches to it: in
+// the start directory of the tab and with the program, the arguments and the directory of its parameters (core
+// docs/spec/plugins.md#background-sessions, P232).
+test("the background session takes the start directory and the program parameters of the tab (P232)", { timeout: 1000 }, () => {
+  assert.deepEqual(manifest.background, {
+    sidecar: "@soksak/sidecar-vt-alacritty",
+    operation: "open",
+    settings: { shell: "shell" },
+    directory: "directory",
+    params: { program: "program", args: "args", directory: "directory" },
+  });
+});
