@@ -167,9 +167,16 @@ test("the plugin declares owned sessions, which its tabs attach to (P210-2)", { 
   assert.equal(manifest.sessions, true);
 });
 
-test("the surface declares the tab parameters session, which attaches a tab to an owned session (P215), title, which names the tab (P218), and directory, which starts the session there (P223)", () => {
+test("the surface declares the tab parameters session, which attaches a tab to an owned session (P215), title, which names the tab (P218), directory, which starts the session there (P223), and program, args and role, which start an agent with a role (P224)", () => {
   assert.deepEqual(manifest.surface.params, {
     type: "object",
-    properties: { session: { type: "string" }, title: { type: "string" }, directory: { type: "string" } },
+    properties: {
+      session: { type: "string" },
+      title: { type: "string" },
+      directory: { type: "string" },
+      program: { type: "string" },
+      args: { type: "array", items: { type: "string" } },
+      role: { type: ["string", "null"] },
+    },
   });
 });
