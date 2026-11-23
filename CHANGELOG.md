@@ -1,5 +1,6 @@
 # Changelog
 
+- P233: The version is 0.0.57 with core 0.0.51 and the VT sidecar 0.0.48.
 - P232: The background session declares the start directory and the program parameters of the tab (core F1134).
 - P231: `terminal.program-state` carries `app`, the name of the program from the records of `terminal.program`.
 - P229: The version is 0.0.56, with P228.

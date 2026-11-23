@@ -1,2 +1,4 @@
 allowBuilds:
   '@parcel/watcher': true
+  # koffi ships prebuilt binaries for each platform, so its install script, which builds from source, does not run.
+  koffi: false

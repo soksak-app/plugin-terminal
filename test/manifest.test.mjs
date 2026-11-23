@@ -154,9 +154,10 @@ test("the image region declares the copy presentation mode", { timeout: 1000 }, 
 
 // A range ^0.0.z admits the sidecar 0.0.z and every later 0.0 release (core docs/spec/installation.md#versions-and-ranges).
 // The view requires background of each view event, which the VT sidecar carries since 0.0.31 (sidecars/vt S185, P151); the
-// plugin requires 0.0.41, the sidecar release whose owned sessions carry S249 to S253, which the members of an agent room need (P217).
-test("the plugin requires the VT sidecar release whose owned sessions carry S249 to S253 (P151, P217)", { timeout: 1000 }, () => {
-  assert.deepEqual(manifest.dependencies, { "@soksak/sidecar-vt-alacritty": "^0.0.41" });
+// owned sessions carry S249 to S253 since 0.0.41, which the members of an agent room need (P217); the plugin requires 0.0.48, whose
+// line guard reads a control character of inserted text as its key, so a Ctrl-C of terminal.input discards an untracked line (S269, P233).
+test("the plugin requires the VT sidecar release whose line guard reads inserted control characters (P151, P217, P233)", { timeout: 1000 }, () => {
+  assert.deepEqual(manifest.dependencies, { "@soksak/sidecar-vt-alacritty": "^0.0.48" });
 });
 
 test("the tabs name the status terminal.program-state as their program state (P211)", { timeout: 1000 }, () => {
