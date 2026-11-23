@@ -1135,9 +1135,7 @@
               "type": [
                 "string",
                 "null"
-              ],
-              "minLength": 1,
-              "maxLength": 64
+              ]
             }
           }
         }
