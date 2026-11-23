@@ -508,6 +508,11 @@ function terminalStateProblem({ state, source, sequence, exit }, change) {
 const isAbsolutePath = (value) => typeof value === "string" && value.startsWith("/") && !value.startsWith("//") &&
   !/^\/[A-Za-z]:/.test(value) && !value.includes("\u0000");
 
+// The mouse inputs of each surface that wait for their results, in sending order, by sidecar connection and surface. A view that
+// replaces another view of the surface on the same connection receives the results of the inputs that the replaced view sent, so the
+// record belongs to the connection and the surface and outlives each view; it goes with the connection.
+const unansweredMouseInputs = new WeakMap();
+
 export async function startTerminal({ id, view, attachImage, detachRegions, sidecar, expose, theme,
   // Aborts when the removal of the surface starts, before its regions are detached (context.closing). Required.
   closing,
@@ -1382,7 +1387,10 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
   // transport 응답 순서가 달라져 selection.update 가 selection.start 보다 먼저
   // 처리될 수 있다. 제스처 전체를 하나의 순서열로 보낸다.
   let pointerInputChain = Promise.resolve();
-  const mouseInputs = new Map();
+  if (!unansweredMouseInputs.has(sidecar)) unansweredMouseInputs.set(sidecar, new Map());
+  const surfaceInputs = unansweredMouseInputs.get(sidecar);
+  if (!surfaceInputs.has(id)) surfaceInputs.set(id, new Map());
+  const mouseInputs = surfaceInputs.get(id);
   // The selection update of the drag that waits for its turn in the chain. A later move of the drag inside the view changes its
   // point instead of queueing another update, so a drag whose replies are slow keeps one update waiting with the latest point. A
   // move outside the view is never merged: the sidecar scrolls the history by the overflow of each update.
@@ -1391,6 +1399,11 @@ export async function startTerminal({ id, view, attachImage, detachRegions, side
     notifyPointer({ kind: "pointer-queued", body });
     const request = pointerInputChain.then(async () => {
       if (body === waitingSelectionUpdate) waitingSelectionUpdate = null;
+      // A closed view sends no queued input: its surface may already show a view that did not make the gesture.
+      if (closing.aborted) {
+        notifyPointer({ kind: "pointer-dropped", inputId: body.inputId, reason: "the view closed" });
+        return null;
+      }
       if (body.operation === "mouse") {
         if (mouseInputs.size >= 4096) throw new Error("unanswered mouse input capacity exceeded");
         mouseInputs.set(body.inputId, body.phase);

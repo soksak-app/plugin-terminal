@@ -5779,6 +5779,32 @@ test("pointer trace correlates new gestures and records capture and focus withou
   assert.match(expose.getStatus("terminal.session").readFn().error, /unexpected mouse inputId/);
 });
 
+// P228 (docs/spec/acceptance.md): the unanswered mouse inputs belong to the surface on its sidecar connection.
+test("a mouse result for an input that a disposed view sent is paired by the view that replaces it", async () => {
+  const sidecar = createFakeSidecar();
+  const firstView = createFakeView();
+  const firstClosing = new AbortController();
+  const first = await startTerminal({ view: firstView, detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar, expose: createFakeExpose(), closing: firstClosing.signal, window: { TextEncoder } });
+  openSession(sidecar);
+  firstView._trigger("pointerdown", { button: 0, buttons: 1, pointerId: 4, clientX: 10, clientY: 12 });
+  firstView._trigger("pointermove", { buttons: 1, pointerId: 4, clientX: 42, clientY: 12 });
+  await sidecar.until(() => sidecar.getMessages().filter(({ body }) => body.operation === "mouse").length >= 2);
+  const sentInputs = sidecar.getMessages().filter(({ body }) => body.operation === "mouse").map(({ body }) => body);
+  // The view is replaced while its mouse inputs wait for their results.
+  firstClosing.abort();
+  await first.dispose();
+
+  const replacement = createFakeExpose();
+  await startTerminal({ view: createFakeView(), detachRegions: async () => {}, attachImage: createFakeAttachImage().function,
+    sidecar, expose: replacement, closing: new AbortController().signal, window: { TextEncoder } });
+  openSession(sidecar);
+  for (const input of sentInputs) sidecar.triggerEvent("test-session", {
+    ...input, event: "mouse", modes: { click: false, drag: false, motion: true }, reported: true, written: true, bytes: "eA==",
+  });
+  assert.doesNotMatch(String(replacement.getStatus("terminal.session").readFn().error), /unexpected mouse inputId/);
+});
+
 test("pointer diagnostics are opt-in, bounded, and report malformed actions", async () => {
   const expose = createFakeExpose();
   const sidecar = createFakeSidecar();

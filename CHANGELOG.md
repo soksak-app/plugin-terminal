@@ -1,5 +1,6 @@
 # Changelog
 
+- P228: The unanswered mouse inputs belong to the surface on its sidecar connection, so a view that replaces another view pairs the results of its inputs, and a closed view sends no queued pointer input. Verification: Red of the P228 test with `unexpected mouse inputId`, then Green with every mouse test of `test/terminal.test.mjs`.
 - P226: The window check `e2e/reload.test.mjs` requires that each terminal tab reads and takes input for its own session after a reload of the main page. Verification: 3 of 3 on core 0.0.49.
 - P225: The version is 0.0.55, with P223 and P224.
 - P224: `surface.params` declares the tab parameters `program` (string), `args` (array of strings) and `role` (string or null), with which `core.layout.open` starts an agent with a role, so core accepts them when it refuses undeclared tab parameters (core F1106). Verification: Red of the P224 test of `test/manifest.test.mjs` on the unchanged manifest, then Green 19 of 19 and `pnpm test` 530 of 530.
