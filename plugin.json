@@ -1107,7 +1107,7 @@
       },
       {
         "name": "terminal.program-state",
-        "description": "The program state of the tab (core docs/spec/program-state.md#value): {state, pid} with state idle, working or blocked, from the records of terminal.program (OSC 7501 and the shell marks), and pid the foreground program of the process list (terminal.session foreground pid), or null when the records give no state. The session end gives null.",
+        "description": "The program state of the tab (core docs/spec/program-state.md#value): {state, pid, app} with state idle, working or blocked, from the records of terminal.program (OSC 7501 and the shell marks), pid the foreground program of the process list (terminal.session foreground pid), and app the name of the program from the first record that names one, or null when the records give no state. The session end gives null.",
         "schema": {
           "type": [
             "object",
@@ -1130,6 +1130,14 @@
                 "integer",
                 "null"
               ]
+            },
+            "app": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "maxLength": 64
             }
           }
         }

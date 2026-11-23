@@ -7241,22 +7241,32 @@ async function programTerminal() {
 
 // The program state of a tab (core docs/spec/program-state.md#value): the state of the records, with the pid of the foreground program
 // from the process list, or null when the records give no state (docs/spec/terminal-state.md, states of a running terminal).
-const programRecord = (state, id = "r1") => ({ id, state, kind: state === "blocked" ? "permission" : null, progress: null, app: null, title: null, msg: null });
+const programRecord = (state, id = "r1", app = null) => ({ id, state, kind: state === "blocked" ? "permission" : null, progress: null, app, title: null, msg: null });
 test("terminal.program-state reports the record state with the foreground pid, and null when no record gives a state (P211)", { timeout: 10000 }, async () => {
   const terminal = await programTerminal();
   const state = terminal.expose.getStatus("terminal.program-state");
   assert.notEqual(state, undefined, "the status terminal.program-state is not declared");
   assert.equal(state.readFn(), null, "no state before a report");
   terminal.emit({ event: "program.status", records: [programRecord("working")], notice: false, sequence: 1 });
-  assert.deepEqual(state.readFn(), { state: "working", pid: null }, "no foreground process known yet");
+  assert.deepEqual(state.readFn(), { state: "working", pid: null, app: null }, "no foreground process known yet");
   terminal.emit({ event: "processes", foreground: LESS, background: [] });
-  assert.deepEqual(state.readFn(), { state: "working", pid: 42 }, "the pid of the foreground program");
+  assert.deepEqual(state.readFn(), { state: "working", pid: 42, app: null }, "the pid of the foreground program");
   terminal.emit({ event: "program.status", records: [programRecord("blocked")], notice: false, sequence: 2 });
-  assert.deepEqual(state.readFn(), { state: "blocked", pid: 42 });
+  assert.deepEqual(state.readFn(), { state: "blocked", pid: 42, app: null });
   terminal.emit({ event: "program.status", records: [programRecord("idle")], notice: false, sequence: 3 });
-  assert.deepEqual(state.readFn(), { state: "idle", pid: 42 });
+  assert.deepEqual(state.readFn(), { state: "idle", pid: 42, app: null });
   terminal.emit({ event: "program.status", records: [], notice: true, sequence: 4 });
   assert.equal(state.readFn(), null, "a notice states no program state");
+});
+
+// The program state names the program (P231): the app of the first record that names one, as the agent CLI reports it.
+test("terminal.program-state names the program by the app of its records (P231)", { timeout: 10000 }, async () => {
+  const terminal = await programTerminal();
+  const state = terminal.expose.getStatus("terminal.program-state");
+  terminal.emit({ event: "program.status", records: [programRecord("idle", null, "claude-code"), programRecord("working", "r2", "claude-code")], notice: false, sequence: 1 });
+  assert.deepEqual(state.readFn(), { state: "working", pid: null, app: "claude-code" });
+  terminal.emit({ event: "program.status", records: [programRecord("idle", null, "codex")], notice: false, sequence: 2 });
+  assert.deepEqual(state.readFn(), { state: "idle", pid: null, app: "codex" });
 });
 
 for (const { name, events, read, activity } of PROGRAM_CASES) {

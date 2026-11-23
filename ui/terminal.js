@@ -480,13 +480,16 @@ function programStatusProblem({ records, notice, sequence }, change) {
 /**
  * The program state of a tab (core docs/spec/program-state.md#value) from the records of its program status: blocked when a record
  * is blocked, else working when a record works, else idle when a record rests (idle, done or error), and null when no record gives a
- * state (docs/spec/terminal-state.md, states of a running terminal). The pid is the foreground program of the process list, or null.
+ * state (docs/spec/terminal-state.md, states of a running terminal). The pid is the foreground program of the process list, or null,
+ * and the app is the name that the first record naming its program gives, or null (P231).
  */
 export function programStateValue({ records }, foreground) {
   const states = new Set(records.map(({ state }) => state));
   const state = states.has("blocked") ? "blocked" : states.has("working") ? "working" : ["idle", "done", "error"].some((rest) => states.has(rest)) ? "idle" : null;
   if (state === null) return null;
-  return { state, pid: foreground?.pid ?? null };
+  // default: a record whose program names itself gives the name; records without one give null.
+  const app = records.find((record) => typeof record.app === "string" && record.app.length > 0)?.app ?? null;
+  return { state, pid: foreground?.pid ?? null, app };
 }
 /** Returns why a terminal state value of a change event or a read reply breaks the contract, or null when it holds. */
 function terminalStateProblem({ state, source, sequence, exit }, change) {
