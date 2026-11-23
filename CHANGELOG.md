@@ -1,5 +1,6 @@
 # Changelog
 
+- P225: The version is 0.0.55, with P223 and P224.
 - P224: `surface.params` declares the tab parameters `program` (string), `args` (array of strings) and `role` (string or null), with which `core.layout.open` starts an agent with a role, so core accepts them when it refuses undeclared tab parameters (core F1106). Verification: Red of the P224 test of `test/manifest.test.mjs` on the unchanged manifest, then Green 19 of 19 and `pnpm test` 530 of 530.
 - P223: The tab parameter `directory` starts the session and its footer in that directory before the origin directory, and a value that is not an absolute path refuses the start (`docs/spec/tab-directory.md`). Verification: Red of the two P223 tests, then Green with the P215, P218 and P223 tests 9 of 9 and `pnpm test` 530 of 530.
 - P222: The version is 0.0.54, with P212, P220 and P221.
