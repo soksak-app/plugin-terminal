@@ -1,5 +1,6 @@
 # 기능
 
+- [o] P237 — P0: P236을 담은 0.0.60을 release한다.
 - [o] P236 — P0, core F1190용: mount가 실패한 view는 그 실패를 사람에게 보인다. Input: params가 열려 있지 않은 owned session을 가리키는 복원 탭. Behavior: attach가 `session <id> is not open`으로 실패하고, view는 그것을 log만 쓰고 toast는 열지 않는 `runtime.error`로만 보고하며, 탭은 비어 있다. Expected: view는 mount 실패를 `tab.error`로 보고해서 탭의 toast가 그 이유와 함께 보인다. Red/Green test를 둔다. Red: `test/module.test.mjs`의 `the view page reports a failed sidecar startup and releases its composition` test가 `the failed mount is not only a log record`로 실패했다. `mountPage`가 실패를 `runtime.error`로만 보고했기 때문이다. Green: `mountPage`는 `terminal mount failed: <reason>`을 `tab.error`로 보고한다. `npm test`가 533개 중 533개 통과하고 `make check`가 통과한다.
 - [o] P235 — P0: 0.0.59를 release한다. 이 version은 더 낮은 generation의 drawing state에 답하고(S273) 연결을 닫은 client를 오류 없이 끝내는(S275) VT sidecar 0.0.51을 요구한다. 설치는 모든 range를 만족하는 동안 사용 중인 sidecar version을 유지하므로, 이전 range `^0.0.49`는 0.0.49를 유지했다. Red: `test/manifest.test.mjs`의 dependency test가 `^0.0.49`에서 실패했다. Green: 그 file의 test 20개가 통과한다.
 - [o] P234 — P0: 재접속 뒤 image 없는 open을 받는 VT sidecar 0.0.49(S271)를 요구하는 0.0.58을 release한다. 설치는 사용 중인 sidecar version이 모든 range를 채우는 동안 그 version을 유지하므로, 이전 range `^0.0.48`은 0.0.48을 유지했고 S271의 수정은 어떤 설치에도 전달되지 않았다. Red: `test/manifest.test.mjs`의 의존 test가 `^0.0.48`에서 실패했다. Green: `make test`가 통과한다.
