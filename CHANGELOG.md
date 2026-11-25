@@ -1,5 +1,6 @@
 # Changelog
 
+- P236: A failed mount of the view is the error of its tab, so the toast of the tab shows it with its reason (core F1190). Red: the test `the view page reports a failed sidecar startup and releases its composition` in `test/module.test.mjs` failed with `the failed mount is not only a log record`, because `mountPage` reported the failure only through `runtime.error`. Green: `mountPage` reports `terminal mount failed: <reason>` through `tab.error`; `npm test` passes 533 of 533, and `make check` passes.
 - P235: The version is 0.0.59 and requires the VT sidecar 0.0.51, which answers a stale drawing state and ends a closed client without an error.
 - P234: The version is 0.0.58 with the VT sidecar 0.0.49.
 - P233: The version is 0.0.57 with core 0.0.51 and the VT sidecar 0.0.48.

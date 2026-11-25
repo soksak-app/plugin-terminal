@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P236: view의 mount 실패는 그 탭의 오류라서 탭의 toast가 이유와 함께 보인다(core F1190). Red: `test/module.test.mjs`의 `the view page reports a failed sidecar startup and releases its composition` test가 `the failed mount is not only a log record`로 실패했다. `mountPage`가 실패를 `runtime.error`로만 보고했기 때문이다. Green: `mountPage`는 `terminal mount failed: <reason>`을 `tab.error`로 보고한다. `npm test`가 533개 중 533개 통과하고 `make check`가 통과한다.
 - P235: version은 0.0.59이며, stale drawing state에 답하고 닫힌 client를 오류 없이 끝내는 VT sidecar 0.0.51을 요구한다.
 - P234: version은 0.0.58이고 VT sidecar 0.0.49를 요구한다.
 - P233: version은 0.0.57이며 core 0.0.51과 VT sidecar 0.0.48을 요구한다.

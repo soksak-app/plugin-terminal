@@ -74,7 +74,7 @@ const diagnostics = loadedDiagnostics === null ? null : {
 };
 const closing = new AbortController();
 const { context } = createViewContext({ bridge, start, report, closing: closing.signal, diagnostics, scale, settings });
-const mounted = await mountPage(context, report);
+const mounted = await mountPage(context);
 // The view ends with its page: pagehide aborts the closing signal and disposes the mount, which ends the terminal session and releases its entries and bindings.
 addEventListener("pagehide", () => {
   closing.abort();

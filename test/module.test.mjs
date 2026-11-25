@@ -121,8 +121,10 @@ test("the view page reports a failed sidecar startup and releases its compositio
       return null;
     },
   });
-  // The report of the failed mount is the last record of the failed startup.
-  const report = callsOf(view, "runtime.error").map(([, text]) => text).find((line) => /mount failed/.test(line));
+  // P236: the failed mount is the error of the tab, which the workbench shows in its toast with the reason and records; a
+  // runtime.error record alone reaches only the log.
+  const report = requests(view, "tab.error").find((line) => /mount failed/.test(line));
+  assert.equal(callsOf(view, "runtime.error").some(([, text]) => /mount failed/.test(text)), false, "the failed mount is not only a log record");
   assert.deepEqual(compositionCalls(view).map(([method]) => method).filter((method) => !method.startsWith("region.")), ["composition.create", "composition.dispose"],
     "a failed sidecar startup releases the composition of the region");
   assert.match(report, /mount failed: connect authenticated service: socket missing/);
@@ -252,5 +254,5 @@ test("a refused focus command releases the terminal session and composition", { 
   }) });
   assert.equal(compositionCalls(view).filter(([method]) => method === "composition.dispose").length, 1);
   assert.equal(sidecarSends(view).filter(({ body }) => body.operation === "close").length, 1);
-  assert.match(callsOf(view, "runtime.error").map(([, text]) => text).find((line) => /mount failed/.test(line)), /mount failed: command terminal\.focus is not declared/);
+  assert.match(requests(view, "tab.error").find((line) => /mount failed/.test(line)), /mount failed: command terminal\.focus is not declared/);
 });

@@ -97,14 +97,17 @@ export async function mount(root, context) {
 
 
 
-/** Mounts the page shell and reports terminal startup failures through the injected page reporter. */
-export async function mountPage(context, report, documentRef = document) {
+/**
+ * Mounts the page shell. A failed mount is the error of the tab, which the workbench shows in its toast with the reason and records
+ * (core docs/spec/plugins.md, tab.error); the page shows no terminal, so a record through runtime.error alone would reach only the log.
+ */
+export async function mountPage(context, documentRef = document) {
   const host = documentRef.body.appendChild(documentRef.createElement("div"));
   host.style.cssText = "height:100%";
   try {
     return await mount(host.attachShadow({ mode: "open" }), context);
   } catch (error) {
-    report(`view terminal: mount failed: ${error?.message ?? error}`);
+    context.tab.error(`terminal mount failed: ${error?.message ?? error}`);
     return null;
   }
 }
