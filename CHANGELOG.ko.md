@@ -1,5 +1,6 @@
 # 변경 기록
 
+- P235: version은 0.0.59이며, stale drawing state에 답하고 닫힌 client를 오류 없이 끝내는 VT sidecar 0.0.51을 요구한다.
 - P234: version은 0.0.58이고 VT sidecar 0.0.49를 요구한다.
 - P233: version은 0.0.57이며 core 0.0.51과 VT sidecar 0.0.48을 요구한다.
 - P232: background 세션은 탭의 시작 디렉터리와 program 매개변수를 선언한다(core F1134).

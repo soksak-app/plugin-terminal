@@ -1,5 +1,6 @@
 # Changelog
 
+- P235: The version is 0.0.59 and requires the VT sidecar 0.0.51, which answers a stale drawing state and ends a closed client without an error.
 - P234: The version is 0.0.58 with the VT sidecar 0.0.49.
 - P233: The version is 0.0.57 with core 0.0.51 and the VT sidecar 0.0.48.
 - P232: The background session declares the start directory and the program parameters of the tab (core F1134).
